@@ -6,12 +6,23 @@
     "build": "nuxt build",
     "dev": "nuxt dev",
     "generate": "nuxt generate",
+    "lint": "nuxt typecheck",
     "preview": "nuxt preview",
-    "postinstall": "nuxt prepare"
+    "postinstall": "nuxt prepare",
+    "test": "nuxt typecheck",
+    "typecheck": "nuxt typecheck"
   },
   "dependencies": {
+    "@colyseus/sdk": "^0.18.2",
+    "@eldritch/protocol": "workspace:*",
+    "@pinia/nuxt": "^1.0.2",
     "nuxt": "^4.5.2",
+    "pinia": "^4.0.3",
     "vue": "^3.5.42",
     "vue-router": "^5.3.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vue-tsc": "^3.0.8"
   }
 }
