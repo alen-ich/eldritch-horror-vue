@@ -9,6 +9,7 @@
     "node": ">= 22.0.0"
   },
   "scripts": {
+    "dev": "tsx watch src/index.ts",
     "start": "tsx watch src/index.ts",
     "loadtest": "tsx loadtest/example.ts --room game --numClients 2",
     "build": "npm run clean && tsc -p tsconfig.build.json",

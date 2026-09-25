@@ -70,13 +70,28 @@ export function useGameRoom() {
   async function createGame(displayName: string) {
     status.value = 'connecting'
     errorMessage.value = ''
-    attach(await client.create<ClientGameState>('game', { displayName }))
+    try {
+      attach(await client.create<ClientGameState>('game', { displayName }))
+    } catch (error) {
+      handleConnectionError(error)
+    }
   }
 
   async function joinGame(targetRoomId: string, displayName: string) {
     status.value = 'connecting'
     errorMessage.value = ''
-    attach(await client.joinById<ClientGameState>(targetRoomId, { displayName }))
+    try {
+      attach(await client.joinById<ClientGameState>(targetRoomId, { displayName }))
+    } catch (error) {
+      handleConnectionError(error)
+    }
+  }
+
+  function handleConnectionError(error: unknown) {
+    status.value = 'idle'
+    errorMessage.value = error instanceof Error
+      ? `Could not reach the game server: ${error.message}`
+      : 'Could not reach the game server.'
   }
 
   async function reconnect() {

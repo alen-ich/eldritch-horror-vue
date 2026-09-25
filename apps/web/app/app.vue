@@ -72,6 +72,7 @@ async function copyInvite() {
       <div class="divider"><span>or join a room</span></div>
       <label>Room code<input v-model="joinCode" placeholder="Room ID" @keyup.enter="joinGame"></label>
       <button class="secondary" :disabled="!joinCode.trim()" @click="joinGame">Join game</button>
+      <p v-if="game.errorMessage.value" class="error" role="alert">{{ game.errorMessage.value }}</p>
       <p v-if="attemptedReconnect" class="muted">The previous seat expired; join again to continue.</p>
     </section>
 
