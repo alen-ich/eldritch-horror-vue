@@ -8,6 +8,8 @@ export const PlayerState = schema({
   connected: t.boolean().default(true),
   investigatorId: t.string().default(""),
   locationId: t.string().default(""),
+  health: t.uint8().default(0),
+  sanity: t.uint8().default(0),
   isHost: t.boolean().default(false),
 });
 export type PlayerState = SchemaType<typeof PlayerState>;

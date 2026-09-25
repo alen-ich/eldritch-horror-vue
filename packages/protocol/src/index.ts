@@ -40,6 +40,8 @@ export interface PublicPlayerState {
   connected: boolean;
   investigatorId?: InvestigatorId;
   locationId?: LocationId;
+  health?: number;
+  sanity?: number;
   isHost: boolean;
 }
 

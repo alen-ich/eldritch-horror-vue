@@ -10,6 +10,8 @@ export interface EnginePlayer {
   id: string;
   investigatorId?: InvestigatorId;
   locationId?: LocationId;
+  health?: number;
+  sanity?: number;
 }
 
 export interface GameState {
@@ -20,8 +22,18 @@ export interface GameState {
 }
 
 export interface GameMap {
-  startingLocationId: LocationId;
   adjacentLocationIds: Readonly<Partial<Record<LocationId, readonly LocationId[]>>>;
+}
+
+export interface InvestigatorSetup {
+  startingLocationId: LocationId;
+  health: number;
+  sanity: number;
+}
+
+export interface GameContent {
+  map: GameMap;
+  investigators: Readonly<Partial<Record<InvestigatorId, InvestigatorSetup>>>;
 }
 
 export type RuleErrorCode =
@@ -30,6 +42,7 @@ export type RuleErrorCode =
   | "NOT_HOST"
   | "NOT_ENOUGH_PLAYERS"
   | "INVESTIGATOR_REQUIRED"
+  | "INVESTIGATOR_CONTENT_MISSING"
   | "INVESTIGATOR_TAKEN"
   | "NOT_ACTIVE_PLAYER"
   | "DESTINATION_NOT_ADJACENT";
@@ -54,7 +67,7 @@ export function executeCommand(
   state: GameState,
   actorPlayerId: string,
   command: GameCommand,
-  map: GameMap,
+  content: GameContent,
 ): CommandResult {
   const actorIndex = state.players.findIndex((player) => player.id === actorPlayerId);
   if (actorIndex < 0) return failure("PLAYER_NOT_FOUND", "The acting player is not in this game.");
@@ -88,7 +101,13 @@ export function executeCommand(
     next.phase = "action";
     next.activePlayerId = actorPlayerId;
     next.turnNumber = 1;
-    next.players = next.players.map((player) => ({ ...player, locationId: map.startingLocationId }));
+    for (const player of next.players) {
+      const setup = content.investigators[player.investigatorId!];
+      if (!setup) return failure("INVESTIGATOR_CONTENT_MISSING", "The selected investigator has no setup data.");
+      player.locationId = setup.startingLocationId;
+      player.health = setup.health;
+      player.sanity = setup.sanity;
+    }
     return { ok: true, state: next, events: [{ type: "GAME_STARTED", activePlayerId: actorPlayerId }] };
   }
 
@@ -97,7 +116,7 @@ export function executeCommand(
 
   if (command.type === "MOVE") {
     const current = actor.locationId;
-    if (!current || !map.adjacentLocationIds[current]?.includes(command.destinationId)) {
+    if (!current || !content.map.adjacentLocationIds[current]?.includes(command.destinationId)) {
       return failure("DESTINATION_NOT_ADJACENT", "The destination is not adjacent to the investigator.");
     }
     actor.locationId = command.destinationId;

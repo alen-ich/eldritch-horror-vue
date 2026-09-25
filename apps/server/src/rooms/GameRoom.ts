@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Client, CloseCode, Room } from "colyseus";
-import { baseGameMap } from "@eldritch/content";
-import { executeCommand, type GameState } from "@eldritch/engine";
+import { baseGameInvestigators, baseGameMap } from "@eldritch/content";
+import { executeCommand, type GameContent, type GameState } from "@eldritch/engine";
 import {
   commandErrorMessageType,
   commandMessageType,
@@ -14,6 +14,14 @@ import {
 import { GameRoomState, PlayerState } from "./schema/GameRoomState.js";
 
 const RECONNECTION_SECONDS = 30;
+const baseGameContent: GameContent = {
+  map: baseGameMap,
+  investigators: Object.fromEntries(baseGameInvestigators.map((investigator) => [investigator.id, {
+    startingLocationId: investigator.startingLocationId,
+    health: investigator.health,
+    sanity: investigator.sanity,
+  }])),
+};
 
 export class GameRoom extends Room<{ state: GameRoomState }> {
   maxClients = 4;
@@ -70,7 +78,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       client.send(commandErrorMessageType, { code: "PLAYER_NOT_FOUND", message: "No player seat is associated with this connection." });
       return;
     }
-    const result = executeCommand(this.toEngineState(), playerId, parsed.data, baseGameMap);
+    const result = executeCommand(this.toEngineState(), playerId, parsed.data, baseGameContent);
     if (result.ok === false) {
       client.send(commandErrorMessageType, result.error);
       return;
@@ -87,6 +95,8 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
         id: player.id,
         investigatorId: (player.investigatorId || undefined) as InvestigatorId | undefined,
         locationId: (player.locationId || undefined) as LocationId | undefined,
+        health: player.health || undefined,
+        sanity: player.sanity || undefined,
       })),
     };
   }
@@ -100,6 +110,8 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       if (!player) continue;
       player.investigatorId = enginePlayer.investigatorId ?? "";
       player.locationId = enginePlayer.locationId ?? "";
+      player.health = enginePlayer.health ?? 0;
+      player.sanity = enginePlayer.sanity ?? 0;
     }
   }
 

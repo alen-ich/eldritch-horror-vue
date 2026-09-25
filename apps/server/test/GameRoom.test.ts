@@ -22,7 +22,7 @@ describe("authoritative game room", () => {
     assert.equal(hostPlayer.sessionId, host.sessionId);
     assert.equal(guestPlayer.sessionId, guest.sessionId);
 
-    host.send(commandMessageType, { type: "SELECT_INVESTIGATOR", investigatorId: "amanda_sharpe" });
+    host.send(commandMessageType, { type: "SELECT_INVESTIGATOR", investigatorId: "akachi_onyele" });
     await room.waitForMessage(commandMessageType);
     guest.send(commandMessageType, { type: "SELECT_INVESTIGATOR", investigatorId: "trish_scarborough" });
     await room.waitForMessage(commandMessageType);
@@ -31,11 +31,14 @@ describe("authoritative game room", () => {
 
     assert.equal(room.state.phase, "action");
     assert.equal(room.state.activePlayerId, hostPlayer.id);
-    assert.equal(guestPlayer.locationId, "san_francisco");
+    assert.equal(hostPlayer.locationId, "space_15");
+    assert.equal(hostPlayer.health, 5);
+    assert.equal(hostPlayer.sanity, 7);
+    assert.equal(guestPlayer.locationId, "space_16");
 
-    host.send(commandMessageType, { type: "MOVE", destinationId: "space_1" });
+    host.send(commandMessageType, { type: "MOVE", destinationId: "space_10" });
     await room.waitForMessage(commandMessageType);
-    assert.equal(hostPlayer.locationId, "space_1");
+    assert.equal(hostPlayer.locationId, "space_10");
   });
 
   it("rejects forged player identity and isolates rooms", async () => {
@@ -46,7 +49,7 @@ describe("authoritative game room", () => {
 
     firstClient.send(commandMessageType, {
       type: "SELECT_INVESTIGATOR",
-      investigatorId: "amanda_sharpe",
+      investigatorId: "akachi_onyele",
       playerId: [...secondRoom.state.players.keys()][0],
     });
     await firstRoom.waitForMessage(commandMessageType);
