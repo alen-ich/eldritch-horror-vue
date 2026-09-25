@@ -9,7 +9,11 @@ export const locationIds = [
   "space_13", "space_14", "space_15", "space_16", "space_17", "space_18",
   "space_19", "space_20", "space_21",
 ] as const;
-export const investigatorIds = ["amanda_sharpe", "trish_scarborough"] as const;
+export const investigatorIds = [
+  "akachi_onyele", "charlie_kane", "diana_stanley", "jacqueline_fine",
+  "jim_culver", "leo_anderson", "lily_chen", "lola_hayes", "mark_harrigan",
+  "norman_withers", "silas_marsh", "trish_scarborough",
+] as const;
 
 export type LocationId = (typeof locationIds)[number];
 export type InvestigatorId = (typeof investigatorIds)[number];
