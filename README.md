@@ -13,7 +13,7 @@ pnpm dev
 
 The server listens on `http://localhost:2567`. Nuxt prints its selected browser URL (normally `http://localhost:3000`). To use another server endpoint, set `NUXT_PUBLIC_COLYSEUS_URL` for the web process.
 
-Open the web app in two browser windows. Create a game in the first, copy its invite link, and open that link in the second. Both players select different investigators; the host can then start the game and move along the prototype map.
+Open the web app in two browser windows. Create a game in the first, copy its invite link, and open that link in the second. Both players select different investigators from the 12-character base roster; the host can then start the game and move from each investigator's own starting location.
 
 ## Verify
 
