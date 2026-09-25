@@ -12,7 +12,7 @@ Source: `Eldritch_Horror_Web_Project_Initialization_Plan.docx`.
 | 5. Protocol and identity | Complete for MVP | Zod command validation, server-derived actor identity, stable seat ID, and 30-second reconnect policy. |
 | 6. Engine skeleton | Complete | Pure package with legal/illegal rule tests. |
 | 7. First vertical slice | Complete | Create/join, select, start, move, sync, and reconnect implementation. |
-| 8. Content pipeline | Not started | Next planned milestone. |
+| 8. Content pipeline | Map slice complete | Validated 36-space, 70-route base-game map with duplicate and reference checks. Other content families remain. |
 | 9. Core game loop | Not started | Depends on content and expanded rules. |
 | 10. Persistence | Deferred | Intentionally follows the in-memory MVP. |
 | 11. Production baseline | Not started | Docker/CI/observability remain future work. |
