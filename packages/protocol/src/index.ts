@@ -44,8 +44,13 @@ export const joinOptionsSchema = z.object({
 
 export const commandMessageType = "command" as const;
 export const commandErrorMessageType = "command-error" as const;
+export const seatMessageType = "seat" as const;
 
 export interface CommandErrorMessage {
   code: string;
   message: string;
+}
+
+export interface SeatMessage {
+  playerId: string;
 }

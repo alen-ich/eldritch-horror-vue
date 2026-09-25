@@ -6,6 +6,7 @@ import {
   commandMessageType,
   gameCommandSchema,
   joinOptionsSchema,
+  seatMessageType,
   type GameCommand,
   type InvestigatorId,
   type LocationId,
@@ -33,6 +34,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     player.isHost = this.state.players.size === 0;
     this.playerIdBySession.set(client.sessionId, playerId);
     this.state.players.set(playerId, player);
+    client.send(seatMessageType, { playerId });
   }
 
   onDrop(client: Client, _code: CloseCode): void {
@@ -43,7 +45,10 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
 
   onReconnect(client: Client): void {
     const player = this.playerFor(client);
-    if (player) player.connected = true;
+    if (player) {
+      player.connected = true;
+      client.send(seatMessageType, { playerId: player.id });
+    }
   }
 
   onLeave(client: Client): void {
