@@ -5,6 +5,7 @@ import type { InvestigatorId, LocationId } from '@eldritch/protocol'
 const displayName = ref('')
 const joinCode = ref('')
 const attemptedReconnect = ref(false)
+const showCardCatalog = ref(false)
 const game = useGameRoom()
 
 const locationById = Object.fromEntries(baseGameLocations.map((location) => [location.id, location])) as Record<LocationId, typeof baseGameLocations[number]>
@@ -138,7 +139,11 @@ async function copyInvite() {
           </article>
         </aside>
       </section>
-      <LazyCardCatalog />
+      <section v-if="!showCardCatalog" class="panel card-archive-prompt">
+        <div><p class="chapter">Reference archive · 189 cards</p><h2>Browse cards when you need them.</h2><p class="muted">The catalog and optimized thumbnails load only after you open the archive.</p></div>
+        <button class="secondary" @click="showCardCatalog = true">Open card archive</button>
+      </section>
+      <LazyCardCatalog v-else @close="showCardCatalog = false" />
       </template>
 
       <section v-else class="game-grid">
@@ -221,5 +226,7 @@ input:focus { border-color: #d5aa63; box-shadow: 0 0 0 3px #d5aa6322; }
 .route-legend { display: flex; justify-content: flex-end; gap: 15px; margin: -8px 6px 10px; color: #aebcba; font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; }.route-legend span::before { content: ''; display: inline-block; width: 20px; height: 3px; margin-right: 6px; vertical-align: middle; background: currentColor; }.route-legend .train { color: #d9a84e; }.route-legend .ship { color: #7dc2db; }.route-legend .uncharted { color: #9aa8a0; }
 .board { width: 100%; border: 1px solid #45616a; border-radius: 20px; }.route { stroke-width: 2.5; opacity: .72; }.route.train { stroke: #d9a84e; }.route.ship { stroke: #72bbd7; }.route.uncharted { stroke: #84958d; stroke-dasharray: 4 5; }.location { outline: none; cursor: default; }.location circle { fill: #132f36; stroke: #d5aa63; stroke-width: 2; }.location.sea circle { stroke: #72bbd7; }.location.wilderness circle { stroke: #9ab486; }.location.available { cursor: pointer; }.location.available circle, .location.available:focus circle { fill: #d5aa63; stroke: #fff0bd; filter: drop-shadow(0 0 5px #d5aa63); }.location text { fill: #f0eddb; text-anchor: middle; font-size: 9px; font-weight: 700; pointer-events: none; paint-order: stroke; stroke: #07171c; stroke-width: 3px; stroke-linejoin: round; }.location text.numbered { font-size: 8px; stroke-width: 2px; }.token circle { fill: #ebd17d; stroke: #07171c; stroke-width: 2; }.token text { fill: #07171c; text-anchor: middle; font-size: 8px; font-weight: 900; stroke: none; }
 .board-wrap > button { width: 100%; margin-top: 12px; }
+.card-archive-prompt { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-top: 18px; padding: 24px 28px; }.card-archive-prompt h2 { margin: 5px 0; font-size: 1.45rem; }.card-archive-prompt p:last-child { margin: 0; }.card-archive-prompt button { flex: none; }
 @media (max-width: 800px) { .lobby-grid, .game-grid { grid-template-columns: 1fr; }.investigators { grid-template-columns: 1fr; }.masthead { align-items: flex-end; }.room-bar { align-items: flex-start; gap: 12px; flex-direction: column; }.copy { width: 100%; } }
+@media (max-width: 600px) { .card-archive-prompt { align-items: stretch; flex-direction: column; }.card-archive-prompt button { width: 100%; } }
 </style>
