@@ -8,7 +8,8 @@ export default defineNuxtConfig({
     '/cards/data/details/**': { headers: { 'cache-control': 'public, max-age=3600' } },
     '/cards/thumbnails/**': { headers: { 'cache-control': 'public, max-age=86400' } },
     '/cards/front/**': { headers: { 'cache-control': 'public, max-age=86400' } },
-    '/cards/back/**': { headers: { 'cache-control': 'public, max-age=86400' } }
+    '/cards/back/**': { headers: { 'cache-control': 'public, max-age=86400' } },
+    '/map/**': { headers: { 'cache-control': 'public, max-age=86400' } }
   },
   runtimeConfig: {
     public: {
