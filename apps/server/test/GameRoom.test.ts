@@ -19,6 +19,9 @@ describe("authoritative game room", () => {
     const hostPlayer = players.find((player) => player.isHost)!;
     const guestPlayer = players.find((player) => !player.isHost)!;
 
+    assert.equal(hostPlayer.sessionId, host.sessionId);
+    assert.equal(guestPlayer.sessionId, guest.sessionId);
+
     host.send(commandMessageType, { type: "SELECT_INVESTIGATOR", investigatorId: "amanda_sharpe" });
     await room.waitForMessage(commandMessageType);
     guest.send(commandMessageType, { type: "SELECT_INVESTIGATOR", investigatorId: "trish_scarborough" });

@@ -2,14 +2,13 @@ import { Client, type Room } from '@colyseus/sdk'
 import {
   commandErrorMessageType,
   commandMessageType,
-  seatMessageType,
   type CommandErrorMessage,
-  type GameCommand,
-  type SeatMessage
+  type GameCommand
 } from '@eldritch/protocol'
 
 interface ClientPlayerState {
   id: string
+  sessionId: string
   displayName: string
   connected: boolean
   investigatorId: string
@@ -18,10 +17,10 @@ interface ClientPlayerState {
 }
 
 interface ClientGameState {
-  phase: string
-  activePlayerId: string
-  turnNumber: number
-  players: Map<string, ClientPlayerState>
+  phase?: string
+  activePlayerId?: string
+  turnNumber?: number
+  players?: Map<string, ClientPlayerState>
 }
 
 const storageKey = 'eldritch-reconnection-token'
@@ -40,17 +39,20 @@ export function useGameRoom() {
   const client = new Client(config.public.colyseusUrl)
 
   function syncState(state: ClientGameState) {
-    phase.value = state.phase
-    activePlayerId.value = state.activePlayerId
-    turnNumber.value = state.turnNumber
+    if (!state.players) return
+    phase.value = state.phase ?? 'lobby'
+    activePlayerId.value = state.activePlayerId ?? ''
+    turnNumber.value = state.turnNumber ?? 0
     players.value = [...state.players.values()].map((player) => ({
       id: player.id,
+      sessionId: player.sessionId,
       displayName: player.displayName,
       connected: player.connected,
       investigatorId: player.investigatorId,
       locationId: player.locationId,
       isHost: player.isHost
     }))
+    playerId.value = players.value.find((player) => player.sessionId === room.value?.sessionId)?.id ?? ''
   }
 
   function attach(nextRoom: Room<unknown, ClientGameState>) {
@@ -59,7 +61,6 @@ export function useGameRoom() {
     status.value = 'connected'
     localStorage.setItem(storageKey, nextRoom.reconnectionToken)
     nextRoom.onStateChange(syncState)
-    nextRoom.onMessage<SeatMessage>(seatMessageType, (message) => { playerId.value = message.playerId })
     nextRoom.onMessage<CommandErrorMessage>(commandErrorMessageType, (message) => { errorMessage.value = message.message })
     nextRoom.onDrop(() => { status.value = 'connecting' })
     nextRoom.onReconnect(() => { status.value = 'connected' })

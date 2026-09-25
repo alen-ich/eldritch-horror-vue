@@ -2,6 +2,8 @@ import { schema, t, type SchemaType } from "@colyseus/schema";
 
 export const PlayerState = schema({
   id: t.string(),
+  /** Ephemeral connection identity used only to find the client's stable seat. */
+  sessionId: t.string(),
   displayName: t.string(),
   connected: t.boolean().default(true),
   investigatorId: t.string().default(""),
