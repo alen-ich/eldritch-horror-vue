@@ -13,6 +13,8 @@ interface ClientPlayerState {
   connected: boolean
   investigatorId: string
   locationId: string
+  health: number
+  sanity: number
   isHost: boolean
 }
 
@@ -50,6 +52,8 @@ export function useGameRoom() {
       connected: player.connected,
       investigatorId: player.investigatorId,
       locationId: player.locationId,
+      health: player.health,
+      sanity: player.sanity,
       isHost: player.isHost
     }))
     playerId.value = players.value.find((player) => player.sessionId === room.value?.sessionId)?.id ?? ''

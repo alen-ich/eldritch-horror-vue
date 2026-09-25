@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { baseGameLocations, baseGameMap, baseGameRoutes } from '@eldritch/content'
+import { baseGameInvestigators, baseGameLocations, baseGameMap, baseGameRoutes, skillNames } from '@eldritch/content'
 import type { InvestigatorId, LocationId } from '@eldritch/protocol'
 
 const displayName = ref('')
@@ -8,7 +8,11 @@ const attemptedReconnect = ref(false)
 const game = useGameRoom()
 
 const locationById = Object.fromEntries(baseGameLocations.map((location) => [location.id, location])) as Record<LocationId, typeof baseGameLocations[number]>
+const investigatorById = Object.fromEntries(baseGameInvestigators.map((investigator) => [investigator.id, investigator]))
 const me = computed(() => game.players.value.find((player) => player.id === game.playerId.value))
+const selectedByInvestigator = computed(() => new Map(game.players.value
+  .filter((player) => player.investigatorId)
+  .map((player) => [player.investigatorId, player])))
 const isMyTurn = computed(() => game.activePlayerId.value === game.playerId.value)
 const legalDestinations = computed(() => new Set(
   me.value?.locationId
@@ -41,6 +45,11 @@ async function joinGame() {
 
 function selectInvestigator(investigatorId: InvestigatorId) {
   game.send({ type: 'SELECT_INVESTIGATOR', investigatorId })
+}
+
+function isTakenByAnother(investigatorId: InvestigatorId) {
+  const player = selectedByInvestigator.value.get(investigatorId)
+  return Boolean(player && player.id !== game.playerId.value)
 }
 
 function move(destinationId: LocationId) {
@@ -93,12 +102,28 @@ async function copyInvite() {
         <div class="panel">
           <p class="chapter">Investigator roster</p>
           <h2>Choose your investigator</h2>
+          <p class="muted roster-intro">Each investigator begins at their own location with the printed Health and Sanity shown here. Abilities are included for reference while their rule effects are developed.</p>
           <div class="investigators">
-            <button :class="{ selected: me?.investigatorId === 'amanda_sharpe' }" @click="selectInvestigator('amanda_sharpe')">
-              <strong>Amanda Sharpe</strong><span>The Student</span>
-            </button>
-            <button :class="{ selected: me?.investigatorId === 'trish_scarborough' }" @click="selectInvestigator('trish_scarborough')">
-              <strong>Trish Scarborough</strong><span>The Spy</span>
+            <button
+              v-for="investigator in baseGameInvestigators"
+              :key="investigator.id"
+              :class="{ selected: me?.investigatorId === investigator.id, taken: isTakenByAnother(investigator.id) }"
+              :disabled="isTakenByAnother(investigator.id)"
+              :aria-pressed="me?.investigatorId === investigator.id"
+              @click="selectInvestigator(investigator.id)"
+            >
+              <span class="investigator-head">
+                <span><strong>{{ investigator.name }}</strong><small>{{ investigator.occupation }}</small></span>
+                <span v-if="selectedByInvestigator.get(investigator.id)" class="selection-mark">{{ me?.investigatorId === investigator.id ? 'Selected' : `Taken · ${selectedByInvestigator.get(investigator.id)?.displayName}` }}</span>
+              </span>
+              <span class="role">{{ investigator.role }}</span>
+              <span class="vitals"><b>♥ {{ investigator.health }}</b><b>✦ {{ investigator.sanity }}</b><span>Starts: {{ locationById[investigator.startingLocationId].name }}</span></span>
+              <span class="skills">
+                <span v-for="skill in skillNames" :key="skill"><small>{{ skill.slice(0, 3) }}</small><b>{{ investigator.skills[skill] }}</b></span>
+              </span>
+              <span class="loadout"><small>Begins with</small>{{ investigator.startingEquipment.join(' · ') }}</span>
+              <span class="ability"><b>Action</b>{{ investigator.actionAbility }}</span>
+              <span class="ability"><b>Passive</b>{{ investigator.passiveAbility }}</span>
             </button>
           </div>
           <button v-if="me?.isHost" class="primary start" :disabled="game.players.value.length < 2 || game.players.value.some(p => !p.investigatorId)" @click="game.send({ type: 'START_GAME' })">Start game</button>
@@ -108,7 +133,7 @@ async function copyInvite() {
           <p class="chapter">Players · {{ game.players.value.length }}/4</p>
           <article v-for="player in game.players.value" :key="player.id">
             <span class="presence" :class="{ online: player.connected }"></span>
-            <div><strong>{{ player.displayName }} <small v-if="player.isHost">HOST</small></strong><p>{{ player.investigatorId ? player.investigatorId.replace('_', ' ') : 'Choosing…' }}</p></div>
+            <div><strong>{{ player.displayName }} <small v-if="player.isHost">HOST</small></strong><p>{{ player.investigatorId ? investigatorById[player.investigatorId]?.name : 'Choosing…' }}</p></div>
           </article>
         </aside>
       </section>
@@ -131,7 +156,7 @@ async function copyInvite() {
           </svg>
           <button class="secondary" :disabled="!isMyTurn" @click="game.send({ type: 'END_TURN' })">End turn</button>
         </div>
-        <aside class="panel roster"><p class="chapter">Investigators</p><article v-for="player in game.players.value" :key="player.id"><span class="presence" :class="{ online: player.connected }"></span><div><strong>{{ player.displayName }}</strong><p>{{ player.investigatorId.replace('_', ' ') }} · {{ player.locationId }}</p></div></article></aside>
+        <aside class="panel roster"><p class="chapter">Investigators</p><article v-for="player in game.players.value" :key="player.id"><span class="presence" :class="{ online: player.connected }"></span><div><strong>{{ player.displayName }}</strong><p>{{ investigatorById[player.investigatorId]?.name }} · {{ locationById[player.locationId as LocationId]?.name }}</p><p class="resource-line">♥ {{ player.health }} · ✦ {{ player.sanity }}</p></div></article></aside>
       </section>
     </template>
   </main>
@@ -167,11 +192,28 @@ input:focus { border-color: #d5aa63; box-shadow: 0 0 0 3px #d5aa6322; }
 .room-bar div { display: flex; gap: 12px; align-items: center; }.room-bar span { color: #8da1a3; }.room-bar strong { font-family: ui-monospace, monospace; }
 .error { color: #ffd2c8; background: #6b292955; border: 1px solid #9c4f48; padding: 12px 16px; border-radius: 10px; }
 .lobby-grid, .game-grid { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 18px; }
+.roster-intro { margin: -8px 0 22px; }
 .investigators { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
-.investigators button { text-align: left; color: #e9eadc; background: #0c2228; border: 1px solid #3b5961; border-radius: 12px; padding: 20px; }
-.investigators button.selected { border-color: #d5aa63; box-shadow: inset 0 0 0 1px #d5aa63; }.investigators span { display: block; color: #91a7a8; margin-top: 6px; }
+.investigators button { display: flex; flex-direction: column; gap: 12px; text-align: left; color: #e9eadc; background: #0c2228; border: 1px solid #3b5961; border-radius: 12px; padding: 18px; }
+.investigators button:hover:not(:disabled) { border-color: #7a969a; transform: translateY(-1px); }
+.investigators button.selected { border-color: #d5aa63; box-shadow: inset 0 0 0 1px #d5aa63, 0 8px 24px #0004; }
+.investigators button.taken { opacity: .58; }
+.investigator-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.investigator-head > span:first-child { display: grid; gap: 3px; }
+.investigator-head strong { font: 600 1.18rem Georgia, serif; color: #f1eedc; }
+.investigator-head small, .loadout small { color: #91a7a8; }
+.selection-mark { flex: none; color: #d5aa63; border: 1px solid #806b45; border-radius: 999px; padding: 4px 7px; font-size: .58rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+.role { color: #d5aa63; font-size: .72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .07em; }
+.vitals { display: flex; align-items: center; gap: 13px; color: #bdd0cc; font-size: .75rem; }
+.vitals b:first-child { color: #e49c8c; }.vitals b:nth-child(2) { color: #8fcbd7; }.vitals span { margin-left: auto; }
+.skills { display: grid; grid-template-columns: repeat(5, 1fr); border-block: 1px solid #29454c; padding: 10px 0; }
+.skills span { display: grid; place-items: center; gap: 3px; border-right: 1px solid #29454c; }.skills span:last-child { border: 0; }
+.skills small { color: #80989a; font-size: .58rem; text-transform: uppercase; }.skills b { color: #e8e7d8; }
+.loadout { min-height: 42px; color: #c6d0ca; font-size: .75rem; line-height: 1.45; }.loadout small { display: block; text-transform: uppercase; font-size: .56rem; letter-spacing: .08em; }
+.ability { color: #aebfbc; font-size: .72rem; line-height: 1.45; }.ability b { color: #d5aa63; margin-right: 6px; text-transform: uppercase; font-size: .58rem; letter-spacing: .06em; }
 .start { margin-top: 24px; width: 100%; }.roster { padding: 24px; }.roster article { display: flex; align-items: center; gap: 12px; padding: 15px 0; border-bottom: 1px solid #2b474e; }.roster p { margin: 4px 0 0; color: #91a7a8; text-transform: capitalize; }.roster small { color: #d5aa63; font-size: .58rem; letter-spacing: .1em; }
 .presence { width: 9px; height: 9px; border-radius: 50%; background: #6a7374; }.presence.online { background: #7fcb8a; box-shadow: 0 0 10px #7fcb8a; }
+.roster .resource-line { color: #c8b77e; font-size: .72rem; }
 .board-wrap { padding: 20px; }.turn { display: flex; justify-content: space-between; padding: 6px 8px 18px; }.turn span { color: #91a7a8; }.turn strong { color: #d5aa63; }
 .route-legend { display: flex; justify-content: flex-end; gap: 15px; margin: -8px 6px 10px; color: #aebcba; font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; }.route-legend span::before { content: ''; display: inline-block; width: 20px; height: 3px; margin-right: 6px; vertical-align: middle; background: currentColor; }.route-legend .train { color: #d9a84e; }.route-legend .ship { color: #7dc2db; }.route-legend .uncharted { color: #9aa8a0; }
 .board { width: 100%; border: 1px solid #45616a; border-radius: 20px; }.route { stroke-width: 2.5; opacity: .72; }.route.train { stroke: #d9a84e; }.route.ship { stroke: #72bbd7; }.route.uncharted { stroke: #84958d; stroke-dasharray: 4 5; }.location { outline: none; cursor: default; }.location circle { fill: #132f36; stroke: #d5aa63; stroke-width: 2; }.location.sea circle { stroke: #72bbd7; }.location.wilderness circle { stroke: #9ab486; }.location.available { cursor: pointer; }.location.available circle, .location.available:focus circle { fill: #d5aa63; stroke: #fff0bd; filter: drop-shadow(0 0 5px #d5aa63); }.location text { fill: #f0eddb; text-anchor: middle; font-size: 9px; font-weight: 700; pointer-events: none; paint-order: stroke; stroke: #07171c; stroke-width: 3px; stroke-linejoin: round; }.location text.numbered { font-size: 8px; stroke-width: 2px; }.token circle { fill: #ebd17d; stroke: #07171c; stroke-width: 2; }.token text { fill: #07171c; text-anchor: middle; font-size: 8px; font-weight: 900; stroke: none; }
