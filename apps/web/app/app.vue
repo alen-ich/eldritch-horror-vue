@@ -98,7 +98,8 @@ async function copyInvite() {
 
       <p v-if="game.errorMessage.value" class="error" role="alert">{{ game.errorMessage.value }}</p>
 
-      <section v-if="game.phase.value === 'lobby'" class="lobby-grid">
+      <template v-if="game.phase.value === 'lobby'">
+      <section class="lobby-grid">
         <div class="panel">
           <p class="chapter">Investigator roster</p>
           <h2>Choose your investigator</h2>
@@ -137,6 +138,8 @@ async function copyInvite() {
           </article>
         </aside>
       </section>
+      <LazyCardCatalog />
+      </template>
 
       <section v-else class="game-grid">
         <div class="panel board-wrap">
