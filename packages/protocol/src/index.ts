@@ -1,6 +1,14 @@
 import { z } from "zod";
 
-export const locationIds = ["london", "rome", "istanbul", "arkham"] as const;
+export const locationIds = [
+  "san_francisco", "arkham", "buenos_aires", "london", "rome", "istanbul",
+  "shanghai", "sydney", "tokyo", "the_amazon", "the_pyramids",
+  "the_heart_of_africa", "the_himalayas", "tunguska", "antarctica",
+  "space_1", "space_2", "space_3", "space_4", "space_5", "space_6",
+  "space_7", "space_8", "space_9", "space_10", "space_11", "space_12",
+  "space_13", "space_14", "space_15", "space_16", "space_17", "space_18",
+  "space_19", "space_20", "space_21",
+] as const;
 export const investigatorIds = ["amanda_sharpe", "trish_scarborough"] as const;
 
 export type LocationId = (typeof locationIds)[number];
