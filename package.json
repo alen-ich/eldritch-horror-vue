@@ -10,7 +10,8 @@
     "typecheck": "turbo typecheck",
     "test": "turbo test",
     "content:validate": "pnpm --filter @eldritch/content validate",
-    "cards:generate": "node scripts/generate-card-assets.mjs"
+    "cards:generate": "node scripts/generate-card-assets.mjs",
+    "map:generate": "node scripts/generate-map-assets.mjs"
   },
   "keywords": [],
   "author": "",
@@ -18,9 +19,12 @@
   "packageManager": "pnpm@10.28.0",
   "devDependencies": {
     "@types/node": "^26.6.0",
+    "d3-geo": "^3.1.1",
     "prettier": "^3.9.6",
     "sharp": "^0.35.4",
+    "topojson-client": "^3.1.0",
     "turbo": "^2.10.13",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "world-atlas": "^2.0.2"
   }
 }
