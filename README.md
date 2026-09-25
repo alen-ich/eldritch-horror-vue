@@ -15,6 +15,8 @@ The server listens on `http://localhost:2567`. Nuxt prints its selected browser 
 
 Open the web app in two browser windows. Create a game in the first, copy its invite link, and open that link in the second. Both players select different investigators from the 12-character base roster; the host can then start the game and move from each investigator's own starting location.
 
+The lobby also includes a searchable reference archive for the supplied 189-card set, with family filters and paired front/back scans. This archive is content reference only; authoritative decks and card effects are not part of the current game loop.
+
 ## Verify
 
 ```bash

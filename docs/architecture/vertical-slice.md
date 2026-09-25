@@ -13,7 +13,7 @@ The engine imports only `@eldritch/protocol`. It has no framework, DOM, network,
 
 ## Current state
 
-The synchronized public state contains phase, turn number, active player, connection status, selected investigator, location, Health, and Sanity. The lobby exposes the base investigator roster as public content; starting location and resources are initialized authoritatively when play begins. No hidden deck or unrevealed content exists in this slice.
+The synchronized public state contains phase, turn number, active player, connection status, selected investigator, location, Health, and Sanity. The lobby exposes the base investigator roster as public content; starting location and resources are initialized authoritatively when play begins. A separate card archive exposes the supplied catalog as reference content, but no deck order, card draws, hands, or unrevealed game state exists in this slice.
 
 Temporary disconnects mark the player offline and preserve the seat for 30 seconds. The browser stores Colyseus's reconnection token and attempts to reclaim that seat after a reload. If the window expires, the token is discarded and the player must join again.
 
