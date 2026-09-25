@@ -19,7 +19,11 @@ const legalDestinations = computed(() => new Set(
 onMounted(async () => {
   const queryRoom = new URLSearchParams(location.search).get('room')
   if (queryRoom) joinCode.value = queryRoom
-  attemptedReconnect.value = await game.reconnect()
+  const reconnected = await game.reconnect()
+  attemptedReconnect.value = reconnected
+  if (!reconnected && queryRoom) {
+    await game.joinGame(queryRoom, 'Investigator')
+  }
 })
 
 watch(() => game.roomId.value, (id) => {
