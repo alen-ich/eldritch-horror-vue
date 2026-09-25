@@ -10,7 +10,7 @@ import {
 /**
  * Import your Room files
  */
-import { MyRoom } from "./rooms/MyRoom.js";
+import { GameRoom } from "./rooms/GameRoom.js";
 
 const server = defineServer({
 
@@ -18,7 +18,7 @@ const server = defineServer({
    * Define your room handlers:
    */
   rooms: {
-    my_room: defineRoom(MyRoom),
+    game: defineRoom(GameRoom),
   },
 
   /**
@@ -64,4 +64,3 @@ const server = defineServer({
 });
 
 export default server;
-

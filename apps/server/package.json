@@ -10,9 +10,11 @@
   },
   "scripts": {
     "start": "tsx watch src/index.ts",
-    "loadtest": "tsx loadtest/example.ts --room my_room --numClients 2",
+    "loadtest": "tsx loadtest/example.ts --room game --numClients 2",
     "build": "npm run clean && tsc -p tsconfig.build.json",
     "clean": "rimraf build",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "mocha -r tsx test/**.test.ts --exit --timeout 15000"
   },
   "author": "",
@@ -29,6 +31,8 @@
     "typescript": "^5.0.4"
   },
   "dependencies": {
+    "@eldritch/engine": "workspace:*",
+    "@eldritch/protocol": "workspace:*",
     "@colyseus/schema": "^5.0.14",
     "@colyseus/tools": "^0.18.1",
     "colyseus": "^0.18.2",
