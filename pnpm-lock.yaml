@@ -78,6 +78,9 @@ importers:
       '@colyseus/sdk':
         specifier: ^0.18.2
         version: 0.18.2(@colyseus/core@0.18.14)(typescript@5.9.3)(zod@4.6.5)
+      '@eldritch/content':
+        specifier: workspace:*
+        version: link:../../packages/content
       '@eldritch/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol

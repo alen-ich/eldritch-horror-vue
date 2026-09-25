@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { baseGameLocations, baseGameMap, baseGameRoutes } from '@eldritch/content'
 import type { InvestigatorId, LocationId } from '@eldritch/protocol'
 
 const displayName = ref('')
@@ -6,18 +7,14 @@ const joinCode = ref('')
 const attemptedReconnect = ref(false)
 const game = useGameRoom()
 
-const locations: Array<{ id: LocationId; label: string; x: number; y: number }> = [
-  { id: 'london', label: 'London', x: 150, y: 95 },
-  { id: 'rome', label: 'Rome', x: 330, y: 200 },
-  { id: 'istanbul', label: 'Istanbul', x: 505, y: 100 },
-  { id: 'arkham', label: 'Arkham', x: 330, y: 350 }
-]
-const paths: Array<[LocationId, LocationId]> = [
-  ['london', 'rome'], ['rome', 'istanbul'], ['istanbul', 'arkham'], ['arkham', 'london']
-]
-const locationById = Object.fromEntries(locations.map((location) => [location.id, location])) as Record<LocationId, typeof locations[number]>
+const locationById = Object.fromEntries(baseGameLocations.map((location) => [location.id, location])) as Record<LocationId, typeof baseGameLocations[number]>
 const me = computed(() => game.players.value.find((player) => player.id === game.playerId.value))
 const isMyTurn = computed(() => game.activePlayerId.value === game.playerId.value)
+const legalDestinations = computed(() => new Set(
+  me.value?.locationId
+    ? baseGameMap.adjacentLocationIds[me.value.locationId as LocationId] ?? []
+    : []
+))
 
 onMounted(async () => {
   const queryRoom = new URLSearchParams(location.search).get('room')
@@ -43,7 +40,7 @@ function selectInvestigator(investigatorId: InvestigatorId) {
 }
 
 function move(destinationId: LocationId) {
-  if (isMyTurn.value) game.send({ type: 'MOVE', destinationId })
+  if (isMyTurn.value && legalDestinations.value.has(destinationId)) game.send({ type: 'MOVE', destinationId })
 }
 
 async function copyInvite() {
@@ -115,16 +112,17 @@ async function copyInvite() {
       <section v-else class="game-grid">
         <div class="panel board-wrap">
           <div class="turn"><span>Turn {{ game.turnNumber.value }}</span><strong>{{ isMyTurn ? 'Your action' : `${game.players.value.find(p => p.id === game.activePlayerId.value)?.displayName}'s action` }}</strong></div>
-          <svg class="board" viewBox="0 0 660 450" role="img" aria-label="Prototype world map">
+          <div class="route-legend" aria-label="Route legend"><span class="train">Train</span><span class="ship">Ship</span><span class="uncharted">Uncharted</span></div>
+          <svg class="board" viewBox="0 0 680 460" role="img" aria-label="Base-game world map routes">
             <defs><radialGradient id="sea"><stop stop-color="#234c58"/><stop offset="1" stop-color="#0c242b"/></radialGradient></defs>
-            <rect width="660" height="450" rx="20" fill="url(#sea)"/>
-            <path v-for="([from, to]) in paths" :key="`${from}-${to}`" :d="`M ${locationById[from].x} ${locationById[from].y} L ${locationById[to].x} ${locationById[to].y}`" class="route"/>
-            <g v-for="locationItem in locations" :key="locationItem.id" class="location" role="button" tabindex="0" @click="move(locationItem.id)" @keyup.enter="move(locationItem.id)">
-              <circle :cx="locationItem.x" :cy="locationItem.y" r="34"/>
-              <text :x="locationItem.x" :y="locationItem.y + 5">{{ locationItem.label }}</text>
+            <rect width="680" height="460" rx="20" fill="url(#sea)"/>
+            <line v-for="route in baseGameRoutes" :key="`${route.source}-${route.target}`" :x1="locationById[route.source].x" :y1="locationById[route.source].y" :x2="locationById[route.target].x" :y2="locationById[route.target].y" class="route" :class="route.type"/>
+            <g v-for="locationItem in baseGameLocations" :key="locationItem.id" class="location" :class="[locationItem.type, { available: legalDestinations.has(locationItem.id) && isMyTurn }]" role="button" :tabindex="legalDestinations.has(locationItem.id) && isMyTurn ? 0 : -1" @click="move(locationItem.id)" @keyup.enter="move(locationItem.id)">
+              <circle :cx="locationItem.x" :cy="locationItem.y" :r="locationItem.name.length > 3 ? 14 : 10"/>
+              <text :x="locationItem.x" :y="locationItem.y + (locationItem.name.length > 3 ? 25 : 4)" :class="{ numbered: locationItem.name.length <= 3 }">{{ locationItem.name }}</text>
             </g>
-            <g v-for="(player, index) in game.players.value" :key="player.id" class="token" :transform="`translate(${locationById[player.locationId as LocationId]?.x + index * 15 - 8 || 0}, ${locationById[player.locationId as LocationId]?.y - 48 || 0})`">
-              <circle r="12"/><text y="4">{{ player.displayName.slice(0, 1).toUpperCase() }}</text>
+            <g v-for="(player, index) in game.players.value" :key="player.id" class="token" :transform="`translate(${locationById[player.locationId as LocationId]?.x + index * 12 - 6 || 0}, ${locationById[player.locationId as LocationId]?.y - 20 || 0})`">
+              <circle r="9"/><text y="3">{{ player.displayName.slice(0, 1).toUpperCase() }}</text>
             </g>
           </svg>
           <button class="secondary" :disabled="!isMyTurn" @click="game.send({ type: 'END_TURN' })">End turn</button>
@@ -171,7 +169,8 @@ input:focus { border-color: #d5aa63; box-shadow: 0 0 0 3px #d5aa6322; }
 .start { margin-top: 24px; width: 100%; }.roster { padding: 24px; }.roster article { display: flex; align-items: center; gap: 12px; padding: 15px 0; border-bottom: 1px solid #2b474e; }.roster p { margin: 4px 0 0; color: #91a7a8; text-transform: capitalize; }.roster small { color: #d5aa63; font-size: .58rem; letter-spacing: .1em; }
 .presence { width: 9px; height: 9px; border-radius: 50%; background: #6a7374; }.presence.online { background: #7fcb8a; box-shadow: 0 0 10px #7fcb8a; }
 .board-wrap { padding: 20px; }.turn { display: flex; justify-content: space-between; padding: 6px 8px 18px; }.turn span { color: #91a7a8; }.turn strong { color: #d5aa63; }
-.board { width: 100%; border: 1px solid #45616a; border-radius: 20px; }.route { stroke: #6d8d8d; stroke-width: 3; stroke-dasharray: 6 8; }.location { outline: none; }.location circle { fill: #132f36; stroke: #d5aa63; stroke-width: 3; }.location:hover circle, .location:focus circle { fill: #31515a; }.location text { fill: #f0eddb; text-anchor: middle; font-size: 14px; font-weight: 700; pointer-events: none; }.token circle { fill: #d5aa63; stroke: #07171c; stroke-width: 3; }.token text { fill: #07171c; text-anchor: middle; font-size: 11px; font-weight: 900; }
+.route-legend { display: flex; justify-content: flex-end; gap: 15px; margin: -8px 6px 10px; color: #aebcba; font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; }.route-legend span::before { content: ''; display: inline-block; width: 20px; height: 3px; margin-right: 6px; vertical-align: middle; background: currentColor; }.route-legend .train { color: #d9a84e; }.route-legend .ship { color: #7dc2db; }.route-legend .uncharted { color: #9aa8a0; }
+.board { width: 100%; border: 1px solid #45616a; border-radius: 20px; }.route { stroke-width: 2.5; opacity: .72; }.route.train { stroke: #d9a84e; }.route.ship { stroke: #72bbd7; }.route.uncharted { stroke: #84958d; stroke-dasharray: 4 5; }.location { outline: none; cursor: default; }.location circle { fill: #132f36; stroke: #d5aa63; stroke-width: 2; }.location.sea circle { stroke: #72bbd7; }.location.wilderness circle { stroke: #9ab486; }.location.available { cursor: pointer; }.location.available circle, .location.available:focus circle { fill: #d5aa63; stroke: #fff0bd; filter: drop-shadow(0 0 5px #d5aa63); }.location text { fill: #f0eddb; text-anchor: middle; font-size: 9px; font-weight: 700; pointer-events: none; paint-order: stroke; stroke: #07171c; stroke-width: 3px; stroke-linejoin: round; }.location text.numbered { font-size: 8px; stroke-width: 2px; }.token circle { fill: #ebd17d; stroke: #07171c; stroke-width: 2; }.token text { fill: #07171c; text-anchor: middle; font-size: 8px; font-weight: 900; stroke: none; }
 .board-wrap > button { width: 100%; margin-top: 12px; }
 @media (max-width: 800px) { .lobby-grid, .game-grid { grid-template-columns: 1fr; }.investigators { grid-template-columns: 1fr; }.masthead { align-items: flex-end; }.room-bar { align-items: flex-start; gap: 12px; flex-direction: column; }.copy { width: 100%; } }
 </style>

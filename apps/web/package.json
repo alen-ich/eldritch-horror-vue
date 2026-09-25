@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@colyseus/sdk": "^0.18.2",
+    "@eldritch/content": "workspace:*",
     "@eldritch/protocol": "workspace:*",
     "@pinia/nuxt": "^1.0.2",
     "nuxt": "^4.5.2",
