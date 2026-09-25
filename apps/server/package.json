@@ -32,6 +32,7 @@
     "typescript": "^5.0.4"
   },
   "dependencies": {
+    "@eldritch/content": "workspace:*",
     "@eldritch/engine": "workspace:*",
     "@eldritch/protocol": "workspace:*",
     "@colyseus/schema": "^5.0.14",

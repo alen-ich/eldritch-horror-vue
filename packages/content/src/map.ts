@@ -91,6 +91,16 @@ export const baseGameRoutes: readonly MapRoute[] = [
   uncharted("the_himalayas", "tunguska"), uncharted("tokyo", "tunguska"),
 ] as const;
 
+export const baseGameMap = {
+  startingLocationId: "san_francisco" as LocationId,
+  adjacentLocationIds: Object.fromEntries(locationIds.map((id) => [
+    id,
+    baseGameRoutes
+      .filter((route) => route.source === id || route.target === id)
+      .map((route) => route.source === id ? route.target : route.source),
+  ])),
+};
+
 const locationSchema = z.object({
   id: z.enum(locationIds), name: z.string().min(1), type: z.enum(["city", "wilderness", "sea"]),
   x: z.number().min(0).max(680), y: z.number().min(0).max(460),

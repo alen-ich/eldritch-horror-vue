@@ -19,6 +19,11 @@ export interface GameState {
   turnNumber: number;
 }
 
+export interface GameMap {
+  startingLocationId: LocationId;
+  adjacentLocationIds: Readonly<Partial<Record<LocationId, readonly LocationId[]>>>;
+}
+
 export type RuleErrorCode =
   | "PLAYER_NOT_FOUND"
   | "WRONG_PHASE"
@@ -32,13 +37,6 @@ export type RuleErrorCode =
 export type CommandResult =
   | { ok: true; state: GameState; events: GameEvent[] }
   | { ok: false; error: { code: RuleErrorCode; message: string } };
-
-export const locationGraph: Readonly<Record<LocationId, readonly LocationId[]>> = {
-  london: ["rome", "arkham"],
-  rome: ["london", "istanbul"],
-  istanbul: ["rome", "arkham"],
-  arkham: ["london", "istanbul"],
-};
 
 export function createLobby(playerIds: string[]): GameState {
   return {
@@ -56,6 +54,7 @@ export function executeCommand(
   state: GameState,
   actorPlayerId: string,
   command: GameCommand,
+  map: GameMap,
 ): CommandResult {
   const actorIndex = state.players.findIndex((player) => player.id === actorPlayerId);
   if (actorIndex < 0) return failure("PLAYER_NOT_FOUND", "The acting player is not in this game.");
@@ -89,7 +88,7 @@ export function executeCommand(
     next.phase = "action";
     next.activePlayerId = actorPlayerId;
     next.turnNumber = 1;
-    next.players = next.players.map((player) => ({ ...player, locationId: "london" }));
+    next.players = next.players.map((player) => ({ ...player, locationId: map.startingLocationId }));
     return { ok: true, state: next, events: [{ type: "GAME_STARTED", activePlayerId: actorPlayerId }] };
   }
 
@@ -98,7 +97,7 @@ export function executeCommand(
 
   if (command.type === "MOVE") {
     const current = actor.locationId;
-    if (!current || !locationGraph[current].includes(command.destinationId)) {
+    if (!current || !map.adjacentLocationIds[current]?.includes(command.destinationId)) {
       return failure("DESTINATION_NOT_ADJACENT", "The destination is not adjacent to the investigator.");
     }
     actor.locationId = command.destinationId;

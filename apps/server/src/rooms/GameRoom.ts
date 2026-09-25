@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Client, CloseCode, Room } from "colyseus";
+import { baseGameMap } from "@eldritch/content";
 import { executeCommand, type GameState } from "@eldritch/engine";
 import {
   commandErrorMessageType,
@@ -69,7 +70,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       client.send(commandErrorMessageType, { code: "PLAYER_NOT_FOUND", message: "No player seat is associated with this connection." });
       return;
     }
-    const result = executeCommand(this.toEngineState(), playerId, parsed.data);
+    const result = executeCommand(this.toEngineState(), playerId, parsed.data, baseGameMap);
     if (result.ok === false) {
       client.send(commandErrorMessageType, result.error);
       return;

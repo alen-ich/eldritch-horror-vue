@@ -31,11 +31,11 @@ describe("authoritative game room", () => {
 
     assert.equal(room.state.phase, "action");
     assert.equal(room.state.activePlayerId, hostPlayer.id);
-    assert.equal(guestPlayer.locationId, "london");
+    assert.equal(guestPlayer.locationId, "san_francisco");
 
-    host.send(commandMessageType, { type: "MOVE", destinationId: "rome" });
+    host.send(commandMessageType, { type: "MOVE", destinationId: "space_1" });
     await room.waitForMessage(commandMessageType);
-    assert.equal(hostPlayer.locationId, "rome");
+    assert.equal(hostPlayer.locationId, "space_1");
   });
 
   it("rejects forged player identity and isolates rooms", async () => {
