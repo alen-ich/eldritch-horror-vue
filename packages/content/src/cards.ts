@@ -1,18 +1,8 @@
 import { z } from "zod";
 import rawCardBundle from "./data/cards.json" with { type: "json" };
+import { cardTypes } from "./card-types.js";
 
-export const cardTypes = [
-  "expedition_encounter",
-  "location_encounter_americas",
-  "location_encounter_asia_australia",
-  "location_encounter_europe",
-  "mythos",
-  "other_world_encounter",
-  "research_encounter",
-  "special_encounter",
-] as const;
-
-export type CardType = (typeof cardTypes)[number];
+export * from "./card-types.js";
 
 const cardIdSchema = z.string().regex(/^card_\d{3}$/);
 const relativeImageSchema = z.string().regex(/^images\/(front|back)\/card_\d{3}\.jpg$/);
@@ -76,7 +66,3 @@ export function validateCardContent(input: unknown): CardBundle {
 export const baseGameCardBundle = validateCardContent(rawCardBundle);
 export const baseGameCards: readonly CardData[] = baseGameCardBundle.cards;
 export const baseGameCardById: ReadonlyMap<string, CardData> = new Map(baseGameCards.map((card) => [card.id, card]));
-
-export function cardImageUrl(card: CardData, side: "front" | "back" = "front"): string {
-  return `/cards/${card.images[side].replace(/^images\//, "")}`;
-}

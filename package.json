@@ -9,7 +9,8 @@
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
     "test": "turbo test",
-    "content:validate": "pnpm --filter @eldritch/content validate"
+    "content:validate": "pnpm --filter @eldritch/content validate",
+    "cards:generate": "node scripts/generate-card-assets.mjs"
   },
   "keywords": [],
   "author": "",
@@ -18,6 +19,7 @@
   "devDependencies": {
     "@types/node": "^26.6.0",
     "prettier": "^3.9.6",
+    "sharp": "^0.35.4",
     "turbo": "^2.10.13",
     "typescript": "^7.0.2"
   }

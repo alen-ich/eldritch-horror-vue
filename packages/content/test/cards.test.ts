@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { baseGameCards, cardImageUrl, validateCardContent } from "../src/index.js";
+import { baseGameCards, validateCardContent } from "../src/cards.js";
 
 describe("base card content", () => {
   it("contains all 189 cards and eight card families", () => {
@@ -10,11 +10,6 @@ describe("base card content", () => {
   it("retains OCR review provenance", () => {
     expect(baseGameCards.filter((card) => card.extraction.review_required)).toHaveLength(78);
     expect(baseGameCards.every((card) => card.extraction.ocr_confidence >= 0 && card.extraction.ocr_confidence <= 100)).toBe(true);
-  });
-
-  it("maps relative bundle images to public application URLs", () => {
-    expect(cardImageUrl(baseGameCards[0]!)).toBe("/cards/front/card_001.jpg");
-    expect(cardImageUrl(baseGameCards[188]!, "back")).toBe("/cards/back/card_189.jpg");
   });
 
   it("rejects duplicate IDs", () => {
