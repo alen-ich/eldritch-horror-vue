@@ -6,6 +6,8 @@ const displayName = ref('')
 const joinCode = ref('')
 const attemptedReconnect = ref(false)
 const showCardCatalog = ref(false)
+const inspectedLocationId = ref<LocationId>()
+const boardZoom = ref(1)
 const game = useGameRoom()
 
 const locationById = Object.fromEntries(baseGameLocations.map((location) => [location.id, location])) as Record<LocationId, typeof baseGameLocations[number]>
@@ -20,6 +22,20 @@ const legalDestinations = computed(() => new Set(
     ? baseGameMap.adjacentLocationIds[me.value.locationId as LocationId] ?? []
     : []
 ))
+const inspectedLocation = computed(() => inspectedLocationId.value ? locationById[inspectedLocationId.value] : undefined)
+const inspectedRoutes = computed(() => inspectedLocationId.value
+  ? baseGameRoutes.filter((route) => route.source === inspectedLocationId.value || route.target === inspectedLocationId.value)
+  : [])
+const boardViewBox = computed(() => {
+  const width = 680 / boardZoom.value
+  const height = 460 / boardZoom.value
+  const focus = me.value?.locationId ? locationById[me.value.locationId as LocationId] : undefined
+  const centerX = focus?.x ?? 340
+  const centerY = focus?.y ?? 230
+  const x = Math.max(0, Math.min(680 - width, centerX - width / 2))
+  const y = Math.max(0, Math.min(460 - height, centerY - height / 2))
+  return `${x} ${y} ${width} ${height}`
+})
 
 onMounted(async () => {
   const queryRoom = new URLSearchParams(location.search).get('room')
@@ -55,6 +71,15 @@ function isTakenByAnother(investigatorId: InvestigatorId) {
 
 function move(destinationId: LocationId) {
   if (isMyTurn.value && legalDestinations.value.has(destinationId)) game.send({ type: 'MOVE', destinationId })
+}
+
+function isLegalRoute(source: LocationId, target: LocationId) {
+  const current = me.value?.locationId
+  return Boolean(isMyTurn.value && current && ((source === current && legalDestinations.value.has(target)) || (target === current && legalDestinations.value.has(source))))
+}
+
+function changeZoom(delta: number) {
+  boardZoom.value = Math.max(1, Math.min(2.5, boardZoom.value + delta))
 }
 
 async function copyInvite() {
@@ -149,12 +174,13 @@ async function copyInvite() {
       <section v-else class="game-grid">
         <div class="panel board-wrap">
           <div class="turn"><span>Turn {{ game.turnNumber.value }}</span><strong>{{ isMyTurn ? 'Your action' : `${game.players.value.find(p => p.id === game.activePlayerId.value)?.displayName}'s action` }}</strong></div>
-          <div class="route-legend" aria-label="Route legend"><span class="train">Train</span><span class="ship">Ship</span><span class="uncharted">Uncharted</span></div>
-          <svg class="board" viewBox="0 0 680 460" role="img" aria-label="Base-game world map routes">
-            <defs><radialGradient id="sea"><stop stop-color="#234c58"/><stop offset="1" stop-color="#0c242b"/></radialGradient></defs>
-            <rect width="680" height="460" rx="20" fill="url(#sea)"/>
-            <line v-for="route in baseGameRoutes" :key="`${route.source}-${route.target}`" :x1="locationById[route.source].x" :y1="locationById[route.source].y" :x2="locationById[route.target].x" :y2="locationById[route.target].y" class="route" :class="route.type"/>
-            <g v-for="locationItem in baseGameLocations" :key="locationItem.id" class="location" :class="[locationItem.type, { available: legalDestinations.has(locationItem.id) && isMyTurn }]" role="button" :tabindex="legalDestinations.has(locationItem.id) && isMyTurn ? 0 : -1" @click="move(locationItem.id)" @keyup.enter="move(locationItem.id)">
+          <div class="board-tools"><div class="route-legend" aria-label="Route legend"><span class="train">Train</span><span class="ship">Ship</span><span class="uncharted">Uncharted</span></div><div class="zoom-controls" aria-label="Map zoom controls"><button :disabled="boardZoom <= 1" aria-label="Zoom out" @click="changeZoom(-.5)">−</button><button @click="boardZoom = 1">{{ boardZoom }}×</button><button :disabled="boardZoom >= 2.5" aria-label="Zoom in" @click="changeZoom(.5)">+</button></div></div>
+          <svg class="board" :viewBox="boardViewBox" role="graphics-document" aria-labelledby="board-title">
+            <title id="board-title">Interactive Eldritch Horror world map</title>
+            <image href="/map/earth-background.svg" width="680" height="460" aria-hidden="true" pointer-events="none"/>
+            <line v-for="route in baseGameRoutes" :key="`${route.source}-${route.target}`" :x1="locationById[route.source].x" :y1="locationById[route.source].y" :x2="locationById[route.target].x" :y2="locationById[route.target].y" class="route" :class="[route.type, { legal: isLegalRoute(route.source, route.target) }]"/>
+            <g v-for="locationItem in baseGameLocations" :key="locationItem.id" class="location" :class="[locationItem.type, { available: legalDestinations.has(locationItem.id) && isMyTurn, inspected: inspectedLocationId === locationItem.id }]" role="button" tabindex="0" :aria-label="`${locationItem.name}, ${locationItem.type}${legalDestinations.has(locationItem.id) && isMyTurn ? ', legal destination' : ''}`" @mouseenter="inspectedLocationId = locationItem.id" @mouseleave="inspectedLocationId = undefined" @focus="inspectedLocationId = locationItem.id" @blur="inspectedLocationId = undefined" @click="move(locationItem.id)" @keyup.enter="move(locationItem.id)">
+              <title>{{ locationItem.name }} · {{ locationItem.type }} space</title>
               <circle :cx="locationItem.x" :cy="locationItem.y" :r="locationItem.name.length > 3 ? 14 : 10"/>
               <text :x="locationItem.x" :y="locationItem.y + (locationItem.name.length > 3 ? 25 : 4)" :class="{ numbered: locationItem.name.length <= 3 }">{{ locationItem.name }}</text>
             </g>
@@ -162,6 +188,10 @@ async function copyInvite() {
               <circle r="9"/><text y="3">{{ player.displayName.slice(0, 1).toUpperCase() }}</text>
             </g>
           </svg>
+          <div class="location-inspector" aria-live="polite">
+            <template v-if="inspectedLocation"><div><span class="chapter">{{ inspectedLocation.type }} space</span><strong>{{ inspectedLocation.name }}</strong></div><p>{{ inspectedRoutes.length }} connections · {{ [...new Set(inspectedRoutes.map(route => route.type))].join(', ') }}</p><button v-if="legalDestinations.has(inspectedLocation.id) && isMyTurn" class="move-here" @click="move(inspectedLocation.id)">Move here</button></template>
+            <p v-else>Focus or hover a location to inspect its connections.</p>
+          </div>
           <button class="secondary" :disabled="!isMyTurn" @click="game.send({ type: 'END_TURN' })">End turn</button>
         </div>
         <aside class="panel roster"><p class="chapter">Investigators</p><article v-for="player in game.players.value" :key="player.id"><span class="presence" :class="{ online: player.connected }"></span><div><strong>{{ player.displayName }}</strong><p>{{ investigatorById[player.investigatorId]?.name }} · {{ locationById[player.locationId as LocationId]?.name }}</p><p class="resource-line">♥ {{ player.health }} · ✦ {{ player.sanity }}</p></div></article></aside>
@@ -223,10 +253,13 @@ input:focus { border-color: #d5aa63; box-shadow: 0 0 0 3px #d5aa6322; }
 .presence { width: 9px; height: 9px; border-radius: 50%; background: #6a7374; }.presence.online { background: #7fcb8a; box-shadow: 0 0 10px #7fcb8a; }
 .roster .resource-line { color: #c8b77e; font-size: .72rem; }
 .board-wrap { padding: 20px; }.turn { display: flex; justify-content: space-between; padding: 6px 8px 18px; }.turn span { color: #91a7a8; }.turn strong { color: #d5aa63; }
-.route-legend { display: flex; justify-content: flex-end; gap: 15px; margin: -8px 6px 10px; color: #aebcba; font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; }.route-legend span::before { content: ''; display: inline-block; width: 20px; height: 3px; margin-right: 6px; vertical-align: middle; background: currentColor; }.route-legend .train { color: #d9a84e; }.route-legend .ship { color: #7dc2db; }.route-legend .uncharted { color: #9aa8a0; }
-.board { width: 100%; border: 1px solid #45616a; border-radius: 20px; }.route { stroke-width: 2.5; opacity: .72; }.route.train { stroke: #d9a84e; }.route.ship { stroke: #72bbd7; }.route.uncharted { stroke: #84958d; stroke-dasharray: 4 5; }.location { outline: none; cursor: default; }.location circle { fill: #132f36; stroke: #d5aa63; stroke-width: 2; }.location.sea circle { stroke: #72bbd7; }.location.wilderness circle { stroke: #9ab486; }.location.available { cursor: pointer; }.location.available circle, .location.available:focus circle { fill: #d5aa63; stroke: #fff0bd; filter: drop-shadow(0 0 5px #d5aa63); }.location text { fill: #f0eddb; text-anchor: middle; font-size: 9px; font-weight: 700; pointer-events: none; paint-order: stroke; stroke: #07171c; stroke-width: 3px; stroke-linejoin: round; }.location text.numbered { font-size: 8px; stroke-width: 2px; }.token circle { fill: #ebd17d; stroke: #07171c; stroke-width: 2; }.token text { fill: #07171c; text-anchor: middle; font-size: 8px; font-weight: 900; stroke: none; }
+.board-tools { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: -8px 6px 10px; }.route-legend { display: flex; gap: 15px; color: #aebcba; font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; }.route-legend span::before { content: ''; display: inline-block; width: 20px; height: 3px; margin-right: 6px; vertical-align: middle; background: currentColor; }.route-legend .train { color: #d9a84e; }.route-legend .ship { color: #7dc2db; }.route-legend .uncharted { color: #9aa8a0; }.zoom-controls { display: flex; overflow: hidden; border: 1px solid #45616a; border-radius: 7px; }.zoom-controls button { min-width: 34px; color: #d8e2df; background: #17343b; border: 0; border-right: 1px solid #45616a; padding: 5px 8px; font-size: .72rem; }.zoom-controls button:last-child { border: 0; }
+.board { width: 100%; background: #071b22; border: 1px solid #45616a; border-radius: 20px; transition: view-box .3s ease; }.route { stroke-width: 2.5; opacity: .62; transition: opacity .2s, stroke-width .2s; }.route.train { stroke: #d9a84e; }.route.ship { stroke: #72bbd7; }.route.uncharted { stroke: #aab3a5; stroke-dasharray: 4 5; }.route.legal { opacity: 1; stroke-width: 4; filter: drop-shadow(0 0 4px currentColor); animation: route-flow 1.1s linear infinite; }.location { outline: none; cursor: default; }.location circle { fill: #132f36ee; stroke: #d5aa63; stroke-width: 2; transition: fill .2s, filter .2s, r .2s; }.location.sea circle { stroke: #72bbd7; }.location.wilderness circle { stroke: #9ab486; }.location.available { cursor: pointer; }.location.available circle, .location.available:focus circle { fill: #d5aa63; stroke: #fff0bd; filter: drop-shadow(0 0 6px #d5aa63); animation: destination-pulse 1.5s ease-in-out infinite; }.location.inspected circle { stroke: #fff; filter: drop-shadow(0 0 5px #fff8); }.location text { fill: #f0eddb; text-anchor: middle; font-size: 9px; font-weight: 700; pointer-events: none; paint-order: stroke; stroke: #07171c; stroke-width: 3px; stroke-linejoin: round; }.location text.numbered { font-size: 8px; stroke-width: 2px; }.token { transition: transform .55s cubic-bezier(.2,.8,.2,1); }.token circle { fill: #ebd17d; stroke: #07171c; stroke-width: 2; filter: drop-shadow(0 2px 3px #000); }.token text { fill: #07171c; text-anchor: middle; font-size: 8px; font-weight: 900; stroke: none; }
+.location-inspector { min-height: 58px; display: flex; align-items: center; gap: 18px; margin: 10px 2px 0; padding: 10px 14px; background: #091d22; border: 1px solid #29464e; border-radius: 10px; }.location-inspector div { display: grid; min-width: 150px; }.location-inspector strong { font: 600 1.05rem Georgia, serif; }.location-inspector p { flex: 1; margin: 0; color: #91a7a8; font-size: .75rem; text-transform: capitalize; }.move-here { color: #142127; background: #d5aa63; border: 0; border-radius: 7px; padding: 8px 12px; font-weight: 800; }
+@keyframes destination-pulse { 50% { filter: drop-shadow(0 0 10px #ffe6a0); } } @keyframes route-flow { to { stroke-dashoffset: -18; } }
 .board-wrap > button { width: 100%; margin-top: 12px; }
 .card-archive-prompt { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-top: 18px; padding: 24px 28px; }.card-archive-prompt h2 { margin: 5px 0; font-size: 1.45rem; }.card-archive-prompt p:last-child { margin: 0; }.card-archive-prompt button { flex: none; }
 @media (max-width: 800px) { .lobby-grid, .game-grid { grid-template-columns: 1fr; }.investigators { grid-template-columns: 1fr; }.masthead { align-items: flex-end; }.room-bar { align-items: flex-start; gap: 12px; flex-direction: column; }.copy { width: 100%; } }
 @media (max-width: 600px) { .card-archive-prompt { align-items: stretch; flex-direction: column; }.card-archive-prompt button { width: 100%; } }
+@media (prefers-reduced-motion: reduce) { .route.legal, .location.available circle { animation: none; }.token { transition: none; } }
 </style>
