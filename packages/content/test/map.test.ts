@@ -18,6 +18,11 @@ describe("base game map content", () => {
     expect(degree("space_12")).toBe(2);
   });
 
+  it("registers every named space to a geographic reference", () => {
+    expect(baseGameLocations.filter((location) => location.name !== String(Number(location.name))).every((location) => location.geographic)).toBe(true);
+    expect(baseGameLocations.every((location) => location.positionSource === "prototype-layout")).toBe(true);
+  });
+
   it("rejects duplicate routes", () => {
     expect(() => validateMapContent(baseGameLocations, [...baseGameRoutes, baseGameRoutes[0]!])).toThrow(/Duplicate route/);
   });

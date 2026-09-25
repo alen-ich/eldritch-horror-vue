@@ -11,6 +11,8 @@ export interface MapLocation {
   type: SpaceType;
   x: number;
   y: number;
+  positionSource: "prototype-layout" | "registered-scan";
+  geographic?: { longitude: number; latitude: number };
 }
 
 export interface MapRoute {
@@ -25,24 +27,29 @@ const numbered = (number: number, type: SpaceType, x: number, y: number): MapLoc
   type,
   x,
   y,
+  positionSource: "prototype-layout",
+});
+
+const located = (id: LocationId, name: string, type: SpaceType, x: number, y: number, longitude: number, latitude: number): MapLocation => ({
+  id, name, type, x, y, positionSource: "prototype-layout", geographic: { longitude, latitude },
 });
 
 export const baseGameLocations: readonly MapLocation[] = [
-  { id: "san_francisco", name: "San Francisco", type: "city", x: 92, y: 192 },
-  { id: "arkham", name: "Arkham", type: "city", x: 185, y: 112 },
-  { id: "buenos_aires", name: "Buenos Aires", type: "city", x: 218, y: 342 },
-  { id: "london", name: "London", type: "city", x: 326, y: 112 },
-  { id: "rome", name: "Rome", type: "city", x: 386, y: 170 },
-  { id: "istanbul", name: "Istanbul", type: "city", x: 456, y: 178 },
-  { id: "shanghai", name: "Shanghai", type: "city", x: 570, y: 235 },
-  { id: "sydney", name: "Sydney", type: "city", x: 596, y: 368 },
-  { id: "tokyo", name: "Tokyo", type: "city", x: 637, y: 188 },
-  { id: "the_amazon", name: "The Amazon", type: "wilderness", x: 255, y: 286 },
-  { id: "the_pyramids", name: "The Pyramids", type: "wilderness", x: 409, y: 235 },
-  { id: "the_heart_of_africa", name: "Heart of Africa", type: "wilderness", x: 376, y: 316 },
-  { id: "the_himalayas", name: "The Himalayas", type: "wilderness", x: 508, y: 246 },
-  { id: "tunguska", name: "Tunguska", type: "wilderness", x: 535, y: 112 },
-  { id: "antarctica", name: "Antarctica", type: "sea", x: 404, y: 424 },
+  located("san_francisco", "San Francisco", "city", 92, 192, -122.4194, 37.7749),
+  located("arkham", "Arkham", "city", 185, 112, -70.9, 42.6),
+  located("buenos_aires", "Buenos Aires", "city", 218, 342, -58.3816, -34.6037),
+  located("london", "London", "city", 326, 112, -0.1276, 51.5072),
+  located("rome", "Rome", "city", 386, 170, 12.4964, 41.9028),
+  located("istanbul", "Istanbul", "city", 456, 178, 28.9784, 41.0082),
+  located("shanghai", "Shanghai", "city", 570, 235, 121.4737, 31.2304),
+  located("sydney", "Sydney", "city", 596, 368, 151.2093, -33.8688),
+  located("tokyo", "Tokyo", "city", 637, 188, 139.6917, 35.6895),
+  located("the_amazon", "The Amazon", "wilderness", 255, 286, -62, -3),
+  located("the_pyramids", "The Pyramids", "wilderness", 409, 235, 31.1342, 29.9792),
+  located("the_heart_of_africa", "Heart of Africa", "wilderness", 376, 316, 21, -3),
+  located("the_himalayas", "The Himalayas", "wilderness", 508, 246, 86.925, 27.988),
+  located("tunguska", "Tunguska", "wilderness", 535, 112, 101.9, 60.9),
+  located("antarctica", "Antarctica", "sea", 404, 424, 0, -82),
   numbered(1, "city", 94, 116), numbered(2, "sea", 36, 262),
   numbered(3, "sea", 103, 350), numbered(4, "wilderness", 132, 185),
   numbered(5, "city", 157, 146), numbered(6, "city", 220, 157),
@@ -104,6 +111,8 @@ export const baseGameMap = {
 const locationSchema = z.object({
   id: z.enum(locationIds), name: z.string().min(1), type: z.enum(["city", "wilderness", "sea"]),
   x: z.number().min(0).max(680), y: z.number().min(0).max(460),
+  positionSource: z.enum(["prototype-layout", "registered-scan"]),
+  geographic: z.object({ longitude: z.number().min(-180).max(180), latitude: z.number().min(-90).max(90) }).optional(),
 });
 const routeSchema = z.object({ source: z.enum(locationIds), target: z.enum(locationIds), type: z.enum(routeTypes) });
 
