@@ -26,6 +26,7 @@ const testContent: GameContent = {
 
 function startedGame(): GameState {
   return {
+    stateVersion: 3,
     phase: "action",
     activePlayerId: "host",
     leadInvestigatorId: "host",
@@ -41,6 +42,20 @@ function startedGame(): GameState {
 }
 
 describe("executeCommand", () => {
+  it("increments the state version exactly once for an accepted command", () => {
+    const result = executeCommand(startedGame(), "host", { type: "REST" }, testContent);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.state.stateVersion).toBe(4);
+  });
+
+  it("does not mutate or advance state for a rejected command", () => {
+    const state = startedGame();
+    const snapshot = structuredClone(state);
+    const result = executeCommand(state, "guest", { type: "REST" }, testContent);
+    expect(result).toMatchObject({ ok: false, error: { code: "NOT_ACTIVE_PLAYER" } });
+    expect(state).toEqual(snapshot);
+  });
+
   it("starts a two-player lobby when every investigator is selected", () => {
     let state = createLobby(["host", "guest"]);
     const selectedHost = executeCommand(state, "host", { type: "SELECT_INVESTIGATOR", investigatorId: "akachi_onyele" }, testContent);

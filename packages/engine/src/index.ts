@@ -21,6 +21,7 @@ export interface EnginePlayer {
 }
 
 export interface GameState {
+  stateVersion: number;
   phase: GamePhase;
   players: EnginePlayer[];
   activePlayerId?: string;
@@ -72,6 +73,7 @@ export type CommandResult =
 
 export function createLobby(playerIds: string[]): GameState {
   return {
+    stateVersion: 0,
     phase: "lobby",
     players: playerIds.map((id) => ({ id })),
     turnNumber: 0,
@@ -83,6 +85,11 @@ export function createLobby(playerIds: string[]): GameState {
 
 function failure(code: RuleErrorCode, message: string): CommandResult {
   return { ok: false, error: { code, message } };
+}
+
+function success(state: GameState, events: GameEvent[]): CommandResult {
+  state.stateVersion += 1;
+  return { ok: true, state, events };
 }
 
 function routeBetween(map: GameMap, source: LocationId, target: LocationId) {
@@ -133,11 +140,9 @@ export function executeCommand(
       return failure("INVESTIGATOR_TAKEN", "That investigator has already been selected.");
     }
     actor.investigatorId = command.investigatorId;
-    return {
-      ok: true,
-      state: next,
-      events: [{ type: "INVESTIGATOR_SELECTED", playerId: actorPlayerId, investigatorId: command.investigatorId }],
-    };
+    return success(next, [
+      { type: "INVESTIGATOR_SELECTED", playerId: actorPlayerId, investigatorId: command.investigatorId },
+    ]);
   }
 
   if (command.type === "START_GAME") {
@@ -163,7 +168,7 @@ export function executeCommand(
       player.maxSanity = setup.sanity;
       player.travelTickets = [];
     }
-    return { ok: true, state: next, events: [{ type: "GAME_STARTED", activePlayerId: actorPlayerId }] };
+    return success(next, [{ type: "GAME_STARTED", activePlayerId: actorPlayerId }]);
   }
 
   if (state.phase !== "action") return failure("WRONG_PHASE", "That action is not available in the lobby.");
@@ -192,7 +197,7 @@ export function executeCommand(
     actor.travelTickets = tickets;
     const events: GameEvent[] = [{ type: "INVESTIGATOR_TRAVELED", playerId: actorPlayerId, destinationId: current, spentTickets }];
     completeAction(next, actorIndex, "travel", events);
-    return { ok: true, state: next, events };
+    return success(next, events);
   }
 
   if (command.type === "REST") {
@@ -202,7 +207,7 @@ export function executeCommand(
     actor.sanity = Math.min(actor.maxSanity ?? actor.sanity ?? 0, (actor.sanity ?? 0) + 1);
     const events: GameEvent[] = [{ type: "INVESTIGATOR_RESTED", playerId: actorPlayerId, health: actor.health, sanity: actor.sanity }];
     completeAction(next, actorIndex, "rest", events);
-    return { ok: true, state: next, events };
+    return success(next, events);
   }
 
   if (command.type === "PREPARE_TRAVEL") {
@@ -215,10 +220,10 @@ export function executeCommand(
     actor.travelTickets = [...(actor.travelTickets ?? []), command.ticketType];
     const events: GameEvent[] = [{ type: "TRAVEL_TICKET_GAINED", playerId: actorPlayerId, ticketType: command.ticketType }];
     completeAction(next, actorIndex, "prepare_travel", events);
-    return { ok: true, state: next, events };
+    return success(next, events);
   }
 
   const events: GameEvent[] = [{ type: "ACTIONS_ENDED", playerId: actorPlayerId }];
   advanceActionInvestigator(next, actorIndex, events);
-  return { ok: true, state: next, events };
+  return success(next, events);
 }
