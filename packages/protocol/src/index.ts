@@ -19,6 +19,48 @@ export type LocationId = (typeof locationIds)[number];
 export type InvestigatorId = (typeof investigatorIds)[number];
 export type GamePhase = "lobby" | "action" | "encounter" | "mythos";
 export type TravelTicketType = "train" | "ship";
+export const pendingDecisionKinds = [
+  "select_rerolls",
+  "choose_encounter",
+  "choose_monster_order",
+  "spend_clues",
+  "select_acquired_cards",
+] as const;
+export type PendingDecisionKind = (typeof pendingDecisionKinds)[number];
+
+export const pendingDecisionSchema = z.object({
+  id: z.string().min(1),
+  kind: z.enum(pendingDecisionKinds),
+  playerId: z.string().min(1),
+  visibility: z.enum(["public", "owner"]),
+  prompt: z.string().min(1),
+  optionIds: z.array(z.string().min(1)).min(1),
+  minSelections: z.number().int().nonnegative(),
+  maxSelections: z.number().int().positive(),
+}).strict().superRefine((decision, context) => {
+  if (new Set(decision.optionIds).size !== decision.optionIds.length) {
+    context.addIssue({ code: "custom", message: "Decision option IDs must be unique.", path: ["optionIds"] });
+  }
+  if (decision.minSelections > decision.maxSelections) {
+    context.addIssue({ code: "custom", message: "Minimum selections cannot exceed maximum selections.", path: ["minSelections"] });
+  }
+  if (decision.maxSelections > decision.optionIds.length) {
+    context.addIssue({ code: "custom", message: "Maximum selections cannot exceed the option count.", path: ["maxSelections"] });
+  }
+});
+
+export type PendingDecision = z.infer<typeof pendingDecisionSchema>;
+
+export interface PendingDecisionSummary {
+  id: string;
+  kind: PendingDecisionKind;
+  playerId: string;
+  visibility: PendingDecision["visibility"];
+  prompt: string;
+  optionCount: number;
+  minSelections: number;
+  maxSelections: number;
+}
 
 export const gameCommandSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("SELECT_INVESTIGATOR"), investigatorId: z.enum(investigatorIds) }).strict(),
@@ -27,6 +69,11 @@ export const gameCommandSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("REST") }).strict(),
   z.object({ type: z.literal("PREPARE_TRAVEL"), ticketType: z.enum(["train", "ship"]) }).strict(),
   z.object({ type: z.literal("END_ACTIONS") }).strict(),
+  z.object({
+    type: z.literal("RESOLVE_DECISION"),
+    decisionId: z.string().min(1),
+    selectedOptionIds: z.array(z.string().min(1)).max(20),
+  }).strict(),
 ]);
 
 export type GameCommand = z.infer<typeof gameCommandSchema>;
@@ -45,6 +92,7 @@ export type GameEvent =
   | { type: "INVESTIGATOR_RESTED"; playerId: string; health: number; sanity: number }
   | { type: "TRAVEL_TICKET_GAINED"; playerId: string; ticketType: TravelTicketType }
   | { type: "ACTIONS_ENDED"; playerId: string }
+  | { type: "DECISION_RESOLVED"; decisionId: string; playerId: string; selectedOptionIds: string[] }
   | { type: "PHASE_ADVANCED"; phase: GamePhase; activePlayerId?: string };
 
 export interface PublicPlayerState {
@@ -72,6 +120,7 @@ export const joinOptionsSchema = z.object({
 
 export const commandMessageType = "command" as const;
 export const commandErrorMessageType = "command-error" as const;
+export const pendingDecisionMessageType = "pending-decision" as const;
 
 export interface CommandErrorMessage {
   code: string;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { gameCommandMessageSchema, gameCommandSchema } from "../src/index.js";
+import { gameCommandMessageSchema, gameCommandSchema, pendingDecisionSchema } from "../src/index.js";
 
 describe("gameCommandSchema", () => {
   it("accepts rulebook action commands without player identity", () => {
@@ -10,6 +10,15 @@ describe("gameCommandSchema", () => {
     expect(gameCommandSchema.parse({ type: "REST" })).toEqual({ type: "REST" });
     expect(gameCommandSchema.parse({ type: "PREPARE_TRAVEL", ticketType: "ship" })).toEqual({ type: "PREPARE_TRAVEL", ticketType: "ship" });
     expect(gameCommandSchema.parse({ type: "END_ACTIONS" })).toEqual({ type: "END_ACTIONS" });
+    expect(gameCommandSchema.parse({
+      type: "RESOLVE_DECISION",
+      decisionId: "decision-1",
+      selectedOptionIds: ["die-2"],
+    })).toEqual({
+      type: "RESOLVE_DECISION",
+      decisionId: "decision-1",
+      selectedOptionIds: ["die-2"],
+    });
   });
 
   it("rejects forged identity and unknown destinations", () => {
@@ -18,6 +27,31 @@ describe("gameCommandSchema", () => {
       destinationIds: ["the_moon"],
       playerId: "someone-else",
     })).toThrow();
+  });
+});
+
+describe("pendingDecisionSchema", () => {
+  const decision = {
+    id: "decision-1",
+    kind: "select_rerolls",
+    playerId: "player-1",
+    visibility: "owner",
+    prompt: "Choose dice to reroll.",
+    optionIds: ["die-1", "die-2"],
+    minSelections: 0,
+    maxSelections: 1,
+  } as const;
+
+  it("accepts a bounded serializable decision", () => {
+    expect(pendingDecisionSchema.parse(decision)).toEqual(decision);
+  });
+
+  it.each([
+    { ...decision, optionIds: ["die-1", "die-1"] },
+    { ...decision, minSelections: 2, maxSelections: 1 },
+    { ...decision, maxSelections: 3 },
+  ])("rejects an inconsistent decision", (invalidDecision) => {
+    expect(() => pendingDecisionSchema.parse(invalidDecision)).toThrow();
   });
 });
 
