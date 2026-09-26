@@ -9,6 +9,7 @@ const showCardCatalog = ref(false)
 const inspectedLocationId = ref<LocationId>()
 const boardZoom = ref(1)
 const dockExpanded = ref(true)
+const reserveExpanded = ref(true)
 const selectedPlayerId = ref('')
 const trayState = ref<'collapsed' | 'peek' | 'expanded'>('collapsed')
 const activeTrayTab = ref('assets')
@@ -17,7 +18,6 @@ const trayTabs = [
   { id: 'spells', label: 'Spells', icon: '✦' },
   { id: 'conditions', label: 'Conditions', icon: '◈' },
   { id: 'tasks', label: 'Tasks', icon: '✓' },
-  { id: 'reserve', label: 'Reserve', icon: '▤' },
   { id: 'log', label: 'Log', icon: '≡' },
 ] as const
 const game = useGameRoom()
@@ -211,6 +211,15 @@ async function copyInvite() {
         </header>
         <div class="game-workspace">
         <div class="board-stage">
+          <aside class="reserve-shelf" :class="{ collapsed: !reserveExpanded }" aria-label="Reserve market">
+            <header><div><span class="chapter">Market</span><strong>Reserve</strong></div><button :aria-label="reserveExpanded ? 'Collapse reserve' : 'Expand reserve'" :aria-expanded="reserveExpanded" @click="reserveExpanded = !reserveExpanded">{{ reserveExpanded ? '‹' : '›' }}</button></header>
+            <template v-if="reserveExpanded">
+              <div class="reserve-grid">
+                <button v-for="slot in 4" :key="slot" class="reserve-slot" disabled><span>{{ slot }}</span><small>Empty</small></button>
+              </div>
+              <button class="bank-loan" disabled><span>Bank loan</span><small>Not available in game state</small></button>
+            </template>
+          </aside>
           <div class="board-tools"><div class="route-legend" aria-label="Route legend"><span class="train">Train</span><span class="ship">Ship</span><span class="uncharted">Uncharted</span></div><div class="zoom-controls" aria-label="Map zoom controls"><button :disabled="boardZoom <= 1" aria-label="Zoom out" @click="changeZoom(-.5)">−</button><button @click="boardZoom = 1">{{ boardZoom }}×</button><button :disabled="boardZoom >= 2.5" aria-label="Zoom in" @click="changeZoom(.5)">+</button></div></div>
           <svg class="board" :viewBox="boardViewBox" role="graphics-document" aria-labelledby="board-title">
             <title id="board-title">Interactive Eldritch Horror world map</title>
@@ -332,6 +341,7 @@ input:focus { border-color: #d5aa63; box-shadow: 0 0 0 3px #d5aa6322; }
 .board-stage .board { display: block; width: 100%; height: 100%; max-height: 100%; border-radius: 12px; }
 .board-stage .board-tools { position: absolute; z-index: 4; top: 18px; left: 18px; right: 18px; margin: 0; pointer-events: none; }.board-stage .board-tools > * { pointer-events: auto; }.board-stage .route-legend { padding: 7px 10px; border: 1px solid #45616a; border-radius: 8px; background: #07171cdd; backdrop-filter: blur(8px); }
 .board-stage .location-inspector { position: absolute; z-index: 4; left: 18px; bottom: 18px; width: min(520px, calc(100% - 150px)); margin: 0; background: #07171cee; box-shadow: 0 8px 28px #0009; backdrop-filter: blur(10px); }
+.reserve-shelf { position: absolute; z-index: 5; top: 66px; left: 18px; width: clamp(150px, 16vw, 220px); max-height: calc(100% - 155px); overflow: auto; padding: 12px; background: #07171ce8; border: 1px solid #49636a; border-radius: 12px; box-shadow: 0 12px 34px #000a; backdrop-filter: blur(10px); }.reserve-shelf header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }.reserve-shelf header > div { display: grid; gap: 2px; }.reserve-shelf header strong { font: 600 1rem Georgia, serif; }.reserve-shelf header button { width: 28px; height: 28px; color: #d5aa63; background: #17343b; border: 1px solid #48636a; border-radius: 7px; }.reserve-shelf.collapsed { width: 48px; padding: 8px; overflow: hidden; }.reserve-shelf.collapsed header > div { display: none; }.reserve-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 12px; }.reserve-slot { aspect-ratio: 3 / 4; display: grid; place-items: center; align-content: center; gap: 3px; color: #71898b; background: #0a2025; border: 1px dashed #50686d; border-radius: 7px; }.reserve-slot span { color: #d5aa63; font: 600 1rem Georgia, serif; }.reserve-slot small { font-size: .54rem; text-transform: uppercase; letter-spacing: .08em; }.bank-loan { width: 100%; display: grid; gap: 2px; margin-top: 8px; padding: 8px; text-align: left; color: #b7c4c1; background: #172a2c; border: 1px solid #5e6c65; border-radius: 7px; }.bank-loan span { color: #d5aa63; font-size: .68rem; font-weight: 800; text-transform: uppercase; }.bank-loan small { font-size: .55rem; }
 .inspector-close { align-self: flex-start; color: #91a7a8; background: transparent; border: 0; padding: 0 2px; font-size: 1.2rem; }
 .end-turn { position: absolute; z-index: 5; right: 18px; bottom: 18px; color: #142127; background: #d5aa63; border: 0; border-radius: 9px; padding: 11px 18px; font-weight: 900; box-shadow: 0 8px 24px #0008; }
 .investigator-dock { position: relative; min-width: 0; display: grid; grid-template-columns: 52px minmax(0, 1fr); overflow: hidden; background: linear-gradient(145deg, #142e35, #091a1f); border-left: 1px solid #3a565e; transition: width .2s; }.investigator-dock.collapsed { grid-template-columns: 1fr; }.dock-toggle { position: absolute; z-index: 2; top: 8px; left: -1px; width: 25px; height: 30px; color: #d5aa63; background: #17343b; border: 1px solid #48636a; border-left: 0; border-radius: 0 7px 7px 0; font-size: 1.2rem; }.party-tabs { display: flex; flex-direction: column; align-items: center; gap: 9px; padding: 48px 7px 10px; background: #07191e; border-right: 1px solid #29464e; }.party-tabs button { position: relative; width: 38px; height: 38px; padding: 0; color: #dce4df; background: #1b3941; border: 1px solid #49636a; border-radius: 50%; font-weight: 900; }.party-tabs button.active { color: #18272c; background: #d5aa63; border-color: #f3d797; box-shadow: 0 0 0 3px #d5aa6325; }.party-tabs .presence { position: absolute; right: -1px; bottom: 0; border: 2px solid #07191e; }.investigator-dock.collapsed .party-tabs { border-right: 0; }.investigator-sheet { min-width: 0; overflow-y: auto; padding: 28px 16px 20px; }.investigator-sheet h2 { margin: 5px 0 2px; font-size: 1.35rem; }.investigator-role { min-height: 35px; margin: 0; color: #8da1a3; font-size: .68rem; line-height: 1.4; }.dock-vitals { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0; }.dock-vitals div { display: grid; gap: 3px; padding: 10px; background: #07191e; border: 1px solid #29464e; border-radius: 8px; }.dock-vitals small, .investigator-facts dt { color: #82999b; font-size: .58rem; text-transform: uppercase; letter-spacing: .08em; }.dock-vitals strong { font-size: 1rem; }.dock-vitals .health { color: #e9a292; }.dock-vitals .sanity { color: #8fd1de; }.investigator-facts { display: grid; gap: 8px; margin: 0 0 14px; }.investigator-facts div { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid #29464e; padding-bottom: 7px; }.investigator-facts dd { margin: 0; color: #d8ded8; font-size: .68rem; text-align: right; }.dock-skills { display: grid; grid-template-columns: repeat(5, 1fr); margin: 12px 0; }.dock-skills span { display: grid; place-items: center; gap: 3px; border-right: 1px solid #29464e; }.dock-skills span:last-child { border: 0; }.dock-skills small { color: #82999b; font-size: .52rem; text-transform: uppercase; }.dock-skills b { font-size: .75rem; }.dock-ability { margin: 8px 0 0; color: #9eb0ad; font-size: .63rem; line-height: 1.45; }.dock-ability b { display: block; color: #d5aa63; font-size: .55rem; text-transform: uppercase; letter-spacing: .08em; }
@@ -348,6 +358,7 @@ input:focus { border-color: #d5aa63; box-shadow: 0 0 0 3px #d5aa6322; }
   .game-hud { grid-template-columns: 1fr auto; }.game-hud__brand { display: none; }.game-hud__turn { align-items: flex-start; text-align: left; }.game-hud__room code, .route-legend { display: none; }
   .board-stage .location-inspector { width: calc(100% - 105px); left: 10px; bottom: 10px; padding: 9px 10px; gap: 9px; }.board-stage .location-inspector div { min-width: 95px; }.board-stage .location-inspector p { display: none; }.end-turn { right: 78px; bottom: 10px; padding: 9px 11px; font-size: .7rem; }.board-stage .board-tools { top: 10px; left: 10px; right: 80px; justify-content: flex-end; }
   .tray-tabs button { padding: 0 9px; }.tray-tabs button small { display: none; }.tray-tabs .archive-tab { margin-left: 0; }.tray-tabs .tray-resize { margin-left: auto; }
+  .reserve-shelf { top: 52px; left: 10px; width: 138px; max-height: calc(100% - 115px); padding: 9px; }.reserve-shelf header strong { font-size: .85rem; }.reserve-grid { gap: 5px; margin-top: 8px; }.bank-loan { padding: 6px; }
 }
 @media (max-width: 600px) {
   .card-archive-prompt { align-items: stretch; flex-direction: column; }.card-archive-prompt button { width: 100%; }
