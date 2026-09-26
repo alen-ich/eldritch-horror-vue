@@ -31,6 +31,13 @@ export const gameCommandSchema = z.discriminatedUnion("type", [
 
 export type GameCommand = z.infer<typeof gameCommandSchema>;
 
+export const gameCommandMessageSchema = z.object({
+  expectedStateVersion: z.number().int().nonnegative(),
+  command: gameCommandSchema,
+}).strict();
+
+export type GameCommandMessage = z.infer<typeof gameCommandMessageSchema>;
+
 export type GameEvent =
   | { type: "INVESTIGATOR_SELECTED"; playerId: string; investigatorId: InvestigatorId }
   | { type: "GAME_STARTED"; activePlayerId: string }
@@ -52,6 +59,7 @@ export interface PublicPlayerState {
 }
 
 export interface PublicGameState {
+  stateVersion: number;
   phase: GamePhase;
   activePlayerId?: string;
   turnNumber: number;
