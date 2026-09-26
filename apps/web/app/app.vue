@@ -10,6 +10,16 @@ const inspectedLocationId = ref<LocationId>()
 const boardZoom = ref(1)
 const dockExpanded = ref(true)
 const selectedPlayerId = ref('')
+const trayState = ref<'collapsed' | 'peek' | 'expanded'>('collapsed')
+const activeTrayTab = ref('assets')
+const trayTabs = [
+  { id: 'assets', label: 'Assets', icon: '◆' },
+  { id: 'spells', label: 'Spells', icon: '✦' },
+  { id: 'conditions', label: 'Conditions', icon: '◈' },
+  { id: 'tasks', label: 'Tasks', icon: '✓' },
+  { id: 'reserve', label: 'Reserve', icon: '▤' },
+  { id: 'log', label: 'Log', icon: '≡' },
+] as const
 const game = useGameRoom()
 
 const locationById = Object.fromEntries(baseGameLocations.map((location) => [location.id, location])) as Record<LocationId, typeof baseGameLocations[number]>
@@ -84,6 +94,19 @@ function isLegalRoute(source: LocationId, target: LocationId) {
 
 function changeZoom(delta: number) {
   boardZoom.value = Math.max(1, Math.min(2.5, boardZoom.value + delta))
+}
+
+function selectTrayTab(tabId: string) {
+  if (activeTrayTab.value === tabId && trayState.value !== 'collapsed') {
+    trayState.value = 'collapsed'
+    return
+  }
+  activeTrayTab.value = tabId
+  trayState.value = 'peek'
+}
+
+function cycleTrayState() {
+  trayState.value = trayState.value === 'collapsed' ? 'peek' : trayState.value === 'peek' ? 'expanded' : 'collapsed'
 }
 
 async function copyInvite() {
@@ -175,7 +198,7 @@ async function copyInvite() {
       <LazyCardCatalog v-else @close="showCardCatalog = false" />
       </template>
 
-      <section v-else class="game-shell">
+      <section v-else class="game-shell" :class="`tray-${trayState}`">
         <header class="game-hud">
           <div class="game-hud__brand"><span class="sigil-small">✦</span><strong>Eldritch Horror</strong></div>
           <div class="game-hud__turn"><span>Action phase · Turn {{ game.turnNumber.value }}</span><strong>{{ isMyTurn ? 'Your action' : `${game.players.value.find(p => p.id === game.activePlayerId.value)?.displayName}'s action` }}</strong></div>
@@ -219,6 +242,17 @@ async function copyInvite() {
           </div>
         </aside>
         </div>
+        <footer class="player-tray" :class="`tray-${trayState}`">
+          <nav class="tray-tabs" aria-label="Player cards and game information">
+            <button v-for="tab in trayTabs" :key="tab.id" :class="{ active: activeTrayTab === tab.id && trayState !== 'collapsed' }" :aria-expanded="activeTrayTab === tab.id && trayState !== 'collapsed'" @click="selectTrayTab(tab.id)"><span>{{ tab.icon }}</span>{{ tab.label }}<small>0</small></button>
+            <button class="archive-tab" @click="showCardCatalog = true"><span>▦</span>Card archive<small>189</small></button>
+            <button class="tray-resize" :aria-label="trayState === 'expanded' ? 'Collapse tray' : 'Expand tray'" @click="cycleTrayState">{{ trayState === 'collapsed' ? '⌃' : trayState === 'peek' ? '⌃' : '⌄' }}</button>
+          </nav>
+          <div v-if="trayState !== 'collapsed'" class="tray-content">
+            <div><p class="chapter">{{ trayTabs.find(tab => tab.id === activeTrayTab)?.label }}</p><h3>{{ activeTrayTab === 'log' ? 'No recorded events yet' : `No ${activeTrayTab} in your public game state` }}</h3><p>{{ activeTrayTab === 'log' ? 'Authoritative game events will appear here as the rules engine grows.' : 'This area is ready for server-synchronized cards and tokens. It will not invent inventory on the client.' }}</p></div>
+          </div>
+        </footer>
+        <div v-if="showCardCatalog" class="catalog-overlay" role="dialog" aria-modal="true" aria-label="Card archive"><LazyCardCatalog @close="showCardCatalog = false" /></div>
       </section>
     </template>
   </main>
@@ -285,7 +319,7 @@ input:focus { border-color: #d5aa63; box-shadow: 0 0 0 3px #d5aa6322; }
 .card-archive-prompt { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-top: 18px; padding: 24px 28px; }.card-archive-prompt h2 { margin: 5px 0; font-size: 1.45rem; }.card-archive-prompt p:last-child { margin: 0; }.card-archive-prompt button { flex: none; }
 .playing-shell { position: fixed; inset: 0; width: 100%; height: 100dvh; padding: 0; overflow: hidden; background: #061216; }
 .playing-shell > .error { position: fixed; z-index: 20; top: 66px; left: 50%; width: min(620px, calc(100% - 32px)); margin: 0; transform: translateX(-50%); }
-.game-shell { display: grid; grid-template-rows: 54px minmax(0, 1fr); height: 100%; }
+.game-shell { display: grid; grid-template-rows: 54px minmax(0, 1fr) 48px; height: 100%; }.game-shell.tray-peek { grid-template-rows: 54px minmax(0, 1fr) 190px; }.game-shell.tray-expanded { grid-template-rows: 54px minmax(0, 1fr) min(48vh, 480px); }
 .game-hud { z-index: 5; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 20px; padding: 0 14px; background: linear-gradient(180deg, #17323a, #0c2228); border-bottom: 1px solid #3d5960; box-shadow: 0 5px 18px #0008; }
 .game-hud__brand, .game-hud__room, .game-hud__turn { display: flex; align-items: center; gap: 10px; }.game-hud__brand strong { font: 600 1rem Georgia, serif; }.sigil-small { color: #d5aa63; }.game-hud__turn { flex-direction: column; gap: 1px; text-align: center; }.game-hud__turn span { color: #91a7a8; font-size: .62rem; text-transform: uppercase; letter-spacing: .12em; }.game-hud__turn strong { color: #e9ce8b; font-size: .8rem; }.game-hud__room { justify-content: flex-end; }.game-hud__room code { color: #91a7a8; font-size: .68rem; }.hud-button { color: #e8e8dc; background: #29464e; border: 1px solid #47646c; border-radius: 7px; padding: 6px 10px; font-size: .7rem; font-weight: 800; }
 .game-workspace { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 280px; }
@@ -296,6 +330,7 @@ input:focus { border-color: #d5aa63; box-shadow: 0 0 0 3px #d5aa6322; }
 .board-stage .location-inspector { position: absolute; z-index: 4; left: 18px; bottom: 18px; width: min(520px, calc(100% - 150px)); margin: 0; background: #07171cee; box-shadow: 0 8px 28px #0009; backdrop-filter: blur(10px); }
 .end-turn { position: absolute; z-index: 5; right: 18px; bottom: 18px; color: #142127; background: #d5aa63; border: 0; border-radius: 9px; padding: 11px 18px; font-weight: 900; box-shadow: 0 8px 24px #0008; }
 .investigator-dock { position: relative; min-width: 0; display: grid; grid-template-columns: 52px minmax(0, 1fr); overflow: hidden; background: linear-gradient(145deg, #142e35, #091a1f); border-left: 1px solid #3a565e; transition: width .2s; }.investigator-dock.collapsed { grid-template-columns: 1fr; }.dock-toggle { position: absolute; z-index: 2; top: 8px; left: -1px; width: 25px; height: 30px; color: #d5aa63; background: #17343b; border: 1px solid #48636a; border-left: 0; border-radius: 0 7px 7px 0; font-size: 1.2rem; }.party-tabs { display: flex; flex-direction: column; align-items: center; gap: 9px; padding: 48px 7px 10px; background: #07191e; border-right: 1px solid #29464e; }.party-tabs button { position: relative; width: 38px; height: 38px; padding: 0; color: #dce4df; background: #1b3941; border: 1px solid #49636a; border-radius: 50%; font-weight: 900; }.party-tabs button.active { color: #18272c; background: #d5aa63; border-color: #f3d797; box-shadow: 0 0 0 3px #d5aa6325; }.party-tabs .presence { position: absolute; right: -1px; bottom: 0; border: 2px solid #07191e; }.investigator-dock.collapsed .party-tabs { border-right: 0; }.investigator-sheet { min-width: 0; overflow-y: auto; padding: 28px 16px 20px; }.investigator-sheet h2 { margin: 5px 0 2px; font-size: 1.35rem; }.investigator-role { min-height: 35px; margin: 0; color: #8da1a3; font-size: .68rem; line-height: 1.4; }.dock-vitals { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0; }.dock-vitals div { display: grid; gap: 3px; padding: 10px; background: #07191e; border: 1px solid #29464e; border-radius: 8px; }.dock-vitals small, .investigator-facts dt { color: #82999b; font-size: .58rem; text-transform: uppercase; letter-spacing: .08em; }.dock-vitals strong { font-size: 1rem; }.dock-vitals .health { color: #e9a292; }.dock-vitals .sanity { color: #8fd1de; }.investigator-facts { display: grid; gap: 8px; margin: 0 0 14px; }.investigator-facts div { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid #29464e; padding-bottom: 7px; }.investigator-facts dd { margin: 0; color: #d8ded8; font-size: .68rem; text-align: right; }.dock-skills { display: grid; grid-template-columns: repeat(5, 1fr); margin: 12px 0; }.dock-skills span { display: grid; place-items: center; gap: 3px; border-right: 1px solid #29464e; }.dock-skills span:last-child { border: 0; }.dock-skills small { color: #82999b; font-size: .52rem; text-transform: uppercase; }.dock-skills b { font-size: .75rem; }.dock-ability { margin: 8px 0 0; color: #9eb0ad; font-size: .63rem; line-height: 1.45; }.dock-ability b { display: block; color: #d5aa63; font-size: .55rem; text-transform: uppercase; letter-spacing: .08em; }
+.player-tray { z-index: 6; min-height: 0; overflow: hidden; background: linear-gradient(180deg, #10282f, #07171c); border-top: 1px solid #3d5960; box-shadow: 0 -8px 24px #0007; }.tray-tabs { height: 47px; display: flex; align-items: stretch; overflow-x: auto; padding-left: 8px; }.tray-tabs button { flex: none; display: flex; align-items: center; gap: 7px; color: #9db0af; background: transparent; border: 0; border-bottom: 2px solid transparent; padding: 0 12px; font-size: .7rem; font-weight: 800; }.tray-tabs button > span { color: #d5aa63; }.tray-tabs button small { min-width: 17px; color: #819697; background: #07171c; border-radius: 999px; padding: 2px 5px; font-size: .52rem; }.tray-tabs button.active { color: #f0eddb; background: #17343b; border-bottom-color: #d5aa63; }.tray-tabs .archive-tab { margin-left: auto; border-left: 1px solid #29464e; }.tray-tabs .tray-resize { width: 44px; justify-content: center; color: #d5aa63; border-left: 1px solid #29464e; font-size: 1rem; }.tray-content { height: calc(100% - 47px); overflow: auto; padding: 18px 24px; border-top: 1px solid #213c43; }.tray-content h3 { margin: 5px 0; font: 600 1.05rem Georgia, serif; }.tray-content p:last-child { max-width: 620px; margin: 0; color: #8fa3a4; font-size: .72rem; line-height: 1.5; }.catalog-overlay { position: fixed; z-index: 30; inset: 0; overflow: auto; padding: 20px; background: #02090cf2; }.catalog-overlay .card-catalog { width: min(1500px, 100%); min-height: calc(100dvh - 40px); margin: 0 auto; }
 @media (max-width: 800px) { .lobby-grid, .game-grid { grid-template-columns: 1fr; }.investigators { grid-template-columns: 1fr; }.masthead { align-items: flex-end; }.room-bar { align-items: flex-start; gap: 12px; flex-direction: column; }.copy { width: 100%; } }
 @media (max-width: 600px) { .card-archive-prompt { align-items: stretch; flex-direction: column; }.card-archive-prompt button { width: 100%; } }
 @media (prefers-reduced-motion: reduce) { .route.legal, .location.available circle { animation: none; }.token { transition: none; } }
