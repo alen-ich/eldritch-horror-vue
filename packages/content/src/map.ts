@@ -5,6 +5,8 @@ export const routeTypes = ["train", "ship", "uncharted"] as const;
 export type RouteType = (typeof routeTypes)[number];
 export type SpaceType = "city" | "wilderness" | "sea";
 
+export const baseGameBoardDimensions = { width: 1920, height: 1264 } as const;
+
 export interface MapLocation {
   id: LocationId;
   name: string;
@@ -27,40 +29,40 @@ const numbered = (number: number, type: SpaceType, x: number, y: number): MapLoc
   type,
   x,
   y,
-  positionSource: "prototype-layout",
+  positionSource: "registered-scan",
 });
 
 const located = (id: LocationId, name: string, type: SpaceType, x: number, y: number, longitude: number, latitude: number): MapLocation => ({
-  id, name, type, x, y, positionSource: "prototype-layout", geographic: { longitude, latitude },
+  id, name, type, x, y, positionSource: "registered-scan", geographic: { longitude, latitude },
 });
 
 export const baseGameLocations: readonly MapLocation[] = [
-  located("san_francisco", "San Francisco", "city", 92, 192, -122.4194, 37.7749),
-  located("arkham", "Arkham", "city", 185, 112, -70.9, 42.6),
-  located("buenos_aires", "Buenos Aires", "city", 218, 342, -58.3816, -34.6037),
-  located("london", "London", "city", 326, 112, -0.1276, 51.5072),
-  located("rome", "Rome", "city", 386, 170, 12.4964, 41.9028),
-  located("istanbul", "Istanbul", "city", 456, 178, 28.9784, 41.0082),
-  located("shanghai", "Shanghai", "city", 570, 235, 121.4737, 31.2304),
-  located("sydney", "Sydney", "city", 596, 368, 151.2093, -33.8688),
-  located("tokyo", "Tokyo", "city", 637, 188, 139.6917, 35.6895),
-  located("the_amazon", "The Amazon", "wilderness", 255, 286, -62, -3),
-  located("the_pyramids", "The Pyramids", "wilderness", 409, 235, 31.1342, 29.9792),
-  located("the_heart_of_africa", "Heart of Africa", "wilderness", 376, 316, 21, -3),
-  located("the_himalayas", "The Himalayas", "wilderness", 508, 246, 86.925, 27.988),
-  located("tunguska", "Tunguska", "wilderness", 535, 112, 101.9, 60.9),
-  located("antarctica", "Antarctica", "sea", 404, 424, 0, -82),
-  numbered(1, "city", 94, 116), numbered(2, "sea", 36, 262),
-  numbered(3, "sea", 103, 350), numbered(4, "wilderness", 132, 185),
-  numbered(5, "city", 157, 146), numbered(6, "city", 220, 157),
-  numbered(7, "city", 171, 241), numbered(8, "sea", 255, 202),
-  numbered(9, "wilderness", 268, 102), numbered(10, "wilderness", 344, 218),
-  numbered(11, "sea", 296, 326), numbered(12, "sea", 275, 410),
-  numbered(13, "sea", 300, 65), numbered(14, "city", 382, 112),
-  numbered(15, "city", 343, 273), numbered(16, "wilderness", 476, 213),
-  numbered(17, "sea", 461, 346), numbered(18, "wilderness", 433, 272),
-  numbered(19, "wilderness", 574, 151), numbered(20, "city", 620, 282),
-  numbered(21, "wilderness", 535, 414),
+  located("san_francisco", "San Francisco", "city", 123, 443, -122.4194, 37.7749),
+  located("arkham", "Arkham", "city", 449, 453, -70.9, 42.6),
+  located("buenos_aires", "Buenos Aires", "city", 445, 966, -58.3816, -34.6037),
+  located("london", "London", "city", 779, 383, -0.1276, 51.5072),
+  located("rome", "Rome", "city", 889, 529, 12.4964, 41.9028),
+  located("istanbul", "Istanbul", "city", 1092, 474, 28.9784, 41.0082),
+  located("shanghai", "Shanghai", "city", 1551, 659, 121.4737, 31.2304),
+  located("sydney", "Sydney", "city", 1677, 1077, 151.2093, -33.8688),
+  located("tokyo", "Tokyo", "city", 1716, 550, 139.6917, 35.6895),
+  located("the_amazon", "The Amazon", "wilderness", 489, 778, -62, -3),
+  located("the_pyramids", "The Pyramids", "wilderness", 1029, 680, 31.1342, 29.9792),
+  located("the_heart_of_africa", "Heart of Africa", "wilderness", 996, 864, 21, -3),
+  located("the_himalayas", "The Himalayas", "wilderness", 1344, 572, 86.925, 27.988),
+  located("tunguska", "Tunguska", "wilderness", 1380, 382, 101.9, 60.9),
+  located("antarctica", "Antarctica", "sea", 1069, 1194, 0, -82),
+  numbered(1, "city", 116, 289), numbered(2, "sea", 64, 504),
+  numbered(3, "sea", 206, 973), numbered(4, "wilderness", 306, 284),
+  numbered(5, "city", 351, 384), numbered(6, "city", 293, 492),
+  numbered(7, "city", 386, 639), numbered(8, "sea", 508, 528),
+  numbered(9, "wilderness", 663, 204), numbered(10, "wilderness", 810, 678),
+  numbered(11, "sea", 845, 977), numbered(12, "sea", 752, 1104),
+  numbered(13, "sea", 1113, 169), numbered(14, "city", 1055, 325),
+  numbered(15, "city", 1032, 996), numbered(16, "wilderness", 1293, 337),
+  numbered(17, "sea", 1356, 656), numbered(18, "wilderness", 1324, 1047),
+  numbered(19, "wilderness", 1763, 329), numbered(20, "city", 1624, 800),
+  numbered(21, "wilderness", 1690, 907),
 ] as const;
 
 const train = (source: LocationId, target: LocationId): MapRoute => ({ source, target, type: "train" });
@@ -110,7 +112,8 @@ export const baseGameMap = {
 
 const locationSchema = z.object({
   id: z.enum(locationIds), name: z.string().min(1), type: z.enum(["city", "wilderness", "sea"]),
-  x: z.number().min(0).max(680), y: z.number().min(0).max(460),
+  x: z.number().min(0).max(baseGameBoardDimensions.width),
+  y: z.number().min(0).max(baseGameBoardDimensions.height),
   positionSource: z.enum(["prototype-layout", "registered-scan"]),
   geographic: z.object({ longitude: z.number().min(-180).max(180), latitude: z.number().min(-90).max(90) }).optional(),
 });

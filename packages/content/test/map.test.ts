@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { baseGameLocations, baseGameRoutes, validateMapContent } from "../src/index.js";
+import { baseGameBoardDimensions, baseGameLocations, baseGameRoutes, validateMapContent } from "../src/index.js";
 
 describe("base game map content", () => {
   it("contains the PDF's 36 spaces and 70 unique typed routes", () => {
@@ -20,7 +20,9 @@ describe("base game map content", () => {
 
   it("registers every named space to a geographic reference", () => {
     expect(baseGameLocations.filter((location) => location.name !== String(Number(location.name))).every((location) => location.geographic)).toBe(true);
-    expect(baseGameLocations.every((location) => location.positionSource === "prototype-layout")).toBe(true);
+    expect(baseGameLocations.every((location) => location.positionSource === "registered-scan")).toBe(true);
+    expect(baseGameBoardDimensions).toEqual({ width: 1920, height: 1264 });
+    expect(baseGameLocations.every((location) => location.x <= baseGameBoardDimensions.width && location.y <= baseGameBoardDimensions.height)).toBe(true);
   });
 
   it("rejects duplicate routes", () => {
