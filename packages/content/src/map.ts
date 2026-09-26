@@ -102,6 +102,8 @@ export const baseGameRoutes: readonly MapRoute[] = [
 
 export const baseGameMap = {
   startingLocationId: "san_francisco" as LocationId,
+  routes: baseGameRoutes,
+  locationTypes: Object.fromEntries(baseGameLocations.map((location) => [location.id, location.type])),
   adjacentLocationIds: Object.fromEntries(locationIds.map((id) => [
     id,
     baseGameRoutes
