@@ -23,6 +23,7 @@ interface ClientPlayerState {
 }
 
 interface ClientGameState {
+  stateVersion?: number
   phase?: string
   activePlayerId?: string
   turnNumber?: number
@@ -34,6 +35,7 @@ interface ClientGameState {
 const storageKey = 'eldritch-reconnection-token'
 const room = shallowRef<Room<unknown, ClientGameState>>()
 const players = ref<ClientPlayerState[]>([])
+const stateVersion = ref(0)
 const phase = ref('lobby')
 const activePlayerId = ref('')
 const turnNumber = ref(0)
@@ -50,6 +52,7 @@ export function useGameRoom() {
 
   function syncState(state: ClientGameState) {
     if (!state.players) return
+    stateVersion.value = state.stateVersion ?? 0
     phase.value = state.phase ?? 'lobby'
     activePlayerId.value = state.activePlayerId ?? ''
     turnNumber.value = state.turnNumber ?? 0
@@ -129,11 +132,14 @@ export function useGameRoom() {
 
   function send(command: GameCommand) {
     errorMessage.value = ''
-    room.value?.send(commandMessageType, command)
+    room.value?.send(commandMessageType, {
+      expectedStateVersion: stateVersion.value,
+      command
+    })
   }
 
   return {
-    players: readonly(players), phase: readonly(phase), activePlayerId: readonly(activePlayerId),
+    players: readonly(players), stateVersion: readonly(stateVersion), phase: readonly(phase), activePlayerId: readonly(activePlayerId),
     turnNumber: readonly(turnNumber), actionsRemaining: readonly(actionsRemaining), performedActions: readonly(performedActions), playerId: readonly(playerId), roomId: readonly(roomId),
     status: readonly(status), errorMessage: readonly(errorMessage), createGame, joinGame, reconnect, send
   }

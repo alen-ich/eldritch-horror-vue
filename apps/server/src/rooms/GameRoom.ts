@@ -5,9 +5,8 @@ import { executeCommand, type GameContent, type GameState } from "@eldritch/engi
 import {
   commandErrorMessageType,
   commandMessageType,
-  gameCommandSchema,
+  gameCommandMessageSchema,
   joinOptionsSchema,
-  type GameCommand,
   type InvestigatorId,
   type LocationId,
 } from "@eldritch/protocol";
@@ -68,7 +67,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
   }
 
   private handleCommand(client: Client, payload: unknown): void {
-    const parsed = gameCommandSchema.safeParse(payload);
+    const parsed = gameCommandMessageSchema.safeParse(payload);
     if (!parsed.success) {
       client.send(commandErrorMessageType, { code: "INVALID_COMMAND", message: "Command payload is invalid." });
       return;
@@ -78,7 +77,14 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       client.send(commandErrorMessageType, { code: "PLAYER_NOT_FOUND", message: "No player seat is associated with this connection." });
       return;
     }
-    const result = executeCommand(this.toEngineState(), playerId, parsed.data, baseGameContent);
+    if (parsed.data.expectedStateVersion !== this.state.stateVersion) {
+      client.send(commandErrorMessageType, {
+        code: "STALE_STATE",
+        message: "The game changed before this command was processed. Review the current state and try again.",
+      });
+      return;
+    }
+    const result = executeCommand(this.toEngineState(), playerId, parsed.data.command, baseGameContent);
     if (result.ok === false) {
       client.send(commandErrorMessageType, result.error);
       return;
@@ -88,6 +94,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
 
   private toEngineState(): GameState {
     return {
+      stateVersion: this.state.stateVersion,
       phase: this.state.phase as GameState["phase"],
       activePlayerId: this.state.activePlayerId || undefined,
       leadInvestigatorId: this.state.leadInvestigatorId || undefined,
@@ -112,6 +119,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
   }
 
   private applyEngineState(engineState: GameState): void {
+    this.state.stateVersion = engineState.stateVersion;
     this.state.phase = engineState.phase;
     this.state.activePlayerId = engineState.activePlayerId ?? "";
     this.state.leadInvestigatorId = engineState.leadInvestigatorId ?? "";

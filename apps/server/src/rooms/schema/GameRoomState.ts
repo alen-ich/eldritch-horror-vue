@@ -19,6 +19,7 @@ export const PlayerState = schema({
 export type PlayerState = SchemaType<typeof PlayerState>;
 
 export const GameRoomState = schema({
+  stateVersion: t.uint32().default(0),
   phase: t.string().default("lobby"),
   activePlayerId: t.string().default(""),
   leadInvestigatorId: t.string().default(""),
