@@ -6,6 +6,27 @@ Deliver a rules-correct, reconnectable base-game loop from setup through victory
 
 The current baseline implements investigator selection and the Travel, Rest, Prepare for Travel, and End Actions portions of the Action phase. The supplied rulebook is the teaching source. The separate Reference Guide is a required input before declaring rules completeness because the rulebook identifies it as authoritative for exceptions.
 
+## Progress
+
+Last updated: 2026-09-27
+
+- Milestone 0: **in progress**. The teaching rulebook is documented, but the separate authoritative Reference Guide has not been supplied. Component verification and the complete rules matrix remain blocked on that source.
+- Milestone 1: **in progress**.
+  - Completed: strict versioned command envelopes (`87f5753`).
+  - Completed: successful transitions advance the canonical version exactly once; rejected transitions do not mutate state (`4e2c438`).
+  - Completed: the server rejects stale commands and the web client sends the version it observed (`6f1d94a`).
+  - Completed: canonical hidden deck/token order is stored outside synchronized Colyseus state, with a public projection that excludes it (`60944a7`).
+  - Completed: deterministic dice, shuffle, token-draw, and ID input queues with reproducibility and validation tests (`7d6fa50`).
+  - Remaining: player-specific private projections, serializable pending decisions, commands that continue decisions, and reconnect integration tests for interrupted decisions.
+- Milestones 2-12: **not started**.
+
+### Current verification evidence
+
+- Protocol: 8 tests passing after the versioned-envelope change.
+- Engine: 14 tests passing after state-version, hidden-state, projection, and deterministic-input changes.
+- Server: 3 multiplayer integration tests passing, including stale-command rejection.
+- Root `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm build` pass.
+
 ## Delivery rules
 
 - Build vertical slices in the dependency order below. Do not implement card text directly in Vue or Colyseus rooms.
