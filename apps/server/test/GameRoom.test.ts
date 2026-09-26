@@ -36,9 +36,10 @@ describe("authoritative game room", () => {
     assert.equal(hostPlayer.sanity, 7);
     assert.equal(guestPlayer.locationId, "space_16");
 
-    host.send(commandMessageType, { type: "MOVE", destinationId: "space_10" });
+    host.send(commandMessageType, { type: "TRAVEL", destinationIds: ["space_10"] });
     await room.waitForMessage(commandMessageType);
     assert.equal(hostPlayer.locationId, "space_10");
+    assert.equal(room.state.actionsRemaining, 1);
   });
 
   it("rejects forged player identity and isolates rooms", async () => {
@@ -48,7 +49,7 @@ describe("authoritative game room", () => {
     await colyseus.connectTo(secondRoom, { displayName: "Two" });
 
     firstClient.send(commandMessageType, {
-      type: "SELECT_INVESTIGATOR",
+      type: "REST",
       investigatorId: "akachi_onyele",
       playerId: [...secondRoom.state.players.keys()][0],
     });

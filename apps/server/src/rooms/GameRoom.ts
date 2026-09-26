@@ -90,13 +90,23 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     return {
       phase: this.state.phase as GameState["phase"],
       activePlayerId: this.state.activePlayerId || undefined,
+      leadInvestigatorId: this.state.leadInvestigatorId || undefined,
       turnNumber: this.state.turnNumber,
+      actionsRemaining: this.state.actionsRemaining,
+      performedActions: this.state.performedActions ? this.state.performedActions.split(",") as GameState["performedActions"] : [],
+      monsterLocationIds: [],
       players: [...this.state.players.values()].map((player) => ({
         id: player.id,
         investigatorId: (player.investigatorId || undefined) as InvestigatorId | undefined,
         locationId: (player.locationId || undefined) as LocationId | undefined,
         health: player.health || undefined,
         sanity: player.sanity || undefined,
+        maxHealth: player.maxHealth || undefined,
+        maxSanity: player.maxSanity || undefined,
+        travelTickets: [
+          ...Array.from({ length: player.trainTickets }, () => "train" as const),
+          ...Array.from({ length: player.shipTickets }, () => "ship" as const),
+        ],
       })),
     };
   }
@@ -104,7 +114,10 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
   private applyEngineState(engineState: GameState): void {
     this.state.phase = engineState.phase;
     this.state.activePlayerId = engineState.activePlayerId ?? "";
+    this.state.leadInvestigatorId = engineState.leadInvestigatorId ?? "";
     this.state.turnNumber = engineState.turnNumber;
+    this.state.actionsRemaining = engineState.actionsRemaining;
+    this.state.performedActions = engineState.performedActions.join(",");
     for (const enginePlayer of engineState.players) {
       const player = this.state.players.get(enginePlayer.id);
       if (!player) continue;
@@ -112,6 +125,10 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       player.locationId = enginePlayer.locationId ?? "";
       player.health = enginePlayer.health ?? 0;
       player.sanity = enginePlayer.sanity ?? 0;
+      player.maxHealth = enginePlayer.maxHealth ?? 0;
+      player.maxSanity = enginePlayer.maxSanity ?? 0;
+      player.trainTickets = enginePlayer.travelTickets?.filter((ticket) => ticket === "train").length ?? 0;
+      player.shipTickets = enginePlayer.travelTickets?.filter((ticket) => ticket === "ship").length ?? 0;
     }
   }
 

@@ -15,6 +15,10 @@ interface ClientPlayerState {
   locationId: string
   health: number
   sanity: number
+  maxHealth: number
+  maxSanity: number
+  trainTickets: number
+  shipTickets: number
   isHost: boolean
 }
 
@@ -22,6 +26,8 @@ interface ClientGameState {
   phase?: string
   activePlayerId?: string
   turnNumber?: number
+  actionsRemaining?: number
+  performedActions?: string
   players?: Map<string, ClientPlayerState>
 }
 
@@ -31,6 +37,8 @@ const players = ref<ClientPlayerState[]>([])
 const phase = ref('lobby')
 const activePlayerId = ref('')
 const turnNumber = ref(0)
+const actionsRemaining = ref(0)
+const performedActions = ref<string[]>([])
 const playerId = ref('')
 const roomId = ref('')
 const status = ref<'idle' | 'connecting' | 'connected' | 'disconnected'>('idle')
@@ -45,6 +53,8 @@ export function useGameRoom() {
     phase.value = state.phase ?? 'lobby'
     activePlayerId.value = state.activePlayerId ?? ''
     turnNumber.value = state.turnNumber ?? 0
+    actionsRemaining.value = state.actionsRemaining ?? 0
+    performedActions.value = state.performedActions ? state.performedActions.split(',') : []
     players.value = [...state.players.values()].map((player) => ({
       id: player.id,
       sessionId: player.sessionId,
@@ -54,6 +64,10 @@ export function useGameRoom() {
       locationId: player.locationId,
       health: player.health,
       sanity: player.sanity,
+      maxHealth: player.maxHealth,
+      maxSanity: player.maxSanity,
+      trainTickets: player.trainTickets,
+      shipTickets: player.shipTickets,
       isHost: player.isHost
     }))
     playerId.value = players.value.find((player) => player.sessionId === room.value?.sessionId)?.id ?? ''
@@ -120,7 +134,7 @@ export function useGameRoom() {
 
   return {
     players: readonly(players), phase: readonly(phase), activePlayerId: readonly(activePlayerId),
-    turnNumber: readonly(turnNumber), playerId: readonly(playerId), roomId: readonly(roomId),
+    turnNumber: readonly(turnNumber), actionsRemaining: readonly(actionsRemaining), performedActions: readonly(performedActions), playerId: readonly(playerId), roomId: readonly(roomId),
     status: readonly(status), errorMessage: readonly(errorMessage), createGame, joinGame, reconnect, send
   }
 }
