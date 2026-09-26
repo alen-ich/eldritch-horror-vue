@@ -9,6 +9,69 @@ import type {
 
 export type ActionType = "travel" | "rest" | "prepare_travel" | "trade" | "acquire_assets" | "component";
 
+export interface EngineInputSequences {
+  dice?: readonly number[];
+  shuffleIndexes?: readonly number[];
+  tokenIndexes?: readonly number[];
+  ids?: readonly string[];
+}
+
+export interface EngineContext {
+  rollDie(): number;
+  shuffle<T>(items: readonly T[]): T[];
+  drawToken<T>(pool: readonly T[]): { token: T; remaining: T[] };
+  createId(): string;
+}
+
+export function createDeterministicEngineContext(inputs: EngineInputSequences): EngineContext {
+  const dice = [...(inputs.dice ?? [])];
+  const shuffleIndexes = [...(inputs.shuffleIndexes ?? [])];
+  const tokenIndexes = [...(inputs.tokenIndexes ?? [])];
+  const ids = [...(inputs.ids ?? [])];
+
+  function take(sequence: number[], name: string): number {
+    const value = sequence.shift();
+    if (value === undefined) throw new Error(`Deterministic ${name} input is exhausted.`);
+    return value;
+  }
+
+  return {
+    rollDie(): number {
+      const result = take(dice, "die");
+      if (!Number.isInteger(result) || result < 1 || result > 6) {
+        throw new Error(`Deterministic die input must be an integer from 1 to 6; received ${result}.`);
+      }
+      return result;
+    },
+    shuffle<T>(items: readonly T[]): T[] {
+      const shuffled = [...items];
+      for (let index = shuffled.length - 1; index > 0; index -= 1) {
+        const swapIndex = take(shuffleIndexes, "shuffle index");
+        if (!Number.isInteger(swapIndex) || swapIndex < 0 || swapIndex > index) {
+          throw new Error(`Deterministic shuffle index must be between 0 and ${index}; received ${swapIndex}.`);
+        }
+        [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex]!, shuffled[index]!];
+      }
+      return shuffled;
+    },
+    drawToken<T>(pool: readonly T[]): { token: T; remaining: T[] } {
+      if (pool.length === 0) throw new Error("Cannot draw a token from an empty pool.");
+      const drawIndex = take(tokenIndexes, "token index");
+      if (!Number.isInteger(drawIndex) || drawIndex < 0 || drawIndex >= pool.length) {
+        throw new Error(`Deterministic token index must be between 0 and ${pool.length - 1}; received ${drawIndex}.`);
+      }
+      const remaining = [...pool];
+      const [token] = remaining.splice(drawIndex, 1);
+      return { token: token!, remaining };
+    },
+    createId(): string {
+      const id = ids.shift();
+      if (!id) throw new Error("Deterministic ID input is exhausted or empty.");
+      return id;
+    },
+  };
+}
+
 export interface EnginePlayer {
   id: string;
   investigatorId?: InvestigatorId;

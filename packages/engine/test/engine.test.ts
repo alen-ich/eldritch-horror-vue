@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { createLobby, executeCommand, projectPublicState, type GameContent, type GameState } from "../src/index.js";
+import {
+  createDeterministicEngineContext,
+  createLobby,
+  executeCommand,
+  projectPublicState,
+  type GameContent,
+  type GameState,
+} from "../src/index.js";
 
 const testContent: GameContent = {
   map: {
@@ -172,5 +179,54 @@ describe("projectPublicState", () => {
     expect(state.players[0]!.travelTickets).toEqual([]);
     expect(state.performedActions).toEqual([]);
     expect(state.monsterLocationIds).toEqual([]);
+  });
+});
+
+describe("createDeterministicEngineContext", () => {
+  it("replays identical random inputs as identical outcomes", () => {
+    const inputs = {
+      dice: [6, 2],
+      shuffleIndexes: [1, 0],
+      tokenIndexes: [2],
+      ids: ["decision-001"],
+    } as const;
+
+    const run = () => {
+      const context = createDeterministicEngineContext(inputs);
+      return {
+        dice: [context.rollDie(), context.rollDie()],
+        shuffled: context.shuffle(["a", "b", "c"]),
+        tokenDraw: context.drawToken(["gate-a", "gate-b", "gate-c"]),
+        id: context.createId(),
+      };
+    };
+
+    expect(run()).toEqual(run());
+    expect(run()).toEqual({
+      dice: [6, 2],
+      shuffled: ["c", "a", "b"],
+      tokenDraw: { token: "gate-c", remaining: ["gate-a", "gate-b"] },
+      id: "decision-001",
+    });
+  });
+
+  it("fails clearly on exhausted or out-of-range inputs", () => {
+    expect(() => createDeterministicEngineContext({}).rollDie()).toThrow("die input is exhausted");
+    expect(() => createDeterministicEngineContext({ dice: [0] }).rollDie()).toThrow("integer from 1 to 6");
+    expect(() => createDeterministicEngineContext({ shuffleIndexes: [2] }).shuffle(["a", "b"])).toThrow("between 0 and 1");
+    expect(() => createDeterministicEngineContext({ tokenIndexes: [1] }).drawToken(["only"])).toThrow("between 0 and 0");
+    expect(() => createDeterministicEngineContext({ ids: [""] }).createId()).toThrow("exhausted or empty");
+  });
+
+  it("does not mutate source collections", () => {
+    const cards = ["a", "b", "c"];
+    const tokens = ["one", "two"];
+    const context = createDeterministicEngineContext({ shuffleIndexes: [1, 0], tokenIndexes: [0] });
+
+    context.shuffle(cards);
+    context.drawToken(tokens);
+
+    expect(cards).toEqual(["a", "b", "c"]);
+    expect(tokens).toEqual(["one", "two"]);
   });
 });
