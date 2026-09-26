@@ -4,6 +4,8 @@ import type {
   GamePhase,
   InvestigatorId,
   LocationId,
+  PendingDecision,
+  PendingDecisionSummary,
   TravelTicketType,
 } from "@eldritch/protocol";
 
@@ -98,10 +100,13 @@ export interface GameState {
   actionsRemaining: number;
   performedActions: ActionType[];
   monsterLocationIds: LocationId[];
+  pendingDecision?: PendingDecision;
   privateState: PrivateGameState;
 }
 
-export type PublicEngineGameState = Omit<GameState, "privateState">;
+export type PublicEngineGameState = Omit<GameState, "privateState" | "pendingDecision"> & {
+  pendingDecision?: PendingDecision | PendingDecisionSummary;
+};
 
 export interface GameMap {
   adjacentLocationIds: Readonly<Partial<Record<LocationId, readonly LocationId[]>>>;
@@ -136,7 +141,12 @@ export type RuleErrorCode =
   | "REST_BLOCKED_BY_MONSTER"
   | "CITY_REQUIRED"
   | "ROUTE_TYPE_REQUIRED"
-  | "TRAVEL_TICKET_LIMIT";
+  | "TRAVEL_TICKET_LIMIT"
+  | "DECISION_PENDING"
+  | "NO_PENDING_DECISION"
+  | "DECISION_ID_MISMATCH"
+  | "NOT_DECISION_OWNER"
+  | "INVALID_DECISION_SELECTION";
 
 export type CommandResult =
   | { ok: true; state: GameState; events: GameEvent[] }
@@ -158,8 +168,25 @@ export function createLobby(playerIds: string[]): GameState {
   };
 }
 
-export function projectPublicState(state: GameState): PublicEngineGameState {
-  const { privateState: _privateState, ...publicState } = state;
+function decisionSummary(decision: PendingDecision): PendingDecisionSummary {
+  return {
+    id: decision.id,
+    kind: decision.kind,
+    playerId: decision.playerId,
+    visibility: decision.visibility,
+    prompt: decision.prompt,
+    optionCount: decision.optionIds.length,
+    minSelections: decision.minSelections,
+    maxSelections: decision.maxSelections,
+  };
+}
+
+function cloneDecision(decision: PendingDecision): PendingDecision {
+  return { ...decision, optionIds: [...decision.optionIds] };
+}
+
+export function projectStateForPlayer(state: GameState, viewerPlayerId?: string): PublicEngineGameState {
+  const { privateState: _privateState, pendingDecision, ...publicState } = state;
   return {
     ...publicState,
     players: publicState.players.map((player) => ({
@@ -168,7 +195,16 @@ export function projectPublicState(state: GameState): PublicEngineGameState {
     })),
     performedActions: [...publicState.performedActions],
     monsterLocationIds: [...publicState.monsterLocationIds],
+    pendingDecision: pendingDecision
+      ? pendingDecision.visibility === "public" || pendingDecision.playerId === viewerPlayerId
+        ? cloneDecision(pendingDecision)
+        : decisionSummary(pendingDecision)
+      : undefined,
   };
+}
+
+export function projectPublicState(state: GameState): PublicEngineGameState {
+  return projectStateForPlayer(state);
 }
 
 function failure(code: RuleErrorCode, message: string): CommandResult {
@@ -219,6 +255,7 @@ export function executeCommand(
     players: state.players.map((player) => ({ ...player })),
     performedActions: [...state.performedActions],
     monsterLocationIds: [...state.monsterLocationIds],
+    pendingDecision: state.pendingDecision ? cloneDecision(state.pendingDecision) : undefined,
     privateState: {
       deckOrderById: Object.fromEntries(
         Object.entries(state.privateState.deckOrderById).map(([id, cards]) => [id, [...cards]]),
@@ -229,6 +266,33 @@ export function executeCommand(
     },
   };
   const actor = next.players[actorIndex]!;
+
+  if (command.type === "RESOLVE_DECISION") {
+    const decision = state.pendingDecision;
+    if (!decision) return failure("NO_PENDING_DECISION", "There is no decision waiting to be resolved.");
+    if (command.decisionId !== decision.id) return failure("DECISION_ID_MISMATCH", "That decision is no longer current.");
+    if (decision.playerId !== actorPlayerId) return failure("NOT_DECISION_OWNER", "Only the assigned player can resolve this decision.");
+    const selections = command.selectedOptionIds;
+    if (
+      new Set(selections).size !== selections.length
+      || selections.length < decision.minSelections
+      || selections.length > decision.maxSelections
+      || selections.some((selection) => !decision.optionIds.includes(selection))
+    ) {
+      return failure("INVALID_DECISION_SELECTION", "The selected options are not legal for this decision.");
+    }
+    next.pendingDecision = undefined;
+    return success(next, [{
+      type: "DECISION_RESOLVED",
+      decisionId: decision.id,
+      playerId: actorPlayerId,
+      selectedOptionIds: [...selections],
+    }]);
+  }
+
+  if (state.pendingDecision) {
+    return failure("DECISION_PENDING", "Resolve the pending decision before sending another command.");
+  }
 
   if (command.type === "SELECT_INVESTIGATOR") {
     if (state.phase !== "lobby") return failure("WRONG_PHASE", "Investigators can only be selected in the lobby.");

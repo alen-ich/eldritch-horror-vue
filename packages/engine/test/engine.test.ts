@@ -4,6 +4,7 @@ import {
   createLobby,
   executeCommand,
   projectPublicState,
+  projectStateForPlayer,
   type GameContent,
   type GameState,
 } from "../src/index.js";
@@ -179,6 +180,105 @@ describe("projectPublicState", () => {
     expect(state.players[0]!.travelTickets).toEqual([]);
     expect(state.performedActions).toEqual([]);
     expect(state.monsterLocationIds).toEqual([]);
+  });
+
+  it("shows owner-only options to the owner but only a summary to other players", () => {
+    const state = startedGame();
+    state.pendingDecision = {
+      id: "decision-1",
+      kind: "select_rerolls",
+      playerId: "host",
+      visibility: "owner",
+      prompt: "Choose a die to reroll.",
+      optionIds: ["die-1", "die-2"],
+      minSelections: 0,
+      maxSelections: 1,
+    };
+
+    expect(projectStateForPlayer(state, "host").pendingDecision).toHaveProperty("optionIds", ["die-1", "die-2"]);
+    expect(projectStateForPlayer(state, "guest").pendingDecision).toEqual({
+      id: "decision-1",
+      kind: "select_rerolls",
+      playerId: "host",
+      visibility: "owner",
+      prompt: "Choose a die to reroll.",
+      optionCount: 2,
+      minSelections: 0,
+      maxSelections: 1,
+    });
+    expect(projectPublicState(state).pendingDecision).not.toHaveProperty("optionIds");
+  });
+});
+
+describe("pending decisions", () => {
+  function stateWithDecision(): GameState {
+    const state = startedGame();
+    state.pendingDecision = {
+      id: "decision-1",
+      kind: "choose_encounter",
+      playerId: "host",
+      visibility: "owner",
+      prompt: "Choose an encounter deck.",
+      optionIds: ["city", "research"],
+      minSelections: 1,
+      maxSelections: 1,
+    };
+    return state;
+  }
+
+  it("serializes and resolves an interrupted decision", () => {
+    const restored = JSON.parse(JSON.stringify(stateWithDecision())) as GameState;
+    const result = executeCommand(restored, "host", {
+      type: "RESOLVE_DECISION",
+      decisionId: "decision-1",
+      selectedOptionIds: ["research"],
+    }, testContent);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.pendingDecision).toBeUndefined();
+    expect(result.state.stateVersion).toBe(4);
+    expect(result.events).toEqual([{
+      type: "DECISION_RESOLVED",
+      decisionId: "decision-1",
+      playerId: "host",
+      selectedOptionIds: ["research"],
+    }]);
+  });
+
+  it("blocks unrelated commands while a decision is pending", () => {
+    const state = stateWithDecision();
+    expect(executeCommand(state, "host", { type: "REST" }, testContent)).toMatchObject({
+      ok: false,
+      error: { code: "DECISION_PENDING" },
+    });
+  });
+
+  it.each([
+    ["guest", "decision-1", ["city"], "NOT_DECISION_OWNER"],
+    ["host", "old-decision", ["city"], "DECISION_ID_MISMATCH"],
+    ["host", "decision-1", [], "INVALID_DECISION_SELECTION"],
+    ["host", "decision-1", ["unknown"], "INVALID_DECISION_SELECTION"],
+    ["host", "decision-1", ["city", "city"], "INVALID_DECISION_SELECTION"],
+  ])("rejects an invalid resolution without mutation", (playerId, decisionId, selections, errorCode) => {
+    const state = stateWithDecision();
+    const snapshot = structuredClone(state);
+    const result = executeCommand(state, playerId as string, {
+      type: "RESOLVE_DECISION",
+      decisionId: decisionId as string,
+      selectedOptionIds: selections as string[],
+    }, testContent);
+
+    expect(result).toMatchObject({ ok: false, error: { code: errorCode } });
+    expect(state).toEqual(snapshot);
+  });
+
+  it("rejects resolution when no decision exists", () => {
+    expect(executeCommand(startedGame(), "host", {
+      type: "RESOLVE_DECISION",
+      decisionId: "decision-1",
+      selectedOptionIds: [],
+    }, testContent)).toMatchObject({ ok: false, error: { code: "NO_PENDING_DECISION" } });
   });
 });
 
