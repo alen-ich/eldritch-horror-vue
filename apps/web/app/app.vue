@@ -8,11 +8,15 @@ const attemptedReconnect = ref(false)
 const showCardCatalog = ref(false)
 const inspectedLocationId = ref<LocationId>()
 const boardZoom = ref(1)
+const dockExpanded = ref(true)
+const selectedPlayerId = ref('')
 const game = useGameRoom()
 
 const locationById = Object.fromEntries(baseGameLocations.map((location) => [location.id, location])) as Record<LocationId, typeof baseGameLocations[number]>
 const investigatorById = Object.fromEntries(baseGameInvestigators.map((investigator) => [investigator.id, investigator]))
 const me = computed(() => game.players.value.find((player) => player.id === game.playerId.value))
+const displayedPlayer = computed(() => game.players.value.find((player) => player.id === selectedPlayerId.value) ?? me.value ?? game.players.value[0])
+const displayedInvestigator = computed(() => displayedPlayer.value?.investigatorId ? investigatorById[displayedPlayer.value.investigatorId] : undefined)
 const selectedByInvestigator = computed(() => new Map(game.players.value
   .filter((player) => player.investigatorId)
   .map((player) => [player.investigatorId, player])))
@@ -177,7 +181,7 @@ async function copyInvite() {
           <div class="game-hud__turn"><span>Action phase · Turn {{ game.turnNumber.value }}</span><strong>{{ isMyTurn ? 'Your action' : `${game.players.value.find(p => p.id === game.activePlayerId.value)?.displayName}'s action` }}</strong></div>
           <div class="game-hud__room"><span class="presence online"></span><code>{{ game.roomId.value }}</code><button class="hud-button" @click="copyInvite">Invite</button></div>
         </header>
-        <div class="game-workspace">
+        <div class="game-workspace" :class="{ 'dock-collapsed': !dockExpanded }">
         <div class="board-stage">
           <div class="board-tools"><div class="route-legend" aria-label="Route legend"><span class="train">Train</span><span class="ship">Ship</span><span class="uncharted">Uncharted</span></div><div class="zoom-controls" aria-label="Map zoom controls"><button :disabled="boardZoom <= 1" aria-label="Zoom out" @click="changeZoom(-.5)">−</button><button @click="boardZoom = 1">{{ boardZoom }}×</button><button :disabled="boardZoom >= 2.5" aria-label="Zoom in" @click="changeZoom(.5)">+</button></div></div>
           <svg class="board" :viewBox="boardViewBox" role="graphics-document" aria-labelledby="board-title">
@@ -198,7 +202,22 @@ async function copyInvite() {
           </div>
           <button class="end-turn" :disabled="!isMyTurn" @click="game.send({ type: 'END_TURN' })">End turn</button>
         </div>
-        <aside class="game-roster"><p class="chapter">Investigators</p><article v-for="player in game.players.value" :key="player.id"><span class="presence" :class="{ online: player.connected }"></span><div><strong>{{ player.displayName }}</strong><p>{{ investigatorById[player.investigatorId]?.name }} · {{ locationById[player.locationId as LocationId]?.name }}</p><p class="resource-line">♥ {{ player.health }} · ✦ {{ player.sanity }}</p></div></article></aside>
+        <aside class="investigator-dock" :class="{ collapsed: !dockExpanded }" aria-label="Investigator information">
+          <button class="dock-toggle" :aria-label="dockExpanded ? 'Collapse investigator panel' : 'Expand investigator panel'" :aria-expanded="dockExpanded" @click="dockExpanded = !dockExpanded">{{ dockExpanded ? '›' : '‹' }}</button>
+          <nav class="party-tabs" aria-label="Party investigators">
+            <button v-for="player in game.players.value" :key="player.id" :class="{ active: displayedPlayer?.id === player.id }" :aria-label="`Show ${player.displayName}`" :aria-pressed="displayedPlayer?.id === player.id" @click="selectedPlayerId = player.id; dockExpanded = true">
+              <span class="party-initial">{{ player.displayName.slice(0, 1).toUpperCase() }}</span><span class="presence" :class="{ online: player.connected }"></span>
+            </button>
+          </nav>
+          <div v-if="displayedPlayer" class="investigator-sheet">
+            <p class="chapter">{{ displayedPlayer.id === game.playerId.value ? 'Your investigator' : 'Party investigator' }}</p>
+            <h2>{{ displayedInvestigator?.name }}</h2>
+            <p class="investigator-role">{{ displayedInvestigator?.occupation }} · {{ displayedInvestigator?.role }}</p>
+            <div class="dock-vitals"><div><small>Health</small><strong class="health">♥ {{ displayedPlayer.health }}</strong></div><div><small>Sanity</small><strong class="sanity">✦ {{ displayedPlayer.sanity }}</strong></div></div>
+            <dl class="investigator-facts"><div><dt>Location</dt><dd>{{ locationById[displayedPlayer.locationId as LocationId]?.name }}</dd></div><div><dt>Turn</dt><dd>{{ displayedPlayer.id === game.activePlayerId.value ? 'Active' : 'Waiting' }}</dd></div><div><dt>Status</dt><dd>{{ displayedPlayer.connected ? 'Connected' : 'Away' }}</dd></div></dl>
+            <template v-if="displayedInvestigator"><div class="dock-skills"><span v-for="skill in skillNames" :key="skill"><small>{{ skill.slice(0, 3) }}</small><b>{{ displayedInvestigator.skills[skill] }}</b></span></div><p class="dock-ability"><b>Action</b>{{ displayedInvestigator.actionAbility }}</p><p class="dock-ability"><b>Passive</b>{{ displayedInvestigator.passiveAbility }}</p></template>
+          </div>
+        </aside>
         </div>
       </section>
     </template>
@@ -270,12 +289,13 @@ input:focus { border-color: #d5aa63; box-shadow: 0 0 0 3px #d5aa6322; }
 .game-hud { z-index: 5; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 20px; padding: 0 14px; background: linear-gradient(180deg, #17323a, #0c2228); border-bottom: 1px solid #3d5960; box-shadow: 0 5px 18px #0008; }
 .game-hud__brand, .game-hud__room, .game-hud__turn { display: flex; align-items: center; gap: 10px; }.game-hud__brand strong { font: 600 1rem Georgia, serif; }.sigil-small { color: #d5aa63; }.game-hud__turn { flex-direction: column; gap: 1px; text-align: center; }.game-hud__turn span { color: #91a7a8; font-size: .62rem; text-transform: uppercase; letter-spacing: .12em; }.game-hud__turn strong { color: #e9ce8b; font-size: .8rem; }.game-hud__room { justify-content: flex-end; }.game-hud__room code { color: #91a7a8; font-size: .68rem; }.hud-button { color: #e8e8dc; background: #29464e; border: 1px solid #47646c; border-radius: 7px; padding: 6px 10px; font-size: .7rem; font-weight: 800; }
 .game-workspace { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 280px; }
+.game-workspace.dock-collapsed { grid-template-columns: minmax(0, 1fr) 70px; }
 .board-stage { position: relative; min-width: 0; min-height: 0; display: grid; place-items: center; overflow: hidden; padding: 10px; background: radial-gradient(circle at 50% 45%, #18333a, #050f12 75%); }
 .board-stage .board { display: block; width: 100%; height: 100%; max-height: 100%; border-radius: 12px; }
 .board-stage .board-tools { position: absolute; z-index: 4; top: 18px; left: 18px; right: 18px; margin: 0; pointer-events: none; }.board-stage .board-tools > * { pointer-events: auto; }.board-stage .route-legend { padding: 7px 10px; border: 1px solid #45616a; border-radius: 8px; background: #07171cdd; backdrop-filter: blur(8px); }
 .board-stage .location-inspector { position: absolute; z-index: 4; left: 18px; bottom: 18px; width: min(520px, calc(100% - 150px)); margin: 0; background: #07171cee; box-shadow: 0 8px 28px #0009; backdrop-filter: blur(10px); }
 .end-turn { position: absolute; z-index: 5; right: 18px; bottom: 18px; color: #142127; background: #d5aa63; border: 0; border-radius: 9px; padding: 11px 18px; font-weight: 900; box-shadow: 0 8px 24px #0008; }
-.game-roster { overflow: auto; padding: 18px; background: linear-gradient(145deg, #142e35, #091a1f); border-left: 1px solid #3a565e; }.game-roster article { display: flex; gap: 10px; padding: 15px 0; border-bottom: 1px solid #29464e; }.game-roster article > div { min-width: 0; }.game-roster strong { font-size: .82rem; }.game-roster p { margin: 4px 0 0; color: #8fa3a4; font-size: .68rem; line-height: 1.35; }.game-roster .resource-line { color: #ddc77f; }
+.investigator-dock { position: relative; min-width: 0; display: grid; grid-template-columns: 52px minmax(0, 1fr); overflow: hidden; background: linear-gradient(145deg, #142e35, #091a1f); border-left: 1px solid #3a565e; transition: width .2s; }.investigator-dock.collapsed { grid-template-columns: 1fr; }.dock-toggle { position: absolute; z-index: 2; top: 8px; left: -1px; width: 25px; height: 30px; color: #d5aa63; background: #17343b; border: 1px solid #48636a; border-left: 0; border-radius: 0 7px 7px 0; font-size: 1.2rem; }.party-tabs { display: flex; flex-direction: column; align-items: center; gap: 9px; padding: 48px 7px 10px; background: #07191e; border-right: 1px solid #29464e; }.party-tabs button { position: relative; width: 38px; height: 38px; padding: 0; color: #dce4df; background: #1b3941; border: 1px solid #49636a; border-radius: 50%; font-weight: 900; }.party-tabs button.active { color: #18272c; background: #d5aa63; border-color: #f3d797; box-shadow: 0 0 0 3px #d5aa6325; }.party-tabs .presence { position: absolute; right: -1px; bottom: 0; border: 2px solid #07191e; }.investigator-dock.collapsed .party-tabs { border-right: 0; }.investigator-sheet { min-width: 0; overflow-y: auto; padding: 28px 16px 20px; }.investigator-sheet h2 { margin: 5px 0 2px; font-size: 1.35rem; }.investigator-role { min-height: 35px; margin: 0; color: #8da1a3; font-size: .68rem; line-height: 1.4; }.dock-vitals { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0; }.dock-vitals div { display: grid; gap: 3px; padding: 10px; background: #07191e; border: 1px solid #29464e; border-radius: 8px; }.dock-vitals small, .investigator-facts dt { color: #82999b; font-size: .58rem; text-transform: uppercase; letter-spacing: .08em; }.dock-vitals strong { font-size: 1rem; }.dock-vitals .health { color: #e9a292; }.dock-vitals .sanity { color: #8fd1de; }.investigator-facts { display: grid; gap: 8px; margin: 0 0 14px; }.investigator-facts div { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid #29464e; padding-bottom: 7px; }.investigator-facts dd { margin: 0; color: #d8ded8; font-size: .68rem; text-align: right; }.dock-skills { display: grid; grid-template-columns: repeat(5, 1fr); margin: 12px 0; }.dock-skills span { display: grid; place-items: center; gap: 3px; border-right: 1px solid #29464e; }.dock-skills span:last-child { border: 0; }.dock-skills small { color: #82999b; font-size: .52rem; text-transform: uppercase; }.dock-skills b { font-size: .75rem; }.dock-ability { margin: 8px 0 0; color: #9eb0ad; font-size: .63rem; line-height: 1.45; }.dock-ability b { display: block; color: #d5aa63; font-size: .55rem; text-transform: uppercase; letter-spacing: .08em; }
 @media (max-width: 800px) { .lobby-grid, .game-grid { grid-template-columns: 1fr; }.investigators { grid-template-columns: 1fr; }.masthead { align-items: flex-end; }.room-bar { align-items: flex-start; gap: 12px; flex-direction: column; }.copy { width: 100%; } }
 @media (max-width: 600px) { .card-archive-prompt { align-items: stretch; flex-direction: column; }.card-archive-prompt button { width: 100%; } }
 @media (prefers-reduced-motion: reduce) { .route.legal, .location.available circle { animation: none; }.token { transition: none; } }
