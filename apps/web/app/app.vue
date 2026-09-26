@@ -88,8 +88,8 @@ async function copyInvite() {
 </script>
 
 <template>
-  <main class="shell">
-    <header class="masthead">
+  <main class="shell" :class="{ 'playing-shell': game.phase.value !== 'lobby' && game.status.value === 'connected' }">
+    <header v-if="game.phase.value === 'lobby' || game.status.value !== 'connected'" class="masthead">
       <div>
         <p class="eyebrow">Cooperative mystery · authoritative multiplayer</p>
         <h1>Eldritch Horror</h1>
@@ -117,7 +117,7 @@ async function copyInvite() {
     </section>
 
     <template v-else>
-      <section class="room-bar">
+      <section v-if="game.phase.value === 'lobby'" class="room-bar">
         <div><span>Room</span><strong>{{ game.roomId.value }}</strong></div>
         <button class="copy" @click="copyInvite">Copy invite link</button>
       </section>
@@ -171,9 +171,14 @@ async function copyInvite() {
       <LazyCardCatalog v-else @close="showCardCatalog = false" />
       </template>
 
-      <section v-else class="game-grid">
-        <div class="panel board-wrap">
-          <div class="turn"><span>Turn {{ game.turnNumber.value }}</span><strong>{{ isMyTurn ? 'Your action' : `${game.players.value.find(p => p.id === game.activePlayerId.value)?.displayName}'s action` }}</strong></div>
+      <section v-else class="game-shell">
+        <header class="game-hud">
+          <div class="game-hud__brand"><span class="sigil-small">✦</span><strong>Eldritch Horror</strong></div>
+          <div class="game-hud__turn"><span>Action phase · Turn {{ game.turnNumber.value }}</span><strong>{{ isMyTurn ? 'Your action' : `${game.players.value.find(p => p.id === game.activePlayerId.value)?.displayName}'s action` }}</strong></div>
+          <div class="game-hud__room"><span class="presence online"></span><code>{{ game.roomId.value }}</code><button class="hud-button" @click="copyInvite">Invite</button></div>
+        </header>
+        <div class="game-workspace">
+        <div class="board-stage">
           <div class="board-tools"><div class="route-legend" aria-label="Route legend"><span class="train">Train</span><span class="ship">Ship</span><span class="uncharted">Uncharted</span></div><div class="zoom-controls" aria-label="Map zoom controls"><button :disabled="boardZoom <= 1" aria-label="Zoom out" @click="changeZoom(-.5)">−</button><button @click="boardZoom = 1">{{ boardZoom }}×</button><button :disabled="boardZoom >= 2.5" aria-label="Zoom in" @click="changeZoom(.5)">+</button></div></div>
           <svg class="board" :viewBox="boardViewBox" role="graphics-document" aria-labelledby="board-title">
             <title id="board-title">Interactive Eldritch Horror world map</title>
@@ -191,9 +196,10 @@ async function copyInvite() {
             <template v-if="inspectedLocation"><div><span class="chapter">{{ inspectedLocation.type }} space</span><strong>{{ inspectedLocation.name }}</strong></div><p>{{ inspectedRoutes.length }} connections · {{ [...new Set(inspectedRoutes.map(route => route.type))].join(', ') }}</p><button v-if="legalDestinations.has(inspectedLocation.id) && isMyTurn" class="move-here" @click="move(inspectedLocation.id)">Move here</button></template>
             <p v-else>Focus or hover a location to inspect its connections.</p>
           </div>
-          <button class="secondary" :disabled="!isMyTurn" @click="game.send({ type: 'END_TURN' })">End turn</button>
+          <button class="end-turn" :disabled="!isMyTurn" @click="game.send({ type: 'END_TURN' })">End turn</button>
         </div>
-        <aside class="panel roster"><p class="chapter">Investigators</p><article v-for="player in game.players.value" :key="player.id"><span class="presence" :class="{ online: player.connected }"></span><div><strong>{{ player.displayName }}</strong><p>{{ investigatorById[player.investigatorId]?.name }} · {{ locationById[player.locationId as LocationId]?.name }}</p><p class="resource-line">♥ {{ player.health }} · ✦ {{ player.sanity }}</p></div></article></aside>
+        <aside class="game-roster"><p class="chapter">Investigators</p><article v-for="player in game.players.value" :key="player.id"><span class="presence" :class="{ online: player.connected }"></span><div><strong>{{ player.displayName }}</strong><p>{{ investigatorById[player.investigatorId]?.name }} · {{ locationById[player.locationId as LocationId]?.name }}</p><p class="resource-line">♥ {{ player.health }} · ✦ {{ player.sanity }}</p></div></article></aside>
+        </div>
       </section>
     </template>
   </main>
@@ -258,6 +264,18 @@ input:focus { border-color: #d5aa63; box-shadow: 0 0 0 3px #d5aa6322; }
 @keyframes destination-pulse { 50% { filter: drop-shadow(0 0 10px #ffe6a0); } } @keyframes route-flow { to { stroke-dashoffset: -18; } }
 .board-wrap > button { width: 100%; margin-top: 12px; }
 .card-archive-prompt { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-top: 18px; padding: 24px 28px; }.card-archive-prompt h2 { margin: 5px 0; font-size: 1.45rem; }.card-archive-prompt p:last-child { margin: 0; }.card-archive-prompt button { flex: none; }
+.playing-shell { position: fixed; inset: 0; width: 100%; height: 100dvh; padding: 0; overflow: hidden; background: #061216; }
+.playing-shell > .error { position: fixed; z-index: 20; top: 66px; left: 50%; width: min(620px, calc(100% - 32px)); margin: 0; transform: translateX(-50%); }
+.game-shell { display: grid; grid-template-rows: 54px minmax(0, 1fr); height: 100%; }
+.game-hud { z-index: 5; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 20px; padding: 0 14px; background: linear-gradient(180deg, #17323a, #0c2228); border-bottom: 1px solid #3d5960; box-shadow: 0 5px 18px #0008; }
+.game-hud__brand, .game-hud__room, .game-hud__turn { display: flex; align-items: center; gap: 10px; }.game-hud__brand strong { font: 600 1rem Georgia, serif; }.sigil-small { color: #d5aa63; }.game-hud__turn { flex-direction: column; gap: 1px; text-align: center; }.game-hud__turn span { color: #91a7a8; font-size: .62rem; text-transform: uppercase; letter-spacing: .12em; }.game-hud__turn strong { color: #e9ce8b; font-size: .8rem; }.game-hud__room { justify-content: flex-end; }.game-hud__room code { color: #91a7a8; font-size: .68rem; }.hud-button { color: #e8e8dc; background: #29464e; border: 1px solid #47646c; border-radius: 7px; padding: 6px 10px; font-size: .7rem; font-weight: 800; }
+.game-workspace { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 280px; }
+.board-stage { position: relative; min-width: 0; min-height: 0; display: grid; place-items: center; overflow: hidden; padding: 10px; background: radial-gradient(circle at 50% 45%, #18333a, #050f12 75%); }
+.board-stage .board { display: block; width: 100%; height: 100%; max-height: 100%; border-radius: 12px; }
+.board-stage .board-tools { position: absolute; z-index: 4; top: 18px; left: 18px; right: 18px; margin: 0; pointer-events: none; }.board-stage .board-tools > * { pointer-events: auto; }.board-stage .route-legend { padding: 7px 10px; border: 1px solid #45616a; border-radius: 8px; background: #07171cdd; backdrop-filter: blur(8px); }
+.board-stage .location-inspector { position: absolute; z-index: 4; left: 18px; bottom: 18px; width: min(520px, calc(100% - 150px)); margin: 0; background: #07171cee; box-shadow: 0 8px 28px #0009; backdrop-filter: blur(10px); }
+.end-turn { position: absolute; z-index: 5; right: 18px; bottom: 18px; color: #142127; background: #d5aa63; border: 0; border-radius: 9px; padding: 11px 18px; font-weight: 900; box-shadow: 0 8px 24px #0008; }
+.game-roster { overflow: auto; padding: 18px; background: linear-gradient(145deg, #142e35, #091a1f); border-left: 1px solid #3a565e; }.game-roster article { display: flex; gap: 10px; padding: 15px 0; border-bottom: 1px solid #29464e; }.game-roster article > div { min-width: 0; }.game-roster strong { font-size: .82rem; }.game-roster p { margin: 4px 0 0; color: #8fa3a4; font-size: .68rem; line-height: 1.35; }.game-roster .resource-line { color: #ddc77f; }
 @media (max-width: 800px) { .lobby-grid, .game-grid { grid-template-columns: 1fr; }.investigators { grid-template-columns: 1fr; }.masthead { align-items: flex-end; }.room-bar { align-items: flex-start; gap: 12px; flex-direction: column; }.copy { width: 100%; } }
 @media (max-width: 600px) { .card-archive-prompt { align-items: stretch; flex-direction: column; }.card-archive-prompt button { width: 100%; } }
 @media (prefers-reduced-motion: reduce) { .route.legal, .location.available circle { animation: none; }.token { transition: none; } }
