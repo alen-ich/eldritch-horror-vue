@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Client, CloseCode, Room } from "colyseus";
 import { baseGameInvestigators, baseGameMap } from "@eldritch/content";
-import { executeCommand, type GameContent, type GameState } from "@eldritch/engine";
+import { executeCommand, type GameContent, type GameState, type PrivateGameState } from "@eldritch/engine";
 import {
   commandErrorMessageType,
   commandMessageType,
@@ -27,6 +27,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
   state = new GameRoomState();
 
   private readonly playerIdBySession = new Map<string, string>();
+  private privateState: PrivateGameState = { deckOrderById: {}, tokenPoolById: {} };
 
   messages = {
     [commandMessageType]: (client: Client, payload: unknown) => this.handleCommand(client, payload),
@@ -102,6 +103,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       actionsRemaining: this.state.actionsRemaining,
       performedActions: this.state.performedActions ? this.state.performedActions.split(",") as GameState["performedActions"] : [],
       monsterLocationIds: [],
+      privateState: this.privateState,
       players: [...this.state.players.values()].map((player) => ({
         id: player.id,
         investigatorId: (player.investigatorId || undefined) as InvestigatorId | undefined,
@@ -119,6 +121,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
   }
 
   private applyEngineState(engineState: GameState): void {
+    this.privateState = engineState.privateState;
     this.state.stateVersion = engineState.stateVersion;
     this.state.phase = engineState.phase;
     this.state.activePlayerId = engineState.activePlayerId ?? "";

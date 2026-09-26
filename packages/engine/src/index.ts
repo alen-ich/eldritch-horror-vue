@@ -20,6 +20,11 @@ export interface EnginePlayer {
   travelTickets?: TravelTicketType[];
 }
 
+export interface PrivateGameState {
+  deckOrderById: Record<string, string[]>;
+  tokenPoolById: Record<string, string[]>;
+}
+
 export interface GameState {
   stateVersion: number;
   phase: GamePhase;
@@ -30,7 +35,10 @@ export interface GameState {
   actionsRemaining: number;
   performedActions: ActionType[];
   monsterLocationIds: LocationId[];
+  privateState: PrivateGameState;
 }
+
+export type PublicEngineGameState = Omit<GameState, "privateState">;
 
 export interface GameMap {
   adjacentLocationIds: Readonly<Partial<Record<LocationId, readonly LocationId[]>>>;
@@ -80,6 +88,23 @@ export function createLobby(playerIds: string[]): GameState {
     actionsRemaining: 0,
     performedActions: [],
     monsterLocationIds: [],
+    privateState: {
+      deckOrderById: {},
+      tokenPoolById: {},
+    },
+  };
+}
+
+export function projectPublicState(state: GameState): PublicEngineGameState {
+  const { privateState: _privateState, ...publicState } = state;
+  return {
+    ...publicState,
+    players: publicState.players.map((player) => ({
+      ...player,
+      travelTickets: player.travelTickets ? [...player.travelTickets] : undefined,
+    })),
+    performedActions: [...publicState.performedActions],
+    monsterLocationIds: [...publicState.monsterLocationIds],
   };
 }
 
@@ -131,6 +156,14 @@ export function executeCommand(
     players: state.players.map((player) => ({ ...player })),
     performedActions: [...state.performedActions],
     monsterLocationIds: [...state.monsterLocationIds],
+    privateState: {
+      deckOrderById: Object.fromEntries(
+        Object.entries(state.privateState.deckOrderById).map(([id, cards]) => [id, [...cards]]),
+      ),
+      tokenPoolById: Object.fromEntries(
+        Object.entries(state.privateState.tokenPoolById).map(([id, tokens]) => [id, [...tokens]]),
+      ),
+    },
   };
   const actor = next.players[actorIndex]!;
 

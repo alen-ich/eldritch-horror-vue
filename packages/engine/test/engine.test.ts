@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createLobby, executeCommand, type GameContent, type GameState } from "../src/index.js";
+import { createLobby, executeCommand, projectPublicState, type GameContent, type GameState } from "../src/index.js";
 
 const testContent: GameContent = {
   map: {
@@ -34,6 +34,7 @@ function startedGame(): GameState {
     actionsRemaining: 2,
     performedActions: [],
     monsterLocationIds: [],
+    privateState: { deckOrderById: {}, tokenPoolById: {} },
     players: [
       { id: "host", investigatorId: "akachi_onyele", locationId: "san_francisco", health: 4, sanity: 6, maxHealth: 5, maxSanity: 7, travelTickets: [] },
       { id: "guest", investigatorId: "trish_scarborough", locationId: "san_francisco", health: 7, sanity: 5, maxHealth: 7, maxSanity: 5, travelTickets: [] },
@@ -142,5 +143,34 @@ describe("executeCommand", () => {
       ok: false,
       error: { code: "INVESTIGATOR_TAKEN" },
     });
+  });
+});
+
+describe("projectPublicState", () => {
+  it("removes hidden deck and token order from the synchronized projection", () => {
+    const state = startedGame();
+    state.privateState = {
+      deckOrderById: { mythos: ["mythos_03", "mythos_01"] },
+      tokenPoolById: { gates: ["gate_rome", "gate_tokyo"] },
+    };
+
+    const projection = projectPublicState(state);
+
+    expect(projection).not.toHaveProperty("privateState");
+    expect(JSON.stringify(projection)).not.toContain("mythos_03");
+    expect(JSON.stringify(projection)).not.toContain("gate_rome");
+  });
+
+  it("returns detached public collections", () => {
+    const state = startedGame();
+    const projection = projectPublicState(state);
+
+    projection.players[0]!.travelTickets!.push("ship");
+    projection.performedActions.push("rest");
+    projection.monsterLocationIds.push("rome");
+
+    expect(state.players[0]!.travelTickets).toEqual([]);
+    expect(state.performedActions).toEqual([]);
+    expect(state.monsterLocationIds).toEqual([]);
   });
 });
