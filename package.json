@@ -10,7 +10,6 @@
     "typecheck": "turbo typecheck",
     "test": "turbo test",
     "content:validate": "pnpm --filter @eldritch/content validate",
-    "cards:generate": "node scripts/generate-card-assets.mjs",
     "map:generate": "node scripts/generate-map-assets.mjs"
   },
   "keywords": [],

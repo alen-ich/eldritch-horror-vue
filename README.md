@@ -17,8 +17,6 @@ Open the web app in two browser windows. Create a game in the first, copy its in
 
 The game board uses a reproducible public-domain Earth basemap with interactive location inspection, legal-route highlights, movement animation, and bounded zoom controls. Run `pnpm map:generate` after changing the map-generation source.
 
-The lobby also includes an on-demand searchable reference archive for the supplied 189-card set, with family filters, optimized thumbnails, and paired front/back scans. Run `pnpm cards:generate` after changing card source data or scans. This archive is content reference only; authoritative decks and card effects are not part of the current game loop.
-
 ## Verify
 
 ```bash

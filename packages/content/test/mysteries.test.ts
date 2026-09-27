@@ -1,12 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { baseGameCardById } from "../src/cards.js";
 import { baseGameMysteries, mysteryIds, mysteryTargetValue, validateMysteryContent } from "../src/mysteries.js";
 
 describe("base-game Mysteries", () => {
   it("contains all sixteen cards with source provenance", () => {
     expect(baseGameMysteries.map((mystery) => mystery.id)).toEqual(mysteryIds);
     expect(new Set(baseGameMysteries.map((mystery) => mystery.imageSha256))).toHaveLength(16);
-    expect(baseGameMysteries.every((mystery) => baseGameCardById.get(mystery.cardId)?.card_type === "mystery")).toBe(true);
     expect(() => validateMysteryContent(baseGameMysteries)).not.toThrow();
   });
 
