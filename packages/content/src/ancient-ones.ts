@@ -210,7 +210,7 @@ export function validateAncientOneContent(ancientOnes: readonly AncientOneData[]
   if (ids.size !== ancientOneIds.length || ancientOneIds.some((id) => !ids.has(id))) {
     throw new Error("Ancient One content does not match the base-game roster.");
   }
-  for (const ancientOne of parsed) {
+  for (const ancientOne of ancientOnes) {
     if (ancientOne.mythosDeck.some((stage) => stage.green + stage.yellow + stage.blue === 0)) {
       throw new Error(`${ancientOne.id} has an empty Mythos stage.`);
     }
