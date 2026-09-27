@@ -7,6 +7,7 @@ export default defineNuxtConfig({
     '/cards/mythos/**': { headers: { 'cache-control': 'public, max-age=86400' } },
     '/cards/mysteries/**': { headers: { 'cache-control': 'public, max-age=86400' } },
     '/cards/reference/**': { headers: { 'cache-control': 'public, max-age=86400' } },
+    '/tokens/gates/**': { headers: { 'cache-control': 'public, max-age=86400' } },
     '/map/**': { headers: { 'cache-control': 'public, max-age=86400' } }
   },
   runtimeConfig: {
