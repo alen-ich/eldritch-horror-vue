@@ -98,6 +98,8 @@ export interface GameState {
   activePlayerId?: string;
   leadInvestigatorId?: string;
   ancientOneId?: AncientOneId;
+  activeMysteryId?: string;
+  completedMysteryIds: string[];
   turnNumber: number;
   actionsRemaining: number;
   performedActions: ActionType[];
@@ -125,6 +127,7 @@ export interface InvestigatorSetup {
 export interface GameContent {
   map: GameMap;
   investigators: Readonly<Partial<Record<InvestigatorId, InvestigatorSetup>>>;
+  mysteryIdsByAncientOne: Readonly<Partial<Record<AncientOneId, readonly string[]>>>;
 }
 
 export type RuleErrorCode =
@@ -136,6 +139,8 @@ export type RuleErrorCode =
   | "INVESTIGATOR_CONTENT_MISSING"
   | "INVESTIGATOR_TAKEN"
   | "ANCIENT_ONE_REQUIRED"
+  | "MYSTERY_CONTENT_MISSING"
+  | "RANDOM_INPUT_REQUIRED"
   | "NOT_ACTIVE_PLAYER"
   | "ACTION_ALREADY_PERFORMED"
   | "NO_ACTIONS_REMAINING"
@@ -164,6 +169,7 @@ export function createLobby(playerIds: string[]): GameState {
     actionsRemaining: 0,
     performedActions: [],
     monsterLocationIds: [],
+    completedMysteryIds: [],
     privateState: {
       deckOrderById: {},
       tokenPoolById: {},
@@ -198,6 +204,7 @@ export function projectStateForPlayer(state: GameState, viewerPlayerId?: string)
     })),
     performedActions: [...publicState.performedActions],
     monsterLocationIds: [...publicState.monsterLocationIds],
+    completedMysteryIds: [...publicState.completedMysteryIds],
     pendingDecision: pendingDecision
       ? pendingDecision.visibility === "public" || pendingDecision.playerId === viewerPlayerId
         ? cloneDecision(pendingDecision)
@@ -249,6 +256,7 @@ export function executeCommand(
   actorPlayerId: string,
   command: GameCommand,
   content: GameContent,
+  context?: EngineContext,
 ): CommandResult {
   const actorIndex = state.players.findIndex((player) => player.id === actorPlayerId);
   if (actorIndex < 0) return failure("PLAYER_NOT_FOUND", "The acting player is not in this game.");
@@ -258,6 +266,7 @@ export function executeCommand(
     players: state.players.map((player) => ({ ...player })),
     performedActions: [...state.performedActions],
     monsterLocationIds: [...state.monsterLocationIds],
+    completedMysteryIds: [...state.completedMysteryIds],
     pendingDecision: state.pendingDecision ? cloneDecision(state.pendingDecision) : undefined,
     privateState: {
       deckOrderById: Object.fromEntries(
@@ -323,12 +332,22 @@ export function executeCommand(
     if (state.players.some((player) => !player.investigatorId)) {
       return failure("INVESTIGATOR_REQUIRED", "Every player must select an investigator.");
     }
+    const mysteryIds = content.mysteryIdsByAncientOne[state.ancientOneId];
+    if (!mysteryIds || mysteryIds.length !== 4) {
+      return failure("MYSTERY_CONTENT_MISSING", "The selected Ancient One must have exactly four Mysteries.");
+    }
+    if (!context) return failure("RANDOM_INPUT_REQUIRED", "Starting the game requires deterministic random input.");
+    const shuffledMysteries = context.shuffle(mysteryIds);
+    const activeMysteryId = shuffledMysteries.shift()!;
     next.phase = "action";
     next.activePlayerId = actorPlayerId;
     next.leadInvestigatorId = actorPlayerId;
     next.turnNumber = 1;
     next.actionsRemaining = 2;
     next.performedActions = [];
+    next.activeMysteryId = activeMysteryId;
+    next.completedMysteryIds = [];
+    next.privateState.deckOrderById.mysteries = shuffledMysteries;
     for (const player of next.players) {
       const setup = content.investigators[player.investigatorId!];
       if (!setup) return failure("INVESTIGATOR_CONTENT_MISSING", "The selected investigator has no setup data.");
@@ -339,7 +358,10 @@ export function executeCommand(
       player.maxSanity = setup.sanity;
       player.travelTickets = [];
     }
-    return success(next, [{ type: "GAME_STARTED", activePlayerId: actorPlayerId }]);
+    return success(next, [
+      { type: "GAME_STARTED", activePlayerId: actorPlayerId },
+      { type: "MYSTERY_REVEALED", mysteryId: activeMysteryId },
+    ]);
   }
 
   if (state.phase !== "action") return failure("WRONG_PHASE", "That action is not available in the lobby.");

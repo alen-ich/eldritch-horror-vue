@@ -30,6 +30,10 @@ const testContent: GameContent = {
     akachi_onyele: { startingLocationId: "space_15", health: 5, sanity: 7 },
     trish_scarborough: { startingLocationId: "space_16", health: 7, sanity: 5 },
   },
+  mysteryIdsByAncientOne: {
+    cthulhu: ["cthulhu_one", "cthulhu_two", "cthulhu_three", "cthulhu_four"],
+    yog_sothoth: ["yog_one", "yog_two", "yog_three", "yog_four"],
+  },
 };
 
 function startedGame(): GameState {
@@ -43,6 +47,8 @@ function startedGame(): GameState {
     actionsRemaining: 2,
     performedActions: [],
     monsterLocationIds: [],
+    activeMysteryId: "cthulhu_one",
+    completedMysteryIds: [],
     privateState: { deckOrderById: {}, tokenPoolById: {} },
     players: [
       { id: "host", investigatorId: "akachi_onyele", locationId: "san_francisco", health: 4, sanity: 6, maxHealth: 5, maxSanity: 7, travelTickets: [] },
@@ -78,7 +84,8 @@ describe("executeCommand", () => {
     const selectedAncientOne = executeCommand(selectedGuest.state, "host", { type: "SELECT_ANCIENT_ONE", ancientOneId: "cthulhu" }, testContent);
     expect(selectedAncientOne.ok).toBe(true);
     if (!selectedAncientOne.ok) return;
-    const started = executeCommand(selectedAncientOne.state, "host", { type: "START_GAME" }, testContent);
+    const context = createDeterministicEngineContext({ shuffleIndexes: [0, 1, 0] });
+    const started = executeCommand(selectedAncientOne.state, "host", { type: "START_GAME" }, testContent, context);
     expect(started.ok).toBe(true);
     if (started.ok) expect(started.state).toMatchObject({
       phase: "action", activePlayerId: "host", leadInvestigatorId: "host", turnNumber: 1, actionsRemaining: 2,
@@ -86,6 +93,25 @@ describe("executeCommand", () => {
         { locationId: "space_15", health: 5, sanity: 7 },
         { locationId: "space_16", health: 7, sanity: 5 },
       ],
+      activeMysteryId: "cthulhu_three",
+      completedMysteryIds: [],
+    });
+    if (started.ok) {
+      expect(started.state.privateState.deckOrderById.mysteries).toEqual(["cthulhu_four", "cthulhu_two", "cthulhu_one"]);
+      expect(started.events.at(-1)).toEqual({ type: "MYSTERY_REVEALED", mysteryId: "cthulhu_three" });
+    }
+  });
+
+  it("requires complete Mystery content and explicit random input before starting", () => {
+    const state = createLobby(["host", "guest"]);
+    state.ancientOneId = "cthulhu";
+    state.players[0]!.investigatorId = "akachi_onyele";
+    state.players[1]!.investigatorId = "trish_scarborough";
+    expect(executeCommand(state, "host", { type: "START_GAME" }, { ...testContent, mysteryIdsByAncientOne: {} })).toMatchObject({
+      ok: false, error: { code: "MYSTERY_CONTENT_MISSING" },
+    });
+    expect(executeCommand(state, "host", { type: "START_GAME" }, testContent)).toMatchObject({
+      ok: false, error: { code: "RANDOM_INPUT_REQUIRED" },
     });
   });
 
@@ -183,7 +209,7 @@ describe("projectPublicState", () => {
   it("removes hidden deck and token order from the synchronized projection", () => {
     const state = startedGame();
     state.privateState = {
-      deckOrderById: { mythos: ["mythos_03", "mythos_01"] },
+      deckOrderById: { mythos: ["mythos_03", "mythos_01"], mysteries: ["hidden_mystery"] },
       tokenPoolById: { gates: ["gate_rome", "gate_tokyo"] },
     };
 
@@ -192,6 +218,8 @@ describe("projectPublicState", () => {
     expect(projection).not.toHaveProperty("privateState");
     expect(JSON.stringify(projection)).not.toContain("mythos_03");
     expect(JSON.stringify(projection)).not.toContain("gate_rome");
+    expect(JSON.stringify(projection)).not.toContain("hidden_mystery");
+    expect(projection.activeMysteryId).toBe("cthulhu_one");
   });
 
   it("returns detached public collections", () => {
