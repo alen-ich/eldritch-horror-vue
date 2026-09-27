@@ -10,7 +10,8 @@
     "typecheck": "turbo typecheck",
     "test": "turbo test",
     "content:validate": "pnpm --filter @eldritch/content validate",
-    "map:generate": "node scripts/generate-map-assets.mjs"
+    "map:generate": "node scripts/generate-map-assets.mjs",
+    "mythos:generate": "node scripts/generate-mythos-assets.mjs"
   },
   "keywords": [],
   "author": "",
