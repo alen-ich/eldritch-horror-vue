@@ -11,6 +11,7 @@
     "test": "turbo test",
     "content:validate": "pnpm --filter @eldritch/content validate",
     "map:generate": "node scripts/generate-map-assets.mjs",
+    "mysteries:generate": "node scripts/generate-mystery-assets.mjs",
     "mythos:generate": "node scripts/generate-mythos-assets.mjs"
   },
   "keywords": [],
