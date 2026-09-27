@@ -41,7 +41,7 @@ export interface MysteryData {
   name: string;
   imageUrl: string;
   backImageUrl: string;
-  scanVerification: "supplied_english_scan" | "preserved_english_scan";
+  scanVerification: "supplied_english_scan";
   setup: readonly MysterySetup[];
   progress: MysteryProgress;
   completion: MysteryCompletion;
@@ -136,9 +136,7 @@ export const baseGameMysteries: readonly MysteryData[] = baseGameMysteryDefiniti
   ...mystery,
   imageUrl: `/cards/mysteries/${mystery.id}.webp`,
   backImageUrl: mysteryBackImageUrls[mystery.ancientOneId],
-  scanVerification: mystery.id === "azathoth_occult_research"
-    ? "preserved_english_scan"
-    : "supplied_english_scan",
+  scanVerification: "supplied_english_scan",
 }));
 
 const componentIdSchema = z.string().regex(/^[a-z][a-z0-9_]*$/);
@@ -171,7 +169,7 @@ const mysterySchema = z.object({
   name: z.string().min(1),
   imageUrl: z.string().regex(/^\/cards\/mysteries\/[a-z0-9_]+\.webp$/),
   backImageUrl: z.string().regex(/^\/cards\/mysteries\/[a-z0-9_]+-back\.webp$/),
-  scanVerification: z.enum(["supplied_english_scan", "preserved_english_scan"]),
+  scanVerification: z.literal("supplied_english_scan"),
   setup: z.array(setupSchema), progress: progressSchema, completion: completionSchema,
 }).strict();
 

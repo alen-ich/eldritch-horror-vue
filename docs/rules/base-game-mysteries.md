@@ -4,7 +4,7 @@
 
 The former Russian card scans, OCR catalog, generated browser assets, and Russian display metadata were removed on 2026-09-28. English artwork is now registered for all 16 base-game Mystery cards: four for each of Azathoth, Cthulhu, Shub-Niggurath, and Yog-Sothoth.
 
-The replacement source set contains 15 distinct base-game fronts. `azathoth-1.jpg` and `azathoth-2.jpg` are identical, so the generated Occult Research front is preserved from the previously supplied English sheet until a distinct replacement source scan is available. Eight expansion Mystery fronts found in the earlier sheets were removed from the source and generated asset sets.
+The replacement source set contains all 16 distinct base-game fronts. Eight expansion Mystery fronts found in the earlier sheets were removed from the source and generated asset sets.
 
 ## Implemented content
 
@@ -20,7 +20,7 @@ Validation rejects duplicate or incomplete rosters and requires exactly four Mys
 
 ## Authority boundary
 
-The structured transcription and artwork mapping are `verified`. Content validation requires exactly the 16 base-game IDs and four Mysteries per Ancient One; asset tests require every registered front and back to exist. The one preserved Occult Research crop is marked separately from the 15 fronts generated from the current source files.
+The structured transcription and artwork mapping are `verified`. Content validation requires exactly the 16 base-game IDs and four Mysteries per Ancient One; asset tests require every registered front and back to exist, and all 16 fronts are generated from the current English source scans.
 
 Game start creates a deterministic four-card deck for the selected Ancient One and keeps its remaining order in server-private state. The pure engine now owns the generic Mystery lifecycle: authoritative progress is capped at the content-defined target, a solved Mystery moves to the completed list, its replacement is drawn from the private deck, and the third solved Mystery produces the terminal investigator victory result. The room synchronizes only the active Mystery, progress, target, completed IDs, and terminal result; the web interface renders that projection without choosing outcomes.
 

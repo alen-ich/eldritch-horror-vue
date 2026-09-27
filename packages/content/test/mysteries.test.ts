@@ -20,8 +20,7 @@ describe("base-game Mysteries", () => {
       expect(existsSync(path.join(process.cwd(), "../../apps/web/public", mystery.imageUrl))).toBe(true);
       expect(existsSync(path.join(process.cwd(), "../../apps/web/public", mystery.backImageUrl))).toBe(true);
     }
-    expect(baseGameMysteries.filter(({ scanVerification }) => scanVerification === "supplied_english_scan")).toHaveLength(15);
-    expect(baseGameMysteries.find(({ id }) => id === "azathoth_occult_research")?.scanVerification).toBe("preserved_english_scan");
+    expect(baseGameMysteries.filter(({ scanVerification }) => scanVerification === "supplied_english_scan")).toHaveLength(16);
   });
 
   it("records the current completion thresholds", () => {
