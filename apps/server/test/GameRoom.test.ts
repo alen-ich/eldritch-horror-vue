@@ -1,8 +1,15 @@
 import assert from "node:assert/strict";
 import { ColyseusTestServer, boot } from "@colyseus/testing";
-import { commandErrorMessageType, commandMessageType, type GameCommand } from "@eldritch/protocol";
+import {
+  commandErrorMessageType,
+  commandMessageType,
+  pendingDecisionMessageType,
+  type GameCommand,
+  type PendingDecision,
+} from "@eldritch/protocol";
 import appConfig from "../src/app.config.js";
-import { GameRoomState } from "../src/rooms/schema/GameRoomState.js";
+import { GameRoom } from "../src/rooms/GameRoom.js";
+import { GameRoomState, PendingDecisionState } from "../src/rooms/schema/GameRoomState.js";
 
 describe("authoritative game room", () => {
   let colyseus: ColyseusTestServer<typeof appConfig>;
@@ -90,5 +97,41 @@ describe("authoritative game room", () => {
     assert.equal(error.code, "STALE_STATE");
     assert.equal(room.state.stateVersion, staleVersion + 1);
     assert.equal([...room.state.players.values()].find((player) => !player.isHost)?.investigatorId, "");
+  });
+
+  it("re-sends owner-only decision options when the assigned player reconnects", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    await colyseus.connectTo(room, { displayName: "Guest" });
+    const hostPlayer = [...room.state.players.values()].find((player) => player.isHost)!;
+    const decision: PendingDecision = {
+      id: "decision-1",
+      kind: "select_rerolls",
+      playerId: hostPlayer.id,
+      visibility: "owner",
+      prompt: "Choose a die to reroll.",
+      optionIds: ["die-1", "die-2"],
+      minSelections: 0,
+      maxSelections: 1,
+    };
+    (room as unknown as { pendingDecision: PendingDecision }).pendingDecision = decision;
+    room.state.pendingDecision = new PendingDecisionState({
+      id: decision.id,
+      kind: decision.kind,
+      playerId: decision.playerId,
+      visibility: decision.visibility,
+      prompt: decision.prompt,
+      optionCount: decision.optionIds.length,
+      minSelections: decision.minSelections,
+      maxSelections: decision.maxSelections,
+    });
+
+    const decisionMessage = host.waitForMessage(pendingDecisionMessageType);
+    const serverClient = room.clients.find((client) => client.sessionId === host.sessionId)!;
+    room.onReconnect(serverClient);
+
+    assert.deepEqual(await decisionMessage, decision);
+    assert.equal("optionIds" in room.state.pendingDecision!, false);
+    assert.equal(room.state.pendingDecision?.optionCount, 2);
   });
 });

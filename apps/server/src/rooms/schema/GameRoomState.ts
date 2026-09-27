@@ -18,6 +18,18 @@ export const PlayerState = schema({
 });
 export type PlayerState = SchemaType<typeof PlayerState>;
 
+export const PendingDecisionState = schema({
+  id: t.string(),
+  kind: t.string(),
+  playerId: t.string(),
+  visibility: t.string(),
+  prompt: t.string(),
+  optionCount: t.uint8(),
+  minSelections: t.uint8(),
+  maxSelections: t.uint8(),
+});
+export type PendingDecisionState = SchemaType<typeof PendingDecisionState>;
+
 export const GameRoomState = schema({
   stateVersion: t.uint32().default(0),
   phase: t.string().default("lobby"),
@@ -26,6 +38,7 @@ export const GameRoomState = schema({
   turnNumber: t.uint16().default(0),
   actionsRemaining: t.uint8().default(0),
   performedActions: t.string().default(""),
+  pendingDecision: t.ref(PendingDecisionState).optional(),
   players: t.map(PlayerState),
 });
 export type GameRoomState = SchemaType<typeof GameRoomState>;

@@ -7,10 +7,12 @@ import {
   commandMessageType,
   gameCommandMessageSchema,
   joinOptionsSchema,
+  pendingDecisionMessageType,
   type InvestigatorId,
   type LocationId,
+  type PendingDecision,
 } from "@eldritch/protocol";
-import { GameRoomState, PlayerState } from "./schema/GameRoomState.js";
+import { GameRoomState, PendingDecisionState, PlayerState } from "./schema/GameRoomState.js";
 
 const RECONNECTION_SECONDS = 30;
 const baseGameContent: GameContent = {
@@ -28,6 +30,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
 
   private readonly playerIdBySession = new Map<string, string>();
   private privateState: PrivateGameState = { deckOrderById: {}, tokenPoolById: {} };
+  private pendingDecision?: PendingDecision;
 
   messages = {
     [commandMessageType]: (client: Client, payload: unknown) => this.handleCommand(client, payload),
@@ -56,6 +59,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     if (player) {
       player.connected = true;
       player.sessionId = client.sessionId;
+      this.sendPendingDecision(client);
     }
   }
 
@@ -103,6 +107,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       actionsRemaining: this.state.actionsRemaining,
       performedActions: this.state.performedActions ? this.state.performedActions.split(",") as GameState["performedActions"] : [],
       monsterLocationIds: [],
+      pendingDecision: this.pendingDecision,
       privateState: this.privateState,
       players: [...this.state.players.values()].map((player) => ({
         id: player.id,
@@ -122,6 +127,8 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
 
   private applyEngineState(engineState: GameState): void {
     this.privateState = engineState.privateState;
+    this.pendingDecision = engineState.pendingDecision;
+    this.syncPendingDecisionSummary();
     this.state.stateVersion = engineState.stateVersion;
     this.state.phase = engineState.phase;
     this.state.activePlayerId = engineState.activePlayerId ?? "";
@@ -140,6 +147,32 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       player.maxSanity = enginePlayer.maxSanity ?? 0;
       player.trainTickets = enginePlayer.travelTickets?.filter((ticket) => ticket === "train").length ?? 0;
       player.shipTickets = enginePlayer.travelTickets?.filter((ticket) => ticket === "ship").length ?? 0;
+    }
+    for (const client of this.clients) this.sendPendingDecision(client);
+  }
+
+  private syncPendingDecisionSummary(): void {
+    if (!this.pendingDecision) {
+      this.state.pendingDecision = undefined;
+      return;
+    }
+    const summary = new PendingDecisionState();
+    summary.id = this.pendingDecision.id;
+    summary.kind = this.pendingDecision.kind;
+    summary.playerId = this.pendingDecision.playerId;
+    summary.visibility = this.pendingDecision.visibility;
+    summary.prompt = this.pendingDecision.prompt;
+    summary.optionCount = this.pendingDecision.optionIds.length;
+    summary.minSelections = this.pendingDecision.minSelections;
+    summary.maxSelections = this.pendingDecision.maxSelections;
+    this.state.pendingDecision = summary;
+  }
+
+  private sendPendingDecision(client: Client): void {
+    if (!this.pendingDecision) return;
+    const playerId = this.playerIdBySession.get(client.sessionId);
+    if (this.pendingDecision.visibility === "public" || this.pendingDecision.playerId === playerId) {
+      client.send(pendingDecisionMessageType, this.pendingDecision);
     }
   }
 

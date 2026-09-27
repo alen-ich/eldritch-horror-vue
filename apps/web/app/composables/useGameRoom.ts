@@ -2,8 +2,12 @@ import { Client, type Room } from '@colyseus/sdk'
 import {
   commandErrorMessageType,
   commandMessageType,
+  pendingDecisionMessageType,
   type CommandErrorMessage,
-  type GameCommand
+  type GameCommand,
+  type PendingDecision,
+  type PendingDecisionKind,
+  type PendingDecisionSummary
 } from '@eldritch/protocol'
 
 interface ClientPlayerState {
@@ -29,6 +33,16 @@ interface ClientGameState {
   turnNumber?: number
   actionsRemaining?: number
   performedActions?: string
+  pendingDecision?: {
+    id: string
+    kind: string
+    playerId: string
+    visibility: string
+    prompt: string
+    optionCount: number
+    minSelections: number
+    maxSelections: number
+  }
   players?: Map<string, ClientPlayerState>
 }
 
@@ -41,6 +55,7 @@ const activePlayerId = ref('')
 const turnNumber = ref(0)
 const actionsRemaining = ref(0)
 const performedActions = ref<string[]>([])
+const pendingDecision = ref<PendingDecision | PendingDecisionSummary>()
 const playerId = ref('')
 const roomId = ref('')
 const status = ref<'idle' | 'connecting' | 'connected' | 'disconnected'>('idle')
@@ -58,6 +73,15 @@ export function useGameRoom() {
     turnNumber.value = state.turnNumber ?? 0
     actionsRemaining.value = state.actionsRemaining ?? 0
     performedActions.value = state.performedActions ? state.performedActions.split(',') : []
+    if (!state.pendingDecision) {
+      pendingDecision.value = undefined
+    } else if (pendingDecision.value?.id !== state.pendingDecision.id || !('optionIds' in pendingDecision.value)) {
+      pendingDecision.value = {
+        ...state.pendingDecision,
+        kind: state.pendingDecision.kind as PendingDecisionKind,
+        visibility: state.pendingDecision.visibility as PendingDecision['visibility']
+      }
+    }
     players.value = [...state.players.values()].map((player) => ({
       id: player.id,
       sessionId: player.sessionId,
@@ -83,6 +107,7 @@ export function useGameRoom() {
     localStorage.setItem(storageKey, nextRoom.reconnectionToken)
     nextRoom.onStateChange(syncState)
     nextRoom.onMessage<CommandErrorMessage>(commandErrorMessageType, (message) => { errorMessage.value = message.message })
+    nextRoom.onMessage<PendingDecision>(pendingDecisionMessageType, (decision) => { pendingDecision.value = decision })
     nextRoom.onDrop(() => { status.value = 'connecting' })
     nextRoom.onReconnect(() => { status.value = 'connected' })
     nextRoom.onLeave(() => { status.value = 'disconnected' })
@@ -140,7 +165,7 @@ export function useGameRoom() {
 
   return {
     players: readonly(players), stateVersion: readonly(stateVersion), phase: readonly(phase), activePlayerId: readonly(activePlayerId),
-    turnNumber: readonly(turnNumber), actionsRemaining: readonly(actionsRemaining), performedActions: readonly(performedActions), playerId: readonly(playerId), roomId: readonly(roomId),
+    turnNumber: readonly(turnNumber), actionsRemaining: readonly(actionsRemaining), performedActions: readonly(performedActions), pendingDecision: readonly(pendingDecision), playerId: readonly(playerId), roomId: readonly(roomId),
     status: readonly(status), errorMessage: readonly(errorMessage), createGame, joinGame, reconnect, send
   }
 }
