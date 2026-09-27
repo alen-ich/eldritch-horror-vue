@@ -10,21 +10,23 @@ The current baseline implements investigator selection and the Travel, Rest, Pre
 
 Last updated: 2026-09-27
 
-- Milestone 0: **in progress**. The teaching rulebook is documented, but the separate authoritative Reference Guide has not been supplied. Component verification and the complete rules matrix remain blocked on that source.
-- Milestone 1: **in progress**.
+- Milestone 0: **in progress**. The teaching rulebook is documented, but the separate authoritative Reference Guide has not been supplied. A validated readiness inventory now records every required content family and prevents complete setup while families are absent or unverified (`e623b65`). Component verification and the complete rules matrix remain blocked on the Reference Guide and missing component sources.
+- Milestone 1: **complete**.
   - Completed: strict versioned command envelopes (`87f5753`).
   - Completed: successful transitions advance the canonical version exactly once; rejected transitions do not mutate state (`4e2c438`).
   - Completed: the server rejects stale commands and the web client sends the version it observed (`6f1d94a`).
   - Completed: canonical hidden deck/token order is stored outside synchronized Colyseus state, with a public projection that excludes it (`60944a7`).
   - Completed: deterministic dice, shuffle, token-draw, and ID input queues with reproducibility and validation tests (`7d6fa50`).
-  - Remaining: player-specific private projections, serializable pending decisions, commands that continue decisions, and reconnect integration tests for interrupted decisions.
+  - Completed: serializable pending decisions, owner authorization, bounded selections, command pausing, and player-specific option projections (`17f5aea`, `b4100a8`).
+  - Completed: public decision summaries plus targeted private option delivery restored on reconnect (`db75d5a`).
 - Milestones 2-12: **not started**.
 
 ### Current verification evidence
 
-- Protocol: 8 tests passing after the versioned-envelope change.
-- Engine: 14 tests passing after state-version, hidden-state, projection, and deterministic-input changes.
-- Server: 3 multiplayer integration tests passing, including stale-command rejection.
+- Protocol: 12 tests passing, including decision payload and invariant validation.
+- Engine: 23 tests passing, including decision serialization, authorization, selection bounds, projections, and deterministic inputs.
+- Content: 14 tests passing, including required-family inventory and incomplete-setup rejection.
+- Server: 4 multiplayer integration tests passing, including stale-command rejection and reconnect decision delivery.
 - Root `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm build` pass.
 
 ## Delivery rules
