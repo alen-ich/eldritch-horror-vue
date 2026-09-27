@@ -10,7 +10,7 @@ The current baseline implements investigator selection and the Travel, Rest, Pre
 
 Last updated: 2026-09-27
 
-- Milestone 0: **in progress**. The teaching rulebook is documented, but the separate authoritative Reference Guide has not been supplied. A validated readiness inventory now records every required content family and prevents complete setup while families are absent or unverified (`e623b65`). Component verification and the complete rules matrix remain blocked on the Reference Guide and missing component sources.
+- Milestone 0: **in progress**. The 16-page authoritative Reference Guide is checksummed, visually verified, and mapped to implementation status in `docs/rules/base-game-reference-guide.md`. A validated readiness inventory records every required content family and prevents complete setup while families are absent or unverified (`e623b65`). Remaining blockers are missing or unverified component sources, especially Ancient Ones, Mysteries, Monsters, Gates, possessions, and player-count Reference cards.
 - Milestone 1: **complete**.
   - Completed: strict versioned command envelopes (`87f5753`).
   - Completed: successful transitions advance the canonical version exactly once; rejected transitions do not mutate state (`4e2c438`).
@@ -43,7 +43,7 @@ Last updated: 2026-09-27
 
 Scope:
 
-- Add the base-game Reference Guide and checksum it without committing the source PDF.
+- Add the base-game Reference Guide and checksum it without committing the source PDF. **Complete.**
 - Reconcile rulebook, Reference Guide, investigator sheets, cards, map, and component counts.
 - Classify every card extraction as verified, needs review, or unusable.
 - Inventory missing structured content: Ancient Ones, Mysteries, Monsters, Gates, Assets, Artifacts, Spells, Conditions, Mythos cards, encounters, reference-card player counts, and starting possessions.

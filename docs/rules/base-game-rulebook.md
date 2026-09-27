@@ -2,7 +2,7 @@
 
 The engine rules are derived from the user-supplied `eh01_rulebook.pdf` (16 pages, SHA-256 `8147dc576209e4f23b9b376bb667656e622dfb8c93837d5b98d0066f96262883`). The PDF itself remains outside the repository.
 
-The rulebook says the separate Reference Guide is definitive for exceptions and conflicts. Until that guide is supplied, this implementation must not guess omitted exceptions or card interactions.
+The rulebook says the separate Reference Guide is definitive for exceptions and conflicts. That guide has now been supplied and indexed in `docs/rules/base-game-reference-guide.md`. Component text still has higher precedence, so unavailable or OCR-only component text must not be guessed.
 
 ## Implemented foundation
 
