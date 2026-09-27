@@ -92,6 +92,7 @@ export type GameEvent =
   | { type: "INVESTIGATOR_SELECTED"; playerId: string; investigatorId: InvestigatorId }
   | { type: "ANCIENT_ONE_SELECTED"; ancientOneId: AncientOneId }
   | { type: "GAME_STARTED"; activePlayerId: string }
+  | { type: "MYSTERY_REVEALED"; mysteryId: string }
   | { type: "INVESTIGATOR_TRAVELED"; playerId: string; destinationId: LocationId; spentTickets: TravelTicketType[] }
   | { type: "INVESTIGATOR_RESTED"; playerId: string; health: number; sanity: number }
   | { type: "TRAVEL_TICKET_GAINED"; playerId: string; ticketType: TravelTicketType }
@@ -116,6 +117,8 @@ export interface PublicGameState {
   activePlayerId?: string;
   turnNumber: number;
   ancientOneId?: AncientOneId;
+  activeMysteryId?: string;
+  completedMysteryIds: string[];
   players: PublicPlayerState[];
 }
 
