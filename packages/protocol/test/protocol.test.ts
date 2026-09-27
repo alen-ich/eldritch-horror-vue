@@ -10,6 +10,10 @@ describe("gameCommandSchema", () => {
     expect(gameCommandSchema.parse({ type: "REST" })).toEqual({ type: "REST" });
     expect(gameCommandSchema.parse({ type: "PREPARE_TRAVEL", ticketType: "ship" })).toEqual({ type: "PREPARE_TRAVEL", ticketType: "ship" });
     expect(gameCommandSchema.parse({ type: "END_ACTIONS" })).toEqual({ type: "END_ACTIONS" });
+    expect(gameCommandSchema.parse({ type: "SELECT_ANCIENT_ONE", ancientOneId: "cthulhu" })).toEqual({
+      type: "SELECT_ANCIENT_ONE",
+      ancientOneId: "cthulhu",
+    });
     expect(gameCommandSchema.parse({
       type: "RESOLVE_DECISION",
       decisionId: "decision-1",
@@ -26,6 +30,13 @@ describe("gameCommandSchema", () => {
       type: "TRAVEL",
       destinationIds: ["the_moon"],
       playerId: "someone-else",
+    })).toThrow();
+  });
+
+  it("rejects an unknown Ancient One", () => {
+    expect(() => gameCommandSchema.parse({
+      type: "SELECT_ANCIENT_ONE",
+      ancientOneId: "hastur",
     })).toThrow();
   });
 });

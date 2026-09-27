@@ -1,8 +1,8 @@
-import { locationIds } from "@eldritch/protocol";
+import { ancientOneIds, locationIds, type AncientOneId } from "@eldritch/protocol";
 import { z } from "zod";
 
-export const ancientOneIds = ["cthulhu", "shub_niggurath", "yog_sothoth", "azathoth"] as const;
-export type AncientOneId = (typeof ancientOneIds)[number];
+export { ancientOneIds } from "@eldritch/protocol";
+export type { AncientOneId } from "@eldritch/protocol";
 
 export interface MythosStageComposition {
   green: number;

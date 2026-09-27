@@ -14,9 +14,11 @@ export const investigatorIds = [
   "jim_culver", "leo_anderson", "lily_chen", "lola_hayes", "mark_harrigan",
   "norman_withers", "silas_marsh", "trish_scarborough",
 ] as const;
+export const ancientOneIds = ["cthulhu", "shub_niggurath", "yog_sothoth", "azathoth"] as const;
 
 export type LocationId = (typeof locationIds)[number];
 export type InvestigatorId = (typeof investigatorIds)[number];
+export type AncientOneId = (typeof ancientOneIds)[number];
 export type GamePhase = "lobby" | "action" | "encounter" | "mythos";
 export type TravelTicketType = "train" | "ship";
 export const pendingDecisionKinds = [
@@ -64,6 +66,7 @@ export interface PendingDecisionSummary {
 
 export const gameCommandSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("SELECT_INVESTIGATOR"), investigatorId: z.enum(investigatorIds) }).strict(),
+  z.object({ type: z.literal("SELECT_ANCIENT_ONE"), ancientOneId: z.enum(ancientOneIds) }).strict(),
   z.object({ type: z.literal("START_GAME") }).strict(),
   z.object({ type: z.literal("TRAVEL"), destinationIds: z.array(z.enum(locationIds)).min(1).max(3) }).strict(),
   z.object({ type: z.literal("REST") }).strict(),
@@ -87,6 +90,7 @@ export type GameCommandMessage = z.infer<typeof gameCommandMessageSchema>;
 
 export type GameEvent =
   | { type: "INVESTIGATOR_SELECTED"; playerId: string; investigatorId: InvestigatorId }
+  | { type: "ANCIENT_ONE_SELECTED"; ancientOneId: AncientOneId }
   | { type: "GAME_STARTED"; activePlayerId: string }
   | { type: "INVESTIGATOR_TRAVELED"; playerId: string; destinationId: LocationId; spentTickets: TravelTicketType[] }
   | { type: "INVESTIGATOR_RESTED"; playerId: string; health: number; sanity: number }
@@ -111,6 +115,7 @@ export interface PublicGameState {
   phase: GamePhase;
   activePlayerId?: string;
   turnNumber: number;
+  ancientOneId?: AncientOneId;
   players: PublicPlayerState[];
 }
 
