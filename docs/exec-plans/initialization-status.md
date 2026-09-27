@@ -12,7 +12,7 @@ Source: `Eldritch_Horror_Web_Project_Initialization_Plan.docx`.
 | 5. Protocol and identity | Complete for MVP | Zod command validation, server-derived actor identity, stable seat ID, and 30-second reconnect policy. |
 | 6. Engine skeleton | Complete | Pure package with legal/illegal rule tests. |
 | 7. First vertical slice | Complete | Create/join, select, start, move, sync, and reconnect implementation. |
-| 8. Content pipeline | Map, investigator, and card slices complete | Validated 36-space map, 12-investigator roster, and 189-card catalog with paired scans. Card OCR remains reference-only; authoritative decks and effects remain. |
+| 8. Content pipeline | Map and investigator slices complete; English cards pending | The Russian 189-card archive was removed. English cards will be imported and verified one category at a time. |
 | 9. Core game loop | In progress | Rulebook action-phase foundation is implemented; the remaining dependency-ordered milestones are tracked in `base-game-rules-implementation.md`. |
 | 10. Persistence | Deferred | Intentionally follows the in-memory MVP. |
 | 11. Production baseline | Not started | Docker/CI/observability remain future work. |

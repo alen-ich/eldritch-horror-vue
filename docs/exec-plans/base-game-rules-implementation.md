@@ -10,7 +10,7 @@ The current baseline implements investigator selection and the Travel, Rest, Pre
 
 Last updated: 2026-09-28
 
-- Milestone 0: **in progress**. The 16-page authoritative Reference Guide is checksummed, visually verified, and mapped to implementation status in `docs/rules/base-game-reference-guide.md`. The supplied 2024 Ultimate FAQ compilation is also checksummed and classified by provenance in `docs/rules/base-game-faq.md`; only reproduced errata and explicitly marked official FFG answers qualify as authoritative regression sources. All four base-game Ancient One sheets, all 43 base-game Monster tokens, and all 16 base-game Mystery fronts are now structured and scan-verified. A validated readiness inventory prevents complete setup while families are absent or unverified. Remaining blockers include Gates, possessions, and canonical player-count Reference cards.
+- Milestone 0: **in progress**. The 16-page authoritative Reference Guide is checksummed, visually verified, and mapped to implementation status in `docs/rules/base-game-reference-guide.md`. The supplied 2024 Ultimate FAQ compilation is also checksummed and classified by provenance in `docs/rules/base-game-faq.md`; only reproduced errata and explicitly marked official FFG answers qualify as authoritative regression sources. All four base-game Ancient One sheets and all 43 base-game Monster tokens are structured and scan-verified. The 16-card Mystery roster remains structured, but its former Russian scans were removed in preparation for English category imports and it now requires English scan verification. A validated readiness inventory prevents complete setup while families are absent or unverified. Remaining blockers include English card categories, Gates, possessions, and canonical player-count Reference cards.
 - Milestone 1: **complete**.
   - Completed: strict versioned command envelopes (`87f5753`).
   - Completed: successful transitions advance the canonical version exactly once; rejected transitions do not mutate state (`4e2c438`).
@@ -27,7 +27,7 @@ Last updated: 2026-09-28
 
 - Protocol: 13 tests passing, including Ancient One command validation and decision payload invariants.
 - Engine: 28 tests passing, including host-only Ancient One selection, Mystery setup preconditions, private deck projection, progress, replacement draws, victory, terminal rejection, decisions, and deterministic inputs.
-- Content: 28 tests passing, including the complete Ancient One, Monster, and scan-linked Mystery rosters, Mythos compositions, setup dependencies, scaled Mystery thresholds, required-family inventory, and incomplete-setup rejection.
+- Content: 25 tests passing, including the complete Ancient One, Monster, and Mystery rosters, Mythos compositions, setup dependencies, scaled Mystery thresholds, required-family inventory, and incomplete-setup rejection.
 - Server: 4 multiplayer integration tests passing, including stale-command rejection and reconnect decision delivery.
 - Root `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm build` pass.
 
