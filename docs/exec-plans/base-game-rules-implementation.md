@@ -10,7 +10,7 @@ The current baseline implements investigator selection and the Travel, Rest, Pre
 
 Last updated: 2026-09-27
 
-- Milestone 0: **in progress**. The 16-page authoritative Reference Guide is checksummed, visually verified, and mapped to implementation status in `docs/rules/base-game-reference-guide.md`. The supplied 2024 Ultimate FAQ compilation is also checksummed and classified by provenance in `docs/rules/base-game-faq.md`; only reproduced errata and explicitly marked official FFG answers qualify as authoritative regression sources. All four base-game Ancient One sheets are now checksummed and structured (`24aca4a`, `4607091`). A validated readiness inventory prevents complete setup while families are absent or unverified (`e623b65`). Remaining blockers are missing or unverified Mysteries, Monsters, Gates, possessions, and canonical player-count Reference cards.
+- Milestone 0: **in progress**. The 16-page authoritative Reference Guide is checksummed, visually verified, and mapped to implementation status in `docs/rules/base-game-reference-guide.md`. The supplied 2024 Ultimate FAQ compilation is also checksummed and classified by provenance in `docs/rules/base-game-faq.md`; only reproduced errata and explicitly marked official FFG answers qualify as authoritative regression sources. All four base-game Ancient One sheets and all 43 base-game Monster tokens are now structured. A validated readiness inventory prevents complete setup while families are absent or unverified. Remaining blockers include Mysteries, Gates, possessions, and canonical player-count Reference cards.
 - Milestone 1: **complete**.
   - Completed: strict versioned command envelopes (`87f5753`).
   - Completed: successful transitions advance the canonical version exactly once; rejected transitions do not mutate state (`4e2c438`).
@@ -47,7 +47,7 @@ Scope:
 - Add the base-game Reference Guide and checksum it without committing the source PDF. **Complete.**
 - Reconcile rulebook, Reference Guide, investigator sheets, cards, map, and component counts.
 - Classify every card extraction as verified, needs review, or unusable.
-- Inventory missing structured content: Ancient Ones, Mysteries, Monsters, Gates, Assets, Artifacts, Spells, Conditions, Mythos cards, encounters, reference-card player counts, and starting possessions.
+- Inventory missing or unverified structured content: Mysteries, Gates, Assets, Artifacts, Spells, Conditions, Mythos cards, encounters, reference-card player counts, and starting possessions.
 - Create stable IDs and cross-reference validation for every component.
 
 Exit criteria:
