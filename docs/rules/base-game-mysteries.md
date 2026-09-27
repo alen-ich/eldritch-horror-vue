@@ -9,20 +9,27 @@
 
 The source was text-extracted and every page was rendered for visual verification. It is a clean Russian-language reference document rather than card scans. Its own introduction describes each entry as a short mechanical summary and directs readers to their cards and the official Reference Guide for exact resolution.
 
+All 16 corresponding Russian card fronts were subsequently identified in the existing 189-card scan bundle and visually verified. The scan mapping is:
+
+- Azathoth: `card_025`, `card_026`, `card_027`, `card_171`
+- Yog-Sothoth: `card_159` through `card_162`
+- Cthulhu: `card_163` through `card_166`
+- Shub-Niggurath: `card_167` through `card_170`
+
 ## Implemented content
 
 `packages/content/src/mysteries.ts` provides:
 
-- stable IDs and English lookup titles for all 16 cards;
+- stable IDs plus English and Russian titles for all 16 cards;
 - a four-card deck association for each Ancient One;
-- structured high-level objective shapes such as collecting Clues, Gates, Eldritch tokens, or defeated Monsters;
-- stable references to named spaces and Epic Monsters where the supplied summary identifies them;
-- source page, source checksum, and an explicit `reference_summary_only` verification marker.
+- exact entry setup, progress trigger, costs, skill tests, end-of-Mythos completion threshold, and cleanup;
+- stable references to catalog cards, named spaces, encounter decks, and Epic Monsters;
+- scan URL, per-image checksum, and an explicit `verified_from_scan` marker.
 
 Validation rejects duplicate or incomplete rosters and requires exactly four Mysteries for each Ancient One.
 
 ## Authority boundary
 
-This reference is sufficient to identify the deck roster and plan the engine vocabulary. It is not sufficient for executable card resolution because it omits exact setup quantities, encounter branches, costs, timing, and some completion thresholds. Mystery readiness is therefore `needs_review`, not `verified`.
+The summary PDF alone was insufficient for executable resolution because it omitted setup quantities, costs, timing, and some thresholds. The card scans supply those details, so the Mystery content family is now `verified`.
 
-The game engine must not infer omitted behavior from the Russian summaries. Exact card faces or another authoritative transcription are still required before Milestone 9 can implement and test all Mystery effects.
+The structured rules are an authoritative content input, not an engine implementation. Milestone 9 still needs canonical active/completed Mystery state, deterministic deck order, effect execution, and server projection before Mysteries participate in live games.

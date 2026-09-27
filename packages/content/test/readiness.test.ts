@@ -17,13 +17,13 @@ describe("base-game content readiness", () => {
   it("reports all unverified and absent content", () => {
     const incomplete = incompleteContentFamilies(baseGameContentReadiness);
     expect(incomplete.map((entry) => entry.id)).not.toContain("ancient_ones");
-    expect(incomplete.map((entry) => entry.id)).toContain("mysteries");
+    expect(incomplete.map((entry) => entry.id)).not.toContain("mysteries");
     expect(incomplete.map((entry) => entry.id)).toContain("reference_card_setup");
     expect(incomplete.find((entry) => entry.id === "mythos_cards")?.status).toBe("needs_review");
   });
 
   it("prevents complete setup while required content is unavailable", () => {
-    expect(() => assertCompleteBaseGameContent()).toThrow(/mysteries \(needs_review\)/);
+    expect(() => assertCompleteBaseGameContent()).toThrow(/gates \(absent\)/);
   });
 
   it("rejects duplicate or missing inventory families", () => {

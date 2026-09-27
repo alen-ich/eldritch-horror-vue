@@ -7,7 +7,9 @@ The project includes the user-supplied 189-card catalog and paired front/back sc
 - Lightweight shared types: `packages/content/src/card-types.ts` via `@eldritch/content/card-types`
 - Browser assets: `apps/web/public/cards/{front,back}`
 
-The catalog covers eight families: expedition, three regional location decks, Mythos, Other World, research, and special encounters. Validation checks the declared count, unique sequential IDs, supported families, source coordinates, and matching front/back paths.
+The catalog covers nine families: expedition, three regional location decks, Mysteries, Mythos, Other World, research, and special encounters. Validation checks the declared count, unique sequential IDs, supported families, source coordinates, and matching front/back paths.
+
+The 16 Mystery fronts are classified separately and linked to the authoritative structured roster in `packages/content/src/mysteries.ts`. They were visually checked against the scans; OCR remains reference-only even for these cards.
 
 The source labels 78 records as requiring manual OCR review. The application preserves this flag and warns users to rely on the scan for authoritative card text. OCR descriptions are not executable rules and are not used by the engine.
 
