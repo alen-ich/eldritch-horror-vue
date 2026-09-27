@@ -39,7 +39,7 @@ export const baseGameContentReadiness: readonly ContentFamilyReadiness[] = [
   { id: "investigators", status: "verified", source: "base investigator data PDF", notes: "All 12 investigator sheets are represented." },
   { id: "starting_possessions", status: "needs_review", source: "investigator sheet transcription", notes: "Names are display strings and are not linked to stable component IDs." },
   { id: "ancient_ones", status: "verified", source: "four base-game Ancient One sheet scans", notes: "Starting Doom, Mythos compositions, setup dependencies, Cultist overrides, awakening effects, and Final Mysteries are structured; referenced components remain separate readiness requirements." },
-  { id: "mysteries", status: "absent", source: "not supplied", notes: "No Mystery deck is structured." },
+  { id: "mysteries", status: "needs_review", source: "Russian base-game Mystery reference PDF", notes: "All 16 cards, deck ownership, and summarized objective shapes are structured; exact printed wording and edge-case timing still require authoritative card images." },
   { id: "monsters", status: "verified", source: "Eldritch Horror Wiki Core entries cross-checked against supplied base-game monster PDF", notes: "All 34 normal and 9 Epic Monster tokens are structured with Core counts, combat statistics, effects, and token images." },
   { id: "gates", status: "absent", source: "not supplied", notes: "No Gate token faces or pool composition are structured." },
   { id: "assets", status: "absent", source: "not supplied", notes: "No executable Asset deck is structured." },
