@@ -10,7 +10,7 @@ The current baseline implements investigator selection and the Travel, Rest, Pre
 
 Last updated: 2026-09-27
 
-- Milestone 0: **in progress**. The 16-page authoritative Reference Guide is checksummed, visually verified, and mapped to implementation status in `docs/rules/base-game-reference-guide.md`. The supplied 2024 Ultimate FAQ compilation is also checksummed and classified by provenance in `docs/rules/base-game-faq.md`; only reproduced errata and explicitly marked official FFG answers qualify as authoritative regression sources. A validated readiness inventory records every required content family and prevents complete setup while families are absent or unverified (`e623b65`). Remaining blockers are missing or unverified component sources, especially Ancient Ones, Mysteries, Monsters, Gates, possessions, and canonical player-count Reference cards.
+- Milestone 0: **in progress**. The 16-page authoritative Reference Guide is checksummed, visually verified, and mapped to implementation status in `docs/rules/base-game-reference-guide.md`. The supplied 2024 Ultimate FAQ compilation is also checksummed and classified by provenance in `docs/rules/base-game-faq.md`; only reproduced errata and explicitly marked official FFG answers qualify as authoritative regression sources. All four base-game Ancient One sheets are now checksummed and structured (`24aca4a`, `4607091`). A validated readiness inventory prevents complete setup while families are absent or unverified (`e623b65`). Remaining blockers are missing or unverified Mysteries, Monsters, Gates, possessions, and canonical player-count Reference cards.
 - Milestone 1: **complete**.
   - Completed: strict versioned command envelopes (`87f5753`).
   - Completed: successful transitions advance the canonical version exactly once; rejected transitions do not mutate state (`4e2c438`).
@@ -19,13 +19,14 @@ Last updated: 2026-09-27
   - Completed: deterministic dice, shuffle, token-draw, and ID input queues with reproducibility and validation tests (`7d6fa50`).
   - Completed: serializable pending decisions, owner authorization, bounded selections, command pausing, and player-specific option projections (`17f5aea`, `b4100a8`).
   - Completed: public decision summaries plus targeted private option delivery restored on reconnect (`db75d5a`).
-- Milestones 2-12: **not started**.
+- Milestone 2: **in progress**. Host-authorized Ancient One selection is synchronized and required before game start (`0600116`, `34b69f2`, `fdd4fc2`). The remaining setup steps depend on the outstanding content listed in Milestone 0.
+- Milestones 3-12: **not started**.
 
 ### Current verification evidence
 
-- Protocol: 12 tests passing, including decision payload and invariant validation.
-- Engine: 23 tests passing, including decision serialization, authorization, selection bounds, projections, and deterministic inputs.
-- Content: 14 tests passing, including required-family inventory and incomplete-setup rejection.
+- Protocol: 13 tests passing, including Ancient One command validation and decision payload invariants.
+- Engine: 25 tests passing, including host-only Ancient One selection, setup preconditions, decisions, projections, and deterministic inputs.
+- Content: 19 tests passing, including the complete Ancient One roster, Mythos compositions, setup dependencies, required-family inventory, and incomplete-setup rejection.
 - Server: 4 multiplayer integration tests passing, including stale-command rejection and reconnect decision delivery.
 - Root `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm build` pass.
 
