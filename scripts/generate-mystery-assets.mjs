@@ -10,14 +10,14 @@ const outputRoot = path.join(root, "apps", "web", "public", "cards", "mysteries"
 const ancientOnes = [
   {
     id: "azathoth",
-    strip: "azathoth-1.jpg",
+    strip: "azathoth-2.jpg",
     back: "azathoth-back.jpg",
     stripCards: [
       "azathoth_the_true_name",
       "azathoth_seed_of_the_daemon_sultan",
       "azathoth_omen_of_devastation",
     ],
-    singleCards: [],
+    singleCards: [["azathoth_occult_research", "azathoth-1.jpg"]],
   },
   {
     id: "cthulhu",
@@ -54,28 +54,18 @@ const ancientOnes = [
   },
 ];
 
-const preservedAssetIds = ["azathoth_occult_research"];
 const expectedFiles = new Set([
   ...ancientOnes.flatMap(({ id, stripCards, singleCards }) => [
     `${id}-back.webp`,
     ...stripCards.map((cardId) => `${cardId}.webp`),
     ...singleCards.map(([cardId]) => `${cardId}.webp`),
   ]),
-  ...preservedAssetIds.map((cardId) => `${cardId}.webp`),
 ]);
 
 await mkdir(outputRoot, { recursive: true });
 
 for (const file of await readdir(outputRoot)) {
   if (!expectedFiles.has(file)) await rm(path.join(outputRoot, file));
-}
-
-for (const cardId of preservedAssetIds) {
-  try {
-    await sharp(path.join(outputRoot, `${cardId}.webp`)).metadata();
-  } catch {
-    throw new Error(`${cardId}.webp must be preserved until its replacement source scan is supplied.`);
-  }
 }
 
 for (const ancientOne of ancientOnes) {
@@ -104,4 +94,4 @@ for (const ancientOne of ancientOnes) {
     .toFile(path.join(outputRoot, `${ancientOne.id}-back.webp`));
 }
 
-console.log("Generated 15 supplied English Mystery fronts and 4 Ancient One backs; preserved the existing Occult Research crop.");
+console.log("Generated 16 supplied English Mystery fronts and 4 Ancient One backs.");
