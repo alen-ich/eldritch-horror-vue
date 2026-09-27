@@ -3,6 +3,7 @@ export const cardTypes = [
   "location_encounter_americas",
   "location_encounter_asia_australia",
   "location_encounter_europe",
+  "mystery",
   "mythos",
   "other_world_encounter",
   "research_encounter",

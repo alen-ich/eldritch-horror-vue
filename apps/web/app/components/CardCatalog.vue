@@ -28,6 +28,7 @@ const typeLabels: Record<CardType, string> = {
   location_encounter_americas: 'Americas',
   location_encounter_asia_australia: 'Asia / Australia',
   location_encounter_europe: 'Europe',
+  mystery: 'Mystery',
   mythos: 'Mythos',
   other_world_encounter: 'Other World',
   research_encounter: 'Research',

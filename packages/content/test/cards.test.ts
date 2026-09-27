@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import { baseGameCards, validateCardContent } from "../src/cards.js";
 
 describe("base card content", () => {
-  it("contains all 189 cards and eight card families", () => {
+  it("contains all 189 cards and nine card families", () => {
     expect(baseGameCards).toHaveLength(189);
-    expect(new Set(baseGameCards.map((card) => card.card_type))).toHaveLength(8);
+    expect(new Set(baseGameCards.map((card) => card.card_type))).toHaveLength(9);
+    expect(baseGameCards.filter((card) => card.card_type === "mystery")).toHaveLength(16);
   });
 
   it("retains OCR review provenance", () => {
