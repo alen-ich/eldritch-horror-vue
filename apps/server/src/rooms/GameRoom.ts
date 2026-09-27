@@ -29,6 +29,10 @@ const baseGameContent: GameContent = {
       baseGameMysteries.filter((mystery) => mystery.ancientOneId === ancientOneId).map((mystery) => mystery.id),
     ]),
   ),
+  mysteryTargetsById: Object.fromEntries(baseGameMysteries.map((mystery) => [
+    mystery.id,
+    mystery.completion.metric === "epic_monster_defeated" ? "one" : mystery.completion.target,
+  ])),
 };
 
 export class GameRoom extends Room<{ state: GameRoomState }> {
@@ -115,7 +119,10 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       leadInvestigatorId: this.state.leadInvestigatorId || undefined,
       ancientOneId: (this.state.ancientOneId || undefined) as AncientOneId | undefined,
       activeMysteryId: this.state.activeMysteryId || undefined,
+      mysteryProgress: this.state.mysteryProgress,
+      mysteryTarget: this.state.mysteryTarget,
       completedMysteryIds: this.state.completedMysteryIds ? this.state.completedMysteryIds.split(",") : [],
+      gameResult: (this.state.gameResult || undefined) as GameState["gameResult"],
       turnNumber: this.state.turnNumber,
       actionsRemaining: this.state.actionsRemaining,
       performedActions: this.state.performedActions ? this.state.performedActions.split(",") as GameState["performedActions"] : [],
@@ -148,7 +155,10 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     this.state.leadInvestigatorId = engineState.leadInvestigatorId ?? "";
     this.state.ancientOneId = engineState.ancientOneId ?? "";
     this.state.activeMysteryId = engineState.activeMysteryId ?? "";
+    this.state.mysteryProgress = engineState.mysteryProgress;
+    this.state.mysteryTarget = engineState.mysteryTarget;
     this.state.completedMysteryIds = engineState.completedMysteryIds.join(",");
+    this.state.gameResult = engineState.gameResult ?? "";
     this.state.turnNumber = engineState.turnNumber;
     this.state.actionsRemaining = engineState.actionsRemaining;
     this.state.performedActions = engineState.performedActions.join(",");
