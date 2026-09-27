@@ -32,4 +32,4 @@ Validation rejects duplicate or incomplete rosters and requires exactly four Mys
 
 The summary PDF alone was insufficient for executable resolution because it omitted setup quantities, costs, timing, and some thresholds. The card scans supply those details, so the Mystery content family is now `verified`.
 
-The structured rules are an authoritative content input, not an engine implementation. Milestone 9 still needs canonical active/completed Mystery state, deterministic deck order, effect execution, and server projection before Mysteries participate in live games.
+Game start now creates a deterministic four-card deck for the selected Ancient One, keeps the remaining order in server-private state, and synchronizes the active Mystery plus completed IDs. The web interface displays the active card from public state. Entry effects, progress resolution, solving, replacement draws, and victory checks remain Milestone 9 work.
