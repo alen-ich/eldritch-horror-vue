@@ -2,9 +2,8 @@ import { describe, expect, it } from "vitest";
 import { baseGameMysteries, mysteryIds, mysteryTargetValue, validateMysteryContent } from "../src/mysteries.js";
 
 describe("base-game Mysteries", () => {
-  it("contains all sixteen cards with source provenance", () => {
+  it("contains the complete sixteen-card roster", () => {
     expect(baseGameMysteries.map((mystery) => mystery.id)).toEqual(mysteryIds);
-    expect(new Set(baseGameMysteries.map((mystery) => mystery.imageSha256))).toHaveLength(16);
     expect(() => validateMysteryContent(baseGameMysteries)).not.toThrow();
   });
 
@@ -14,7 +13,7 @@ describe("base-game Mysteries", () => {
     }
   });
 
-  it("records exact scan-backed completion thresholds", () => {
+  it("records the current completion thresholds", () => {
     const deepOnes = baseGameMysteries.find((mystery) => mystery.id === "cthulhu_the_deep_ones_attack")!;
     expect(deepOnes.completion).toEqual({
       timing: "end_mythos",
@@ -22,7 +21,6 @@ describe("base-game Mysteries", () => {
       target: "investigator_count",
       preserveBoardEldritchTokens: true,
     });
-    expect(baseGameMysteries.every((mystery) => mystery.verification === "verified_from_scan")).toBe(true);
   });
 
   it("rounds scaled investigator targets according to the printed rule", () => {

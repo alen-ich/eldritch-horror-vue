@@ -230,7 +230,6 @@ async function copyInvite() {
             <strong>{{ game.gameResult.value === 'investigators_win' ? 'Investigators win' : 'Investigators lose' }}</strong>
           </div>
           <aside v-if="activeMystery" class="active-mystery" aria-label="Active Mystery">
-            <img :src="activeMystery.imageUrl" alt="" aria-hidden="true">
             <div><span class="chapter">Active Mystery</span><strong>{{ activeMystery.name }}</strong><small>{{ game.mysteryProgress.value }}/{{ game.mysteryTarget.value }} progress · {{ game.completedMysteryIds.value.length }} solved</small></div>
           </aside>
           <aside class="reserve-shelf" :class="{ collapsed: !reserveExpanded }" aria-label="Reserve market">
@@ -359,7 +358,7 @@ input:focus { border-color: #d5aa63; box-shadow: 0 0 0 3px #d5aa6322; }
 .game-workspace { position: relative; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 58px; }
 .board-stage { position: relative; min-width: 0; min-height: 0; display: grid; place-items: center; overflow: hidden; padding: 10px; background: radial-gradient(circle at 50% 45%, #18333a, #050f12 75%); }
 .board-stage .board { display: block; width: 100%; height: 100%; max-height: 100%; border-radius: 12px; }
-.active-mystery { position: absolute; z-index: 5; top: 60px; right: 18px; display: grid; grid-template-columns: 52px minmax(0, 150px); gap: 10px; align-items: center; padding: 7px; color: #edf0df; background: #07171cee; border: 1px solid #6e5a36; border-radius: 10px; box-shadow: 0 8px 28px #0009; backdrop-filter: blur(10px); }.active-mystery img { width: 52px; aspect-ratio: 744 / 1040; object-fit: cover; border-radius: 5px; }.active-mystery div { display: grid; gap: 3px; }.active-mystery strong { font: 600 .78rem/1.15 Georgia, serif; }.active-mystery small { color: #91a7a8; font-size: .6rem; }
+.active-mystery { position: absolute; z-index: 5; top: 60px; right: 18px; min-width: 180px; padding: 10px 12px; color: #edf0df; background: #07171cee; border: 1px solid #6e5a36; border-radius: 10px; box-shadow: 0 8px 28px #0009; backdrop-filter: blur(10px); }.active-mystery div { display: grid; gap: 3px; }.active-mystery strong { font: 600 .78rem/1.15 Georgia, serif; }.active-mystery small { color: #91a7a8; font-size: .6rem; }
 .game-result { position: absolute; z-index: 8; top: 18px; left: 50%; min-width: 220px; display: grid; gap: 3px; padding: 11px 22px; transform: translateX(-50%); color: #f7efd8; background: #1b1510ee; border: 1px solid #d5aa63; border-radius: 10px; box-shadow: 0 10px 35px #000b, 0 0 24px #d5aa6330; text-align: center; backdrop-filter: blur(10px); }.game-result strong { color: #e9ce8b; font: 600 1.1rem Georgia, serif; }
 .board-stage .board-tools { position: absolute; z-index: 4; top: 18px; left: 18px; right: 18px; margin: 0; pointer-events: none; }.board-stage .board-tools > * { pointer-events: auto; }.board-stage .route-legend { padding: 7px 10px; border: 1px solid #45616a; border-radius: 8px; background: #07171cdd; backdrop-filter: blur(8px); }
 .board-stage .location-inspector { position: absolute; z-index: 4; left: 18px; bottom: 18px; width: min(520px, calc(100% - 150px)); margin: 0; background: #07171cee; box-shadow: 0 8px 28px #0009; backdrop-filter: blur(10px); }

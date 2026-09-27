@@ -38,106 +38,85 @@ export type MysteryCompletion =
 export interface MysteryData {
   id: MysteryId;
   ancientOneId: AncientOneId;
-  cardId: `card_${number}`;
   name: string;
-  nameRu: string;
   setup: readonly MysterySetup[];
   progress: MysteryProgress;
   completion: MysteryCompletion;
-  imageUrl: string;
-  imageSha256: string;
-  verification: "verified_from_scan";
 }
 
 export const baseGameMysteries = [
   {
-    id: "azathoth_occult_research", ancientOneId: "azathoth", cardId: "card_026", name: "Occult Research", nameRu: "Оккультные изыскания",
+    id: "azathoth_occult_research", ancientOneId: "azathoth", name: "Occult Research",
     setup: [], progress: { type: "research_encounter_clue", amount: 1 },
     completion: { timing: "end_mythos", metric: "clues", target: "investigator_count" },
-    imageUrl: "/cards/front/card_026.jpg", imageSha256: "5cc3ead5ccb2544eb23e7d1d677eefa8da1b4729c1123f4a285105488aedc57c", verification: "verified_from_scan",
   },
   {
-    id: "azathoth_omen_of_devastation", ancientOneId: "azathoth", cardId: "card_027", name: "Omen of Devastation", nameRu: "Предвестник разрушений",
+    id: "azathoth_omen_of_devastation", ancientOneId: "azathoth", name: "Omen of Devastation",
     setup: [], progress: { type: "close_matching_omen_gate", clueCost: 1, reward: "place_eldritch_token_on_card" },
     completion: { timing: "end_mythos", metric: "eldritch_tokens", target: "half_investigator_count" },
-    imageUrl: "/cards/front/card_027.jpg", imageSha256: "c68f9b3655d8e3e8219a76255563544702dd25bfcadbbbc50c9f4251b309ad97", verification: "verified_from_scan",
   },
   {
-    id: "azathoth_seed_of_the_daemon_sultan", ancientOneId: "azathoth", cardId: "card_025", name: "Seed of the Daemon Sultan", nameRu: "Семя султана демонов",
+    id: "azathoth_seed_of_the_daemon_sultan", ancientOneId: "azathoth", name: "Seed of the Daemon Sultan",
     setup: [{ type: "place_mystery_token", locationId: "tunguska" }], progress: { type: "location_test", location: "mystery_token", skill: "observation", clueCost: 2, reward: "move_eldritch_token_to_card" },
     completion: { timing: "end_mythos", metric: "eldritch_tokens", target: "half_investigator_count" },
-    imageUrl: "/cards/front/card_025.jpg", imageSha256: "db445cbc6050bbee90c89cd4a62f37ecac66422e352fb48a6c36946b4222418d", verification: "verified_from_scan",
   },
   {
-    id: "azathoth_the_true_name", ancientOneId: "azathoth", cardId: "card_171", name: "The True Name", nameRu: "Истинное имя",
+    id: "azathoth_the_true_name", ancientOneId: "azathoth", name: "The True Name",
     setup: [{ type: "place_random_eldritch_tokens", count: "half_investigator_count", destination: "location" }], progress: { type: "location_test", location: "eldritch_token", skill: "observation", clueCost: 2, reward: "move_eldritch_token_to_card" },
     completion: { timing: "end_mythos", metric: "eldritch_tokens", target: "half_investigator_count" },
-    imageUrl: "/cards/front/card_171.jpg", imageSha256: "9bc6d01ae31f968b965d7b8c3caa3dd327d8d81cd0024009d6acdb48ee36e8bf", verification: "verified_from_scan",
   },
   {
-    id: "cthulhu_rlyeh_risen", ancientOneId: "cthulhu", cardId: "card_164", name: "R'lyeh Risen", nameRu: "Поднявшийся Р'льех",
+    id: "cthulhu_rlyeh_risen", ancientOneId: "cthulhu", name: "R'lyeh Risen",
     setup: [{ type: "place_mystery_token", locationId: "space_3" }], progress: { type: "special_encounter", deckId: "special_encounter_cthulhu", locationId: "space_3", reward: "card_defined_eldritch_tokens" },
     completion: { timing: "end_mythos", metric: "eldritch_tokens", target: "half_investigator_count" },
-    imageUrl: "/cards/front/card_164.jpg", imageSha256: "0b1c0fab7b443032222a174601b713777526bf043ebb4aed8bb0b09cc1895be5", verification: "verified_from_scan",
   },
   {
-    id: "cthulhu_the_deep_ones_attack", ancientOneId: "cthulhu", cardId: "card_166", name: "The Deep Ones Attack!", nameRu: "Нападение Глубоководных",
+    id: "cthulhu_the_deep_ones_attack", ancientOneId: "cthulhu", name: "The Deep Ones Attack!",
     setup: [{ type: "each_investigator_places_eldritch_token", destination: "nearest_sea_without_eldritch_token" }], progress: { type: "deep_one_ambush", location: "eldritch_token", clueCostAfterDefeat: 1, reward: "move_eldritch_token_to_card" },
     completion: { timing: "end_mythos", metric: "eldritch_tokens", target: "investigator_count", preserveBoardEldritchTokens: true },
-    imageUrl: "/cards/front/card_166.jpg", imageSha256: "b8e82cfee0233e723984046446cb7a0355d5743a82e53652ec89bb73c57ed8c5", verification: "verified_from_scan",
   },
   {
-    id: "cthulhu_the_stars_are_right", ancientOneId: "cthulhu", cardId: "card_163", name: "The Stars Are Right!", nameRu: "Звёзды заняли свои места",
+    id: "cthulhu_the_stars_are_right", ancientOneId: "cthulhu", name: "The Stars Are Right!",
     setup: [{ type: "move_all_clues", destination: "nearest_sea" }], progress: { type: "research_encounter_clue", amount: 1 },
     completion: { timing: "end_mythos", metric: "clues", target: "investigator_count" },
-    imageUrl: "/cards/front/card_163.jpg", imageSha256: "402867fc1fc0013a2ef4a114e0543c7e4fe964e1db0a7b382dc429ebc3e118f4", verification: "verified_from_scan",
   },
   {
-    id: "cthulhu_watching_the_stars", ancientOneId: "cthulhu", cardId: "card_165", name: "Watching the Stars", nameRu: "Наблюдая за звёздами",
+    id: "cthulhu_watching_the_stars", ancientOneId: "cthulhu", name: "Watching the Stars",
     setup: [{ type: "spawn_epic_monster", monsterId: "epic_monster_cthylla", locationId: "space_12" }], progress: { type: "defeat_epic_monster", monsterId: "epic_monster_cthylla" },
     completion: { timing: "end_mythos", metric: "epic_monster_defeated", monsterId: "epic_monster_cthylla" },
-    imageUrl: "/cards/front/card_165.jpg", imageSha256: "47c2719aaf3723c607466083abd34a15e7dbe4f3024aebdda729eb1996e56efe", verification: "verified_from_scan",
   },
   {
-    id: "shub_hunting_the_thousand", ancientOneId: "shub_niggurath", cardId: "card_169", name: "Hunting the Thousand", nameRu: "Охота на Легион",
+    id: "shub_hunting_the_thousand", ancientOneId: "shub_niggurath", name: "Hunting the Thousand",
     setup: [], progress: { type: "collect_defeated_non_epic_monster", clueCost: 2 }, completion: { timing: "end_mythos", metric: "collected_monster_toughness", target: "twice_investigator_count" },
-    imageUrl: "/cards/front/card_169.jpg", imageSha256: "4f2fa12ea88b2ffb077eb794e0e2def7d709dcf42f002db264778bf9908b183e", verification: "verified_from_scan",
   },
   {
-    id: "shub_nature_of_the_all_mother", ancientOneId: "shub_niggurath", cardId: "card_170", name: "Nature of the All-Mother", nameRu: "Сущность Всеобщей матери",
+    id: "shub_nature_of_the_all_mother", ancientOneId: "shub_niggurath", name: "Nature of the All-Mother",
     setup: [{ type: "move_all_clues", destination: "nearest_wilderness" }], progress: { type: "research_encounter_clue", amount: 1 }, completion: { timing: "end_mythos", metric: "clues", target: "investigator_count" },
-    imageUrl: "/cards/front/card_170.jpg", imageSha256: "99d9c99ad550cf59fae23f05a264072807760ef98ff462c3299d6128b6d8c617", verification: "verified_from_scan",
   },
   {
-    id: "shub_rituals_in_the_wild", ancientOneId: "shub_niggurath", cardId: "card_167", name: "Rituals in the Wild", nameRu: "Обряды в глуши",
+    id: "shub_rituals_in_the_wild", ancientOneId: "shub_niggurath", name: "Rituals in the Wild",
     setup: [{ type: "place_eldritch_tokens", locationIds: ["space_4", "space_10", "space_21", "tunguska"] }], progress: { type: "location_test", location: "eldritch_token", skill: "observation", clueCost: 2, reward: "move_eldritch_token_to_card" },
     completion: { timing: "end_mythos", metric: "eldritch_tokens", target: "half_investigator_count", cleanup: "discard_board_eldritch_tokens" },
-    imageUrl: "/cards/front/card_167.jpg", imageSha256: "8dbf76f2ecb96c1d2f6f87f40c99b2c09af2939eaea418406a96590c6642fc7f", verification: "verified_from_scan",
   },
   {
-    id: "shub_spawn_of_the_black_goat", ancientOneId: "shub_niggurath", cardId: "card_168", name: "Spawn of the Black Goat", nameRu: "Отродье Чёрной Козы",
+    id: "shub_spawn_of_the_black_goat", ancientOneId: "shub_niggurath", name: "Spawn of the Black Goat",
     setup: [{ type: "spawn_epic_monster", monsterId: "epic_monster_nug", locationId: "the_amazon" }], progress: { type: "defeat_epic_monster", monsterId: "epic_monster_nug" }, completion: { timing: "end_mythos", metric: "epic_monster_defeated", monsterId: "epic_monster_nug" },
-    imageUrl: "/cards/front/card_168.jpg", imageSha256: "4a276f112f60de5127c37d48be2d6f02c87396a73043a788c3439559c3ffb93e", verification: "verified_from_scan",
   },
   {
-    id: "yog_arcane_understanding", ancientOneId: "yog_sothoth", cardId: "card_161", name: "Arcane Understanding", nameRu: "Тайные знания",
+    id: "yog_arcane_understanding", ancientOneId: "yog_sothoth", name: "Arcane Understanding",
     setup: [], progress: { type: "successful_spell_lore_test", clueCost: 1, discardResolvedSpell: true, reward: "place_eldritch_token_on_card" }, completion: { timing: "end_mythos", metric: "eldritch_tokens", target: "investigator_count" },
-    imageUrl: "/cards/front/card_161.jpg", imageSha256: "3d5f10b1fa9767c26d2f953404d39932ca49d652f19c127306ee43cb2ec4b0f5", verification: "verified_from_scan",
   },
   {
-    id: "yog_spawn_of_yog_sothoth", ancientOneId: "yog_sothoth", cardId: "card_162", name: "Spawn of Yog-Sothoth", nameRu: "Отродье Йог-Сотота",
+    id: "yog_spawn_of_yog_sothoth", ancientOneId: "yog_sothoth", name: "Spawn of Yog-Sothoth",
     setup: [{ type: "spawn_epic_monster", monsterId: "epic_monster_dunwich_horror", locationId: "arkham" }], progress: { type: "defeat_epic_monster", monsterId: "epic_monster_dunwich_horror" }, completion: { timing: "end_mythos", metric: "epic_monster_defeated", monsterId: "epic_monster_dunwich_horror" },
-    imageUrl: "/cards/front/card_162.jpg", imageSha256: "a3296558d022f911d1d3187f29207e3b33f36688800f6a0331ec67ea6a2c680d", verification: "verified_from_scan",
   },
   {
-    id: "yog_the_beyond_one", ancientOneId: "yog_sothoth", cardId: "card_159", name: "The Beyond One", nameRu: "Потусторонний",
+    id: "yog_the_beyond_one", ancientOneId: "yog_sothoth", name: "The Beyond One",
     setup: [], progress: { type: "research_encounter_clue", amount: 1 }, completion: { timing: "end_mythos", metric: "clues", target: "investigator_count" },
-    imageUrl: "/cards/front/card_159.jpg", imageSha256: "cddae18f2c179176fc1572515d8c040c27f6bba79ca51e7da93c1ddccb58832b", verification: "verified_from_scan",
   },
   {
-    id: "yog_where_the_old_ones_broke_through", ancientOneId: "yog_sothoth", cardId: "card_160", name: "Where the Old Ones Broke Through", nameRu: "Там, где прорвались Древние",
+    id: "yog_where_the_old_ones_broke_through", ancientOneId: "yog_sothoth", name: "Where the Old Ones Broke Through",
     setup: [], progress: { type: "close_gate", spellCost: 2, reward: "place_closed_gate_on_card" }, completion: { timing: "end_mythos", metric: "gates", target: "half_investigator_count", cleanup: "return_collected_gates_to_box" },
-    imageUrl: "/cards/front/card_160.jpg", imageSha256: "7355f0277505f758c50710d8bb4e931399849571981ebbb40e67d470e08bb170", verification: "verified_from_scan",
   },
 ] as const satisfies readonly MysteryData[];
 
@@ -167,9 +146,8 @@ const completionSchema = z.discriminatedUnion("metric", [
   z.object({ timing: z.literal("end_mythos"), metric: z.literal("epic_monster_defeated"), monsterId: componentIdSchema }).strict(),
 ]);
 const mysterySchema = z.object({
-  id: z.enum(mysteryIds), ancientOneId: z.enum(["cthulhu", "shub_niggurath", "yog_sothoth", "azathoth"]), cardId: z.string().regex(/^card_\d{3}$/),
-  name: z.string().min(1), nameRu: z.string().min(1), setup: z.array(setupSchema), progress: progressSchema, completion: completionSchema,
-  imageUrl: z.string().regex(/^\/cards\/front\/card_\d{3}\.jpg$/), imageSha256: z.string().regex(/^[a-f0-9]{64}$/), verification: z.literal("verified_from_scan"),
+  id: z.enum(mysteryIds), ancientOneId: z.enum(["cthulhu", "shub_niggurath", "yog_sothoth", "azathoth"]),
+  name: z.string().min(1), setup: z.array(setupSchema), progress: progressSchema, completion: completionSchema,
 }).strict();
 
 export function mysteryTargetValue(target: InvestigatorScaledTarget, investigatorCount: number): number {
@@ -182,9 +160,7 @@ export function mysteryTargetValue(target: InvestigatorScaledTarget, investigato
 export function validateMysteryContent(mysteries: readonly MysteryData[]): void {
   const parsed = z.array(mysterySchema).parse(mysteries);
   const ids = new Set(parsed.map(({ id }) => id));
-  const cardIds = new Set(parsed.map(({ cardId }) => cardId));
   if (ids.size !== parsed.length) throw new Error("Mystery content contains duplicate IDs.");
-  if (cardIds.size !== parsed.length) throw new Error("Mystery content contains duplicate card IDs.");
   if (ids.size !== mysteryIds.length || mysteryIds.some((id) => !ids.has(id))) throw new Error("Mystery content does not match the base-game roster.");
   for (const ancientOneId of ["cthulhu", "shub_niggurath", "yog_sothoth", "azathoth"] as const) {
     if (parsed.filter((mystery) => mystery.ancientOneId === ancientOneId).length !== 4) throw new Error(`${ancientOneId} must have exactly four Mysteries.`);

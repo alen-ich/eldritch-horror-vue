@@ -39,15 +39,15 @@ export const baseGameContentReadiness: readonly ContentFamilyReadiness[] = [
   { id: "investigators", status: "verified", source: "base investigator data PDF", notes: "All 12 investigator sheets are represented." },
   { id: "starting_possessions", status: "needs_review", source: "investigator sheet transcription", notes: "Names are display strings and are not linked to stable component IDs." },
   { id: "ancient_ones", status: "verified", source: "four base-game Ancient One sheet scans", notes: "Starting Doom, Mythos compositions, setup dependencies, Cultist overrides, awakening effects, and Final Mysteries are structured; referenced components remain separate readiness requirements." },
-  { id: "mysteries", status: "verified", source: "16 supplied Russian card-front scans", notes: "All four Ancient One decks are linked to scans with setup, progress, costs, tests, end-of-Mythos thresholds, and cleanup structured." },
+  { id: "mysteries", status: "needs_review", source: "structured transcription awaiting English card scans", notes: "All four Ancient One decks remain structured, but their English card images and authoritative scan verification have not been supplied." },
   { id: "monsters", status: "verified", source: "Eldritch Horror Wiki Core entries cross-checked against supplied base-game monster PDF", notes: "All 34 normal and 9 Epic Monster tokens are structured with Core counts, combat statistics, effects, and token images." },
   { id: "gates", status: "absent", source: "not supplied", notes: "No Gate token faces or pool composition are structured." },
   { id: "assets", status: "absent", source: "not supplied", notes: "No executable Asset deck is structured." },
   { id: "artifacts", status: "absent", source: "not supplied", notes: "No executable Artifact deck is structured." },
   { id: "spells", status: "absent", source: "not supplied", notes: "No executable Spell deck is structured." },
   { id: "conditions", status: "absent", source: "not supplied", notes: "No executable Condition deck or hidden backs are structured." },
-  { id: "mythos_cards", status: "needs_review", source: "189-card OCR catalog", notes: "Scans exist, but OCR text is not authoritative or executable." },
-  { id: "encounter_cards", status: "needs_review", source: "189-card OCR catalog", notes: "Scans exist, but OCR text is not authoritative or executable." },
+  { id: "mythos_cards", status: "absent", source: "English replacement category not yet imported", notes: "The former Russian scan catalog was removed; English Mythos scans still need to be supplied as files and structured." },
+  { id: "encounter_cards", status: "absent", source: "English replacement categories not yet imported", notes: "The former Russian scan catalog was removed; English encounter scans still need to be supplied and structured by category." },
   { id: "reference_card_setup", status: "absent", source: "not supplied", notes: "Player-count setup and spawn values are unavailable." },
 ] as const;
 
