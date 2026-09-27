@@ -46,7 +46,7 @@ export const baseGameContentReadiness: readonly ContentFamilyReadiness[] = [
   { id: "artifacts", status: "absent", source: "not supplied", notes: "No executable Artifact deck is structured." },
   { id: "spells", status: "absent", source: "not supplied", notes: "No executable Spell deck is structured." },
   { id: "conditions", status: "absent", source: "not supplied", notes: "No executable Condition deck or hidden backs are structured." },
-  { id: "mythos_cards", status: "absent", source: "English replacement category not yet imported", notes: "The former Russian scan catalog was removed; English Mythos scans still need to be supplied as files and structured." },
+  { id: "mythos_cards", status: "needs_review", source: "51 supplied English card-front scans", notes: "The complete 18 green, 21 yellow, and 12 blue roster is scan-verified; printed effects and icon sequences are not yet executable." },
   { id: "encounter_cards", status: "absent", source: "English replacement categories not yet imported", notes: "The former Russian scan catalog was removed; English encounter scans still need to be supplied and structured by category." },
   { id: "reference_card_setup", status: "absent", source: "not supplied", notes: "Player-count setup and spawn values are unavailable." },
 ] as const;
