@@ -39,12 +39,17 @@ export interface MysteryData {
   id: MysteryId;
   ancientOneId: AncientOneId;
   name: string;
+  imageUrl: string;
+  backImageUrl: string;
+  scanVerification: "supplied_english_scan" | "preserved_english_scan";
   setup: readonly MysterySetup[];
   progress: MysteryProgress;
   completion: MysteryCompletion;
 }
 
-export const baseGameMysteries = [
+type MysteryDefinition = Omit<MysteryData, "imageUrl" | "backImageUrl" | "scanVerification">;
+
+const baseGameMysteryDefinitions = [
   {
     id: "azathoth_occult_research", ancientOneId: "azathoth", name: "Occult Research",
     setup: [], progress: { type: "research_encounter_clue", amount: 1 },
@@ -118,7 +123,23 @@ export const baseGameMysteries = [
     id: "yog_where_the_old_ones_broke_through", ancientOneId: "yog_sothoth", name: "Where the Old Ones Broke Through",
     setup: [], progress: { type: "close_gate", spellCost: 2, reward: "place_closed_gate_on_card" }, completion: { timing: "end_mythos", metric: "gates", target: "half_investigator_count", cleanup: "return_collected_gates_to_box" },
   },
-] as const satisfies readonly MysteryData[];
+] as const satisfies readonly MysteryDefinition[];
+
+const mysteryBackImageUrls: Record<AncientOneId, string> = {
+  azathoth: "/cards/mysteries/azathoth-back.webp",
+  cthulhu: "/cards/mysteries/cthulhu-back.webp",
+  shub_niggurath: "/cards/mysteries/shub_niggurath-back.webp",
+  yog_sothoth: "/cards/mysteries/yog_sothoth-back.webp",
+};
+
+export const baseGameMysteries: readonly MysteryData[] = baseGameMysteryDefinitions.map((mystery) => ({
+  ...mystery,
+  imageUrl: `/cards/mysteries/${mystery.id}.webp`,
+  backImageUrl: mysteryBackImageUrls[mystery.ancientOneId],
+  scanVerification: mystery.id === "azathoth_occult_research"
+    ? "preserved_english_scan"
+    : "supplied_english_scan",
+}));
 
 const componentIdSchema = z.string().regex(/^[a-z][a-z0-9_]*$/);
 const setupSchema = z.discriminatedUnion("type", [
@@ -147,7 +168,11 @@ const completionSchema = z.discriminatedUnion("metric", [
 ]);
 const mysterySchema = z.object({
   id: z.enum(mysteryIds), ancientOneId: z.enum(["cthulhu", "shub_niggurath", "yog_sothoth", "azathoth"]),
-  name: z.string().min(1), setup: z.array(setupSchema), progress: progressSchema, completion: completionSchema,
+  name: z.string().min(1),
+  imageUrl: z.string().regex(/^\/cards\/mysteries\/[a-z0-9_]+\.webp$/),
+  backImageUrl: z.string().regex(/^\/cards\/mysteries\/[a-z0-9_]+-back\.webp$/),
+  scanVerification: z.enum(["supplied_english_scan", "preserved_english_scan"]),
+  setup: z.array(setupSchema), progress: progressSchema, completion: completionSchema,
 }).strict();
 
 export function mysteryTargetValue(target: InvestigatorScaledTarget, investigatorCount: number): number {

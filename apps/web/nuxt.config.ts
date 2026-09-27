@@ -5,6 +5,7 @@ export default defineNuxtConfig({
   modules: ['@pinia/nuxt'],
   routeRules: {
     '/cards/mythos/**': { headers: { 'cache-control': 'public, max-age=86400' } },
+    '/cards/mysteries/**': { headers: { 'cache-control': 'public, max-age=86400' } },
     '/map/**': { headers: { 'cache-control': 'public, max-age=86400' } }
   },
   runtimeConfig: {

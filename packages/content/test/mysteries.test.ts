@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { baseGameMysteries, mysteryIds, mysteryTargetValue, validateMysteryContent } from "../src/mysteries.js";
 
@@ -11,6 +13,15 @@ describe("base-game Mysteries", () => {
     for (const ancientOneId of ["cthulhu", "shub_niggurath", "yog_sothoth", "azathoth"] as const) {
       expect(baseGameMysteries.filter((mystery) => mystery.ancientOneId === ancientOneId)).toHaveLength(4);
     }
+  });
+
+  it("links every base Mystery to a generated English front and Ancient One back", () => {
+    for (const mystery of baseGameMysteries) {
+      expect(existsSync(path.join(process.cwd(), "../../apps/web/public", mystery.imageUrl))).toBe(true);
+      expect(existsSync(path.join(process.cwd(), "../../apps/web/public", mystery.backImageUrl))).toBe(true);
+    }
+    expect(baseGameMysteries.filter(({ scanVerification }) => scanVerification === "supplied_english_scan")).toHaveLength(15);
+    expect(baseGameMysteries.find(({ id }) => id === "azathoth_occult_research")?.scanVerification).toBe("preserved_english_scan");
   });
 
   it("records the current completion thresholds", () => {
