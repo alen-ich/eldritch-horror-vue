@@ -1,7 +1,7 @@
-import { randomUUID } from "node:crypto";
+import { randomInt, randomUUID } from "node:crypto";
 import { Client, CloseCode, Room } from "colyseus";
-import { baseGameInvestigators, baseGameMap } from "@eldritch/content";
-import { executeCommand, type GameContent, type GameState, type PrivateGameState } from "@eldritch/engine";
+import { baseGameInvestigators, baseGameMap, baseGameMysteries } from "@eldritch/content";
+import { createDeterministicEngineContext, executeCommand, type GameContent, type GameState, type PrivateGameState } from "@eldritch/engine";
 import {
   commandErrorMessageType,
   commandMessageType,
@@ -23,6 +23,12 @@ const baseGameContent: GameContent = {
     health: investigator.health,
     sanity: investigator.sanity,
   }])),
+  mysteryIdsByAncientOne: Object.fromEntries(
+    ["cthulhu", "shub_niggurath", "yog_sothoth", "azathoth"].map((ancientOneId) => [
+      ancientOneId,
+      baseGameMysteries.filter((mystery) => mystery.ancientOneId === ancientOneId).map((mystery) => mystery.id),
+    ]),
+  ),
 };
 
 export class GameRoom extends Room<{ state: GameRoomState }> {
@@ -90,7 +96,10 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       });
       return;
     }
-    const result = executeCommand(this.toEngineState(), playerId, parsed.data.command, baseGameContent);
+    const context = parsed.data.command.type === "START_GAME"
+      ? createDeterministicEngineContext({ shuffleIndexes: [randomInt(4), randomInt(3), randomInt(2)] })
+      : undefined;
+    const result = executeCommand(this.toEngineState(), playerId, parsed.data.command, baseGameContent, context);
     if (result.ok === false) {
       client.send(commandErrorMessageType, result.error);
       return;
@@ -105,6 +114,8 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       activePlayerId: this.state.activePlayerId || undefined,
       leadInvestigatorId: this.state.leadInvestigatorId || undefined,
       ancientOneId: (this.state.ancientOneId || undefined) as AncientOneId | undefined,
+      activeMysteryId: this.state.activeMysteryId || undefined,
+      completedMysteryIds: this.state.completedMysteryIds ? this.state.completedMysteryIds.split(",") : [],
       turnNumber: this.state.turnNumber,
       actionsRemaining: this.state.actionsRemaining,
       performedActions: this.state.performedActions ? this.state.performedActions.split(",") as GameState["performedActions"] : [],
@@ -136,6 +147,8 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     this.state.activePlayerId = engineState.activePlayerId ?? "";
     this.state.leadInvestigatorId = engineState.leadInvestigatorId ?? "";
     this.state.ancientOneId = engineState.ancientOneId ?? "";
+    this.state.activeMysteryId = engineState.activeMysteryId ?? "";
+    this.state.completedMysteryIds = engineState.completedMysteryIds.join(",");
     this.state.turnNumber = engineState.turnNumber;
     this.state.actionsRemaining = engineState.actionsRemaining;
     this.state.performedActions = engineState.performedActions.join(",");

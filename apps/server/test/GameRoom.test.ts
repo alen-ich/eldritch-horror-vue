@@ -49,6 +49,11 @@ describe("authoritative game room", () => {
 
     assert.equal(room.state.phase, "action");
     assert.equal(room.state.ancientOneId, "cthulhu");
+    assert.match(room.state.activeMysteryId, /^cthulhu_/);
+    assert.equal(room.state.completedMysteryIds, "");
+    const privateMysteries = (room as unknown as { privateState: { deckOrderById: Record<string, string[]> } }).privateState.deckOrderById.mysteries;
+    assert.equal(privateMysteries?.length, 3);
+    assert.ok(!JSON.stringify(room.state).includes(privateMysteries![0]!));
     assert.equal(room.state.activePlayerId, hostPlayer.id);
     assert.equal(hostPlayer.locationId, "space_15");
     assert.equal(hostPlayer.health, 5);
