@@ -93,6 +93,9 @@ export type GameEvent =
   | { type: "ANCIENT_ONE_SELECTED"; ancientOneId: AncientOneId }
   | { type: "GAME_STARTED"; activePlayerId: string }
   | { type: "MYSTERY_REVEALED"; mysteryId: string }
+  | { type: "MYSTERY_PROGRESS_ADDED"; mysteryId: string; amount: number; progress: number }
+  | { type: "MYSTERY_SOLVED"; mysteryId: string }
+  | { type: "GAME_ENDED"; result: "investigators_win" | "investigators_lose"; reason: string }
   | { type: "INVESTIGATOR_TRAVELED"; playerId: string; destinationId: LocationId; spentTickets: TravelTicketType[] }
   | { type: "INVESTIGATOR_RESTED"; playerId: string; health: number; sanity: number }
   | { type: "TRAVEL_TICKET_GAINED"; playerId: string; ticketType: TravelTicketType }
@@ -118,7 +121,10 @@ export interface PublicGameState {
   turnNumber: number;
   ancientOneId?: AncientOneId;
   activeMysteryId?: string;
+  mysteryProgress: number;
+  mysteryTarget: number;
   completedMysteryIds: string[];
+  gameResult?: "investigators_win" | "investigators_lose";
   players: PublicPlayerState[];
 }
 
