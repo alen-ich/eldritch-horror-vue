@@ -41,7 +41,7 @@ export const baseGameContentReadiness: readonly ContentFamilyReadiness[] = [
   { id: "ancient_ones", status: "verified", source: "four base-game Ancient One sheet scans", notes: "Starting Doom, Mythos compositions, setup dependencies, Cultist overrides, awakening effects, and Final Mysteries are structured; referenced components remain separate readiness requirements." },
   { id: "mysteries", status: "verified", source: "16 English base-game Mystery fronts and four Ancient One backs", notes: "All four-card Ancient One decks are structured and linked to scan-verified artwork generated from the current source files." },
   { id: "monsters", status: "verified", source: "Eldritch Horror Wiki Core entries cross-checked against supplied base-game monster PDF", notes: "All 34 normal and 9 Epic Monster tokens are structured with Core counts, combat statistics, effects, and token images." },
-  { id: "gates", status: "absent", source: "not supplied", notes: "No Gate token faces or pool composition are structured." },
+  { id: "gates", status: "verified", source: "nine English base-game Gate faces and shared back", notes: "The complete Gate pool is structured with unique city locations, Omen symbols, and scan-verified artwork." },
   { id: "assets", status: "absent", source: "not supplied", notes: "No executable Asset deck is structured." },
   { id: "artifacts", status: "absent", source: "not supplied", notes: "No executable Artifact deck is structured." },
   { id: "spells", status: "absent", source: "not supplied", notes: "No executable Spell deck is structured." },

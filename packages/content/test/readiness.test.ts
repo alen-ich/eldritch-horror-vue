@@ -23,7 +23,7 @@ describe("base-game content readiness", () => {
   });
 
   it("prevents complete setup while required content is unavailable", () => {
-    expect(() => assertCompleteBaseGameContent()).toThrow(/gates \(absent\)/);
+    expect(() => assertCompleteBaseGameContent()).toThrow(/assets \(absent\)/);
   });
 
   it("rejects duplicate or missing inventory families", () => {
