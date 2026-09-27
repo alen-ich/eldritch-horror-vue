@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./card-types": "./src/card-types.ts",
-    "./cards": "./src/cards.ts"
+    "./cards": "./src/cards.ts",
+    "./mysteries": "./src/mysteries.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
