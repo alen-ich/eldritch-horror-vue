@@ -13,7 +13,8 @@
     "map:generate": "node scripts/generate-map-assets.mjs",
     "mysteries:generate": "node scripts/generate-mystery-assets.mjs",
     "mythos:generate": "node scripts/generate-mythos-assets.mjs",
-    "reference-cards:generate": "node scripts/generate-reference-card-assets.mjs"
+    "reference-cards:generate": "node scripts/generate-reference-card-assets.mjs",
+    "gates:generate": "node scripts/generate-gate-assets.mjs"
   },
   "keywords": [],
   "author": "",
