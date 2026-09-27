@@ -8,6 +8,8 @@ The guide's golden rules establish this precedence:
 2. The Reference Guide overrides the rulebook.
 3. An effect using `cannot` is absolute.
 
+Confirmed errata and official FAQ answers can correct or clarify these rules. The provenance policy and candidate regressions from the supplied 2024 community compilation are recorded in `docs/rules/base-game-faq.md`.
+
 This means component-specific behavior cannot be declared complete until the corresponding card, sheet, or token text is verified, even when its general rule is documented here.
 
 ## Implementation matrix

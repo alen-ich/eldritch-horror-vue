@@ -10,7 +10,7 @@ The current baseline implements investigator selection and the Travel, Rest, Pre
 
 Last updated: 2026-09-27
 
-- Milestone 0: **in progress**. The 16-page authoritative Reference Guide is checksummed, visually verified, and mapped to implementation status in `docs/rules/base-game-reference-guide.md`. A validated readiness inventory records every required content family and prevents complete setup while families are absent or unverified (`e623b65`). Remaining blockers are missing or unverified component sources, especially Ancient Ones, Mysteries, Monsters, Gates, possessions, and player-count Reference cards.
+- Milestone 0: **in progress**. The 16-page authoritative Reference Guide is checksummed, visually verified, and mapped to implementation status in `docs/rules/base-game-reference-guide.md`. The supplied 2024 Ultimate FAQ compilation is also checksummed and classified by provenance in `docs/rules/base-game-faq.md`; only reproduced errata and explicitly marked official FFG answers qualify as authoritative regression sources. A validated readiness inventory records every required content family and prevents complete setup while families are absent or unverified (`e623b65`). Remaining blockers are missing or unverified component sources, especially Ancient Ones, Mysteries, Monsters, Gates, possessions, and canonical player-count Reference cards.
 - Milestone 1: **complete**.
   - Completed: strict versioned command envelopes (`87f5753`).
   - Completed: successful transitions advance the canonical version exactly once; rejected transitions do not mutate state (`4e2c438`).
