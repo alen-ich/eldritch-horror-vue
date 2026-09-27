@@ -8,7 +8,7 @@ The current baseline implements investigator selection and the Travel, Rest, Pre
 
 ## Progress
 
-Last updated: 2026-09-27
+Last updated: 2026-09-28
 
 - Milestone 0: **in progress**. The 16-page authoritative Reference Guide is checksummed, visually verified, and mapped to implementation status in `docs/rules/base-game-reference-guide.md`. The supplied 2024 Ultimate FAQ compilation is also checksummed and classified by provenance in `docs/rules/base-game-faq.md`; only reproduced errata and explicitly marked official FFG answers qualify as authoritative regression sources. All four base-game Ancient One sheets, all 43 base-game Monster tokens, and all 16 base-game Mystery fronts are now structured and scan-verified. A validated readiness inventory prevents complete setup while families are absent or unverified. Remaining blockers include Gates, possessions, and canonical player-count Reference cards.
 - Milestone 1: **complete**.
@@ -19,13 +19,14 @@ Last updated: 2026-09-27
   - Completed: deterministic dice, shuffle, token-draw, and ID input queues with reproducibility and validation tests (`7d6fa50`).
   - Completed: serializable pending decisions, owner authorization, bounded selections, command pausing, and player-specific option projections (`17f5aea`, `b4100a8`).
   - Completed: public decision summaries plus targeted private option delivery restored on reconnect (`db75d5a`).
-- Milestone 2: **in progress**. Host-authorized Ancient One selection is synchronized and required before game start (`0600116`, `34b69f2`, `fdd4fc2`). Game start now deterministically shuffles the selected Ancient One's four-card Mystery deck from explicit server inputs, stores the remaining order privately, and synchronizes only the active/completed Mystery state (`f021070`, `0600b42`, `2db28b3`, `135011f`). Entry effects remain pending. The remaining setup steps depend on the outstanding content listed in Milestone 0.
-- Milestones 3-12: **not started**.
+- Milestone 2: **in progress**. Host-authorized Ancient One selection is synchronized and required before game start (`0600116`, `34b69f2`, `fdd4fc2`). Game start now deterministically shuffles the selected Ancient One's four-card Mystery deck from explicit server inputs, stores the remaining order privately, and synchronizes only public Mystery state (`f021070`, `0600b42`, `2db28b3`, `135011f`). Entry effects remain pending. The remaining setup steps depend on the outstanding content listed in Milestone 0.
+- Milestones 3-8 and 10-12: **not started**.
+- Milestone 9: **in progress**. The pure engine can add authoritative Mystery progress, solve at the content-defined target, draw a replacement from private state, win after the third solved Mystery, and reject commands after a terminal result (`103a1cf`, `7f9d762`). The room synchronizes progress and terminal results (`ef5f7a3`), and the web client presents both without deciding outcomes (`15b17ad`). Encounter, combat, Mythos, and Ancient One effects still need to invoke this internal lifecycle at their verified timing points; Rumors, awakening Final Mysteries, and global loss conditions remain pending.
 
 ### Current verification evidence
 
 - Protocol: 13 tests passing, including Ancient One command validation and decision payload invariants.
-- Engine: 26 tests passing, including host-only Ancient One selection, Mystery setup preconditions and private deck projection, decisions, and deterministic inputs.
+- Engine: 28 tests passing, including host-only Ancient One selection, Mystery setup preconditions, private deck projection, progress, replacement draws, victory, terminal rejection, decisions, and deterministic inputs.
 - Content: 28 tests passing, including the complete Ancient One, Monster, and scan-linked Mystery rosters, Mythos compositions, setup dependencies, scaled Mystery thresholds, required-family inventory, and incomplete-setup rejection.
 - Server: 4 multiplayer integration tests passing, including stale-command rejection and reconnect decision delivery.
 - Root `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm build` pass.
