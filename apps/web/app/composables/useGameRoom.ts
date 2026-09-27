@@ -29,6 +29,7 @@ interface ClientPlayerState {
 interface ClientGameState {
   stateVersion?: number
   phase?: string
+  ancientOneId?: string
   activePlayerId?: string
   turnNumber?: number
   actionsRemaining?: number
@@ -51,6 +52,7 @@ const room = shallowRef<Room<unknown, ClientGameState>>()
 const players = ref<ClientPlayerState[]>([])
 const stateVersion = ref(0)
 const phase = ref('lobby')
+const ancientOneId = ref('')
 const activePlayerId = ref('')
 const turnNumber = ref(0)
 const actionsRemaining = ref(0)
@@ -69,6 +71,7 @@ export function useGameRoom() {
     if (!state.players) return
     stateVersion.value = state.stateVersion ?? 0
     phase.value = state.phase ?? 'lobby'
+    ancientOneId.value = state.ancientOneId ?? ''
     activePlayerId.value = state.activePlayerId ?? ''
     turnNumber.value = state.turnNumber ?? 0
     actionsRemaining.value = state.actionsRemaining ?? 0
@@ -164,7 +167,7 @@ export function useGameRoom() {
   }
 
   return {
-    players: readonly(players), stateVersion: readonly(stateVersion), phase: readonly(phase), activePlayerId: readonly(activePlayerId),
+    players: readonly(players), stateVersion: readonly(stateVersion), phase: readonly(phase), ancientOneId: readonly(ancientOneId), activePlayerId: readonly(activePlayerId),
     turnNumber: readonly(turnNumber), actionsRemaining: readonly(actionsRemaining), performedActions: readonly(performedActions), pendingDecision: readonly(pendingDecision), playerId: readonly(playerId), roomId: readonly(roomId),
     status: readonly(status), errorMessage: readonly(errorMessage), createGame, joinGame, reconnect, send
   }

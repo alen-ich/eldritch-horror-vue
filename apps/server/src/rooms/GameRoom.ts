@@ -8,6 +8,7 @@ import {
   gameCommandMessageSchema,
   joinOptionsSchema,
   pendingDecisionMessageType,
+  type AncientOneId,
   type InvestigatorId,
   type LocationId,
   type PendingDecision,
@@ -103,6 +104,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       phase: this.state.phase as GameState["phase"],
       activePlayerId: this.state.activePlayerId || undefined,
       leadInvestigatorId: this.state.leadInvestigatorId || undefined,
+      ancientOneId: (this.state.ancientOneId || undefined) as AncientOneId | undefined,
       turnNumber: this.state.turnNumber,
       actionsRemaining: this.state.actionsRemaining,
       performedActions: this.state.performedActions ? this.state.performedActions.split(",") as GameState["performedActions"] : [],
@@ -133,6 +135,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     this.state.phase = engineState.phase;
     this.state.activePlayerId = engineState.activePlayerId ?? "";
     this.state.leadInvestigatorId = engineState.leadInvestigatorId ?? "";
+    this.state.ancientOneId = engineState.ancientOneId ?? "";
     this.state.turnNumber = engineState.turnNumber;
     this.state.actionsRemaining = engineState.actionsRemaining;
     this.state.performedActions = engineState.performedActions.join(",");

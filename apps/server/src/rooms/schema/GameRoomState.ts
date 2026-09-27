@@ -35,6 +35,7 @@ export const GameRoomState = schema({
   phase: t.string().default("lobby"),
   activePlayerId: t.string().default(""),
   leadInvestigatorId: t.string().default(""),
+  ancientOneId: t.string().default(""),
   turnNumber: t.uint16().default(0),
   actionsRemaining: t.uint8().default(0),
   performedActions: t.string().default(""),

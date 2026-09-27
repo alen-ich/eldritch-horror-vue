@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { baseGameBoardDimensions, baseGameInvestigators, baseGameLocations, baseGameMap, baseGameRoutes, skillNames } from '@eldritch/content'
-import type { InvestigatorId, LocationId } from '@eldritch/protocol'
+import { baseGameAncientOnes, baseGameBoardDimensions, baseGameInvestigators, baseGameLocations, baseGameMap, baseGameRoutes, skillNames } from '@eldritch/content'
+import type { AncientOneId, InvestigatorId, LocationId } from '@eldritch/protocol'
 
 const displayName = ref('')
 const joinCode = ref('')
@@ -76,6 +76,10 @@ async function joinGame() {
 
 function selectInvestigator(investigatorId: InvestigatorId) {
   game.send({ type: 'SELECT_INVESTIGATOR', investigatorId })
+}
+
+function selectAncientOne(ancientOneId: AncientOneId) {
+  if (me.value?.isHost) game.send({ type: 'SELECT_ANCIENT_ONE', ancientOneId })
 }
 
 function isTakenByAnother(investigatorId: InvestigatorId) {
@@ -185,10 +189,25 @@ async function copyInvite() {
               <span class="ability"><b>Passive</b>{{ investigator.passiveAbility }}</span>
             </button>
           </div>
-          <button v-if="me?.isHost" class="primary start" :disabled="game.players.value.length < 2 || game.players.value.some(p => !p.investigatorId)" @click="game.send({ type: 'START_GAME' })">Start game</button>
+          <button v-if="me?.isHost" class="primary start" :disabled="game.players.value.length < 2 || game.players.value.some(p => !p.investigatorId) || !game.ancientOneId.value" @click="game.send({ type: 'START_GAME' })">Start game</button>
           <p v-else class="muted">Waiting for the host to begin.</p>
         </div>
         <aside class="panel roster">
+          <p class="chapter">Ancient One</p>
+          <div class="ancient-ones">
+            <button
+              v-for="ancientOne in baseGameAncientOnes"
+              :key="ancientOne.id"
+              :class="{ selected: game.ancientOneId.value === ancientOne.id }"
+              :disabled="!me?.isHost"
+              :aria-pressed="game.ancientOneId.value === ancientOne.id"
+              @click="selectAncientOne(ancientOne.id)"
+            >
+              <img :src="ancientOne.imageUrl" alt="" loading="lazy">
+              <span><strong>{{ ancientOne.name }}</strong><small>Doom {{ ancientOne.startingDoom }}</small></span>
+            </button>
+          </div>
+          <p v-if="!game.ancientOneId.value" class="ancient-help">{{ me?.isHost ? 'Choose the threat for this game.' : 'Waiting for the host to choose.' }}</p>
           <p class="chapter">Players · {{ game.players.value.length }}/4</p>
           <article v-for="player in game.players.value" :key="player.id">
             <span class="presence" :class="{ online: player.connected }"></span>
@@ -322,6 +341,7 @@ input:focus { border-color: #d5aa63; box-shadow: 0 0 0 3px #d5aa6322; }
 .loadout { min-height: 42px; color: #c6d0ca; font-size: .75rem; line-height: 1.45; }.loadout small { display: block; text-transform: uppercase; font-size: .56rem; letter-spacing: .08em; }
 .ability { color: #aebfbc; font-size: .72rem; line-height: 1.45; }.ability b { color: #d5aa63; margin-right: 6px; text-transform: uppercase; font-size: .58rem; letter-spacing: .06em; }
 .start { margin-top: 24px; width: 100%; }.roster { padding: 24px; }.roster article { display: flex; align-items: center; gap: 12px; padding: 15px 0; border-bottom: 1px solid #2b474e; }.roster p { margin: 4px 0 0; color: #91a7a8; text-transform: capitalize; }.roster small { color: #d5aa63; font-size: .58rem; letter-spacing: .1em; }
+.ancient-ones { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0 16px; }.ancient-ones button { position: relative; min-height: 94px; overflow: hidden; padding: 0; color: #eee9d5; background: #08191e; border: 1px solid #355159; border-radius: 9px; text-align: left; }.ancient-ones button.selected { border-color: #e4bd6d; box-shadow: 0 0 0 2px #d5aa6338; }.ancient-ones button:disabled { cursor: default; opacity: .78; }.ancient-ones img { width: 100%; height: 64px; display: block; object-fit: cover; object-position: 18% 22%; filter: brightness(.72) saturate(.8); }.ancient-ones button.selected img { filter: brightness(.95) saturate(1); }.ancient-ones span { display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 7px; }.ancient-ones strong { font: 600 .68rem Georgia, serif; }.ancient-ones small { white-space: nowrap; }.roster .ancient-help { margin: -7px 0 18px; font-size: .7rem; text-transform: none; }
 .presence { width: 9px; height: 9px; border-radius: 50%; background: #6a7374; }.presence.online { background: #7fcb8a; box-shadow: 0 0 10px #7fcb8a; }
 .roster .resource-line { color: #c8b77e; font-size: .72rem; }
 .board-wrap { padding: 20px; }.turn { display: flex; justify-content: space-between; padding: 6px 8px 18px; }.turn span { color: #91a7a8; }.turn strong { color: #d5aa63; }

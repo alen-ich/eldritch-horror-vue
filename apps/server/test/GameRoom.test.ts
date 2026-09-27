@@ -42,10 +42,13 @@ describe("authoritative game room", () => {
     await room.waitForMessage(commandMessageType);
     sendCommand(room, guest, { type: "SELECT_INVESTIGATOR", investigatorId: "trish_scarborough" });
     await room.waitForMessage(commandMessageType);
+    sendCommand(room, host, { type: "SELECT_ANCIENT_ONE", ancientOneId: "cthulhu" });
+    await room.waitForMessage(commandMessageType);
     sendCommand(room, host, { type: "START_GAME" });
     await room.waitForMessage(commandMessageType);
 
     assert.equal(room.state.phase, "action");
+    assert.equal(room.state.ancientOneId, "cthulhu");
     assert.equal(room.state.activePlayerId, hostPlayer.id);
     assert.equal(hostPlayer.locationId, "space_15");
     assert.equal(hostPlayer.health, 5);
