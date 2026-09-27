@@ -31,7 +31,10 @@ interface ClientGameState {
   phase?: string
   ancientOneId?: string
   activeMysteryId?: string
+  mysteryProgress?: number
+  mysteryTarget?: number
   completedMysteryIds?: string
+  gameResult?: string
   activePlayerId?: string
   turnNumber?: number
   actionsRemaining?: number
@@ -56,7 +59,10 @@ const stateVersion = ref(0)
 const phase = ref('lobby')
 const ancientOneId = ref('')
 const activeMysteryId = ref('')
+const mysteryProgress = ref(0)
+const mysteryTarget = ref(0)
 const completedMysteryIds = ref<string[]>([])
+const gameResult = ref('')
 const activePlayerId = ref('')
 const turnNumber = ref(0)
 const actionsRemaining = ref(0)
@@ -77,7 +83,10 @@ export function useGameRoom() {
     phase.value = state.phase ?? 'lobby'
     ancientOneId.value = state.ancientOneId ?? ''
     activeMysteryId.value = state.activeMysteryId ?? ''
+    mysteryProgress.value = state.mysteryProgress ?? 0
+    mysteryTarget.value = state.mysteryTarget ?? 0
     completedMysteryIds.value = state.completedMysteryIds ? state.completedMysteryIds.split(',') : []
+    gameResult.value = state.gameResult ?? ''
     activePlayerId.value = state.activePlayerId ?? ''
     turnNumber.value = state.turnNumber ?? 0
     actionsRemaining.value = state.actionsRemaining ?? 0
@@ -173,7 +182,7 @@ export function useGameRoom() {
   }
 
   return {
-    players: readonly(players), stateVersion: readonly(stateVersion), phase: readonly(phase), ancientOneId: readonly(ancientOneId), activeMysteryId: readonly(activeMysteryId), completedMysteryIds: readonly(completedMysteryIds), activePlayerId: readonly(activePlayerId),
+    players: readonly(players), stateVersion: readonly(stateVersion), phase: readonly(phase), ancientOneId: readonly(ancientOneId), activeMysteryId: readonly(activeMysteryId), mysteryProgress: readonly(mysteryProgress), mysteryTarget: readonly(mysteryTarget), completedMysteryIds: readonly(completedMysteryIds), gameResult: readonly(gameResult), activePlayerId: readonly(activePlayerId),
     turnNumber: readonly(turnNumber), actionsRemaining: readonly(actionsRemaining), performedActions: readonly(performedActions), pendingDecision: readonly(pendingDecision), playerId: readonly(playerId), roomId: readonly(roomId),
     status: readonly(status), errorMessage: readonly(errorMessage), createGame, joinGame, reconnect, send
   }
