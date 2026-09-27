@@ -38,6 +38,7 @@ function startedGame(): GameState {
     phase: "action",
     activePlayerId: "host",
     leadInvestigatorId: "host",
+    ancientOneId: "cthulhu",
     turnNumber: 1,
     actionsRemaining: 2,
     performedActions: [],
@@ -74,7 +75,10 @@ describe("executeCommand", () => {
     const selectedGuest = executeCommand(state, "guest", { type: "SELECT_INVESTIGATOR", investigatorId: "trish_scarborough" }, testContent);
     expect(selectedGuest.ok).toBe(true);
     if (!selectedGuest.ok) return;
-    const started = executeCommand(selectedGuest.state, "host", { type: "START_GAME" }, testContent);
+    const selectedAncientOne = executeCommand(selectedGuest.state, "host", { type: "SELECT_ANCIENT_ONE", ancientOneId: "cthulhu" }, testContent);
+    expect(selectedAncientOne.ok).toBe(true);
+    if (!selectedAncientOne.ok) return;
+    const started = executeCommand(selectedAncientOne.state, "host", { type: "START_GAME" }, testContent);
     expect(started.ok).toBe(true);
     if (started.ok) expect(started.state).toMatchObject({
       phase: "action", activePlayerId: "host", leadInvestigatorId: "host", turnNumber: 1, actionsRemaining: 2,
@@ -150,6 +154,27 @@ describe("executeCommand", () => {
     expect(executeCommand(state, "guest", { type: "SELECT_INVESTIGATOR", investigatorId: "akachi_onyele" }, testContent)).toMatchObject({
       ok: false,
       error: { code: "INVESTIGATOR_TAKEN" },
+    });
+  });
+
+  it("allows only the host to select an Ancient One in the lobby", () => {
+    const state = createLobby(["host", "guest"]);
+    expect(executeCommand(state, "guest", { type: "SELECT_ANCIENT_ONE", ancientOneId: "cthulhu" }, testContent)).toMatchObject({
+      ok: false,
+      error: { code: "NOT_HOST" },
+    });
+    const selected = executeCommand(state, "host", { type: "SELECT_ANCIENT_ONE", ancientOneId: "yog_sothoth" }, testContent);
+    expect(selected.ok).toBe(true);
+    if (selected.ok) expect(selected.state.ancientOneId).toBe("yog_sothoth");
+  });
+
+  it("requires an Ancient One before the host can start", () => {
+    const state = createLobby(["host", "guest"]);
+    state.players[0]!.investigatorId = "akachi_onyele";
+    state.players[1]!.investigatorId = "trish_scarborough";
+    expect(executeCommand(state, "host", { type: "START_GAME" }, testContent)).toMatchObject({
+      ok: false,
+      error: { code: "ANCIENT_ONE_REQUIRED" },
     });
   });
 });

@@ -2,6 +2,7 @@ import type {
   GameCommand,
   GameEvent,
   GamePhase,
+  AncientOneId,
   InvestigatorId,
   LocationId,
   PendingDecision,
@@ -96,6 +97,7 @@ export interface GameState {
   players: EnginePlayer[];
   activePlayerId?: string;
   leadInvestigatorId?: string;
+  ancientOneId?: AncientOneId;
   turnNumber: number;
   actionsRemaining: number;
   performedActions: ActionType[];
@@ -133,6 +135,7 @@ export type RuleErrorCode =
   | "INVESTIGATOR_REQUIRED"
   | "INVESTIGATOR_CONTENT_MISSING"
   | "INVESTIGATOR_TAKEN"
+  | "ANCIENT_ONE_REQUIRED"
   | "NOT_ACTIVE_PLAYER"
   | "ACTION_ALREADY_PERFORMED"
   | "NO_ACTIONS_REMAINING"
@@ -305,9 +308,17 @@ export function executeCommand(
     ]);
   }
 
+  if (command.type === "SELECT_ANCIENT_ONE") {
+    if (state.phase !== "lobby") return failure("WRONG_PHASE", "The Ancient One can only be selected in the lobby.");
+    if (state.players[0]?.id !== actorPlayerId) return failure("NOT_HOST", "Only the host can select the Ancient One.");
+    next.ancientOneId = command.ancientOneId;
+    return success(next, [{ type: "ANCIENT_ONE_SELECTED", ancientOneId: command.ancientOneId }]);
+  }
+
   if (command.type === "START_GAME") {
     if (state.phase !== "lobby") return failure("WRONG_PHASE", "The game has already started.");
     if (state.players[0]?.id !== actorPlayerId) return failure("NOT_HOST", "Only the host can start the game.");
+    if (!state.ancientOneId) return failure("ANCIENT_ONE_REQUIRED", "Select an Ancient One before starting the game.");
     if (state.players.length < 2) return failure("NOT_ENOUGH_PLAYERS", "At least two players are required.");
     if (state.players.some((player) => !player.investigatorId)) {
       return failure("INVESTIGATOR_REQUIRED", "Every player must select an investigator.");
