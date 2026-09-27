@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyMysteryProgress,
   createDeterministicEngineContext,
   createLobby,
   executeCommand,
@@ -34,6 +35,10 @@ const testContent: GameContent = {
     cthulhu: ["cthulhu_one", "cthulhu_two", "cthulhu_three", "cthulhu_four"],
     yog_sothoth: ["yog_one", "yog_two", "yog_three", "yog_four"],
   },
+  mysteryTargetsById: {
+    cthulhu_one: "investigator_count", cthulhu_two: "half_investigator_count", cthulhu_three: "one", cthulhu_four: "twice_investigator_count",
+    yog_one: "one", yog_two: "one", yog_three: "one", yog_four: "one",
+  },
 };
 
 function startedGame(): GameState {
@@ -48,6 +53,8 @@ function startedGame(): GameState {
     performedActions: [],
     monsterLocationIds: [],
     activeMysteryId: "cthulhu_one",
+    mysteryProgress: 0,
+    mysteryTarget: 2,
     completedMysteryIds: [],
     privateState: { deckOrderById: {}, tokenPoolById: {} },
     players: [
@@ -94,6 +101,8 @@ describe("executeCommand", () => {
         { locationId: "space_16", health: 7, sanity: 5 },
       ],
       activeMysteryId: "cthulhu_three",
+      mysteryProgress: 0,
+      mysteryTarget: 1,
       completedMysteryIds: [],
     });
     if (started.ok) {
@@ -202,6 +211,35 @@ describe("executeCommand", () => {
       ok: false,
       error: { code: "ANCIENT_ONE_REQUIRED" },
     });
+  });
+});
+
+describe("Mystery lifecycle", () => {
+  it("solves, reveals privately ordered replacements, and wins after three Mysteries", () => {
+    const state = startedGame();
+    state.privateState.deckOrderById.mysteries = ["cthulhu_two", "cthulhu_three", "cthulhu_four"];
+    const first = applyMysteryProgress(state, 2, testContent);
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.state).toMatchObject({ activeMysteryId: "cthulhu_two", completedMysteryIds: ["cthulhu_one"], mysteryProgress: 0, mysteryTarget: 1 });
+    expect(first.events.map((event) => event.type)).toEqual(["MYSTERY_PROGRESS_ADDED", "MYSTERY_SOLVED", "MYSTERY_REVEALED"]);
+    const second = applyMysteryProgress(first.state, 1, testContent);
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    const third = applyMysteryProgress(second.state, 1, testContent);
+    expect(third.ok).toBe(true);
+    if (!third.ok) return;
+    expect(third.state).toMatchObject({ completedMysteryIds: ["cthulhu_one", "cthulhu_two", "cthulhu_three"], gameResult: "investigators_win", mysteryTarget: 0 });
+    expect(third.state.activeMysteryId).toBeUndefined();
+    expect(third.events.at(-1)).toEqual({ type: "GAME_ENDED", result: "investigators_win", reason: "three_mysteries_solved" });
+    expect(applyMysteryProgress(third.state, 1, testContent)).toMatchObject({ ok: false, error: { code: "GAME_ENDED" } });
+  });
+
+  it("rejects invalid progress without mutation", () => {
+    const state = startedGame();
+    const snapshot = structuredClone(state);
+    expect(applyMysteryProgress(state, 0, testContent)).toMatchObject({ ok: false, error: { code: "INVALID_MYSTERY_PROGRESS" } });
+    expect(state).toEqual(snapshot);
   });
 });
 

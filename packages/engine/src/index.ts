@@ -99,7 +99,10 @@ export interface GameState {
   leadInvestigatorId?: string;
   ancientOneId?: AncientOneId;
   activeMysteryId?: string;
+  mysteryProgress: number;
+  mysteryTarget: number;
   completedMysteryIds: string[];
+  gameResult?: "investigators_win" | "investigators_lose";
   turnNumber: number;
   actionsRemaining: number;
   performedActions: ActionType[];
@@ -128,6 +131,7 @@ export interface GameContent {
   map: GameMap;
   investigators: Readonly<Partial<Record<InvestigatorId, InvestigatorSetup>>>;
   mysteryIdsByAncientOne: Readonly<Partial<Record<AncientOneId, readonly string[]>>>;
+  mysteryTargetsById: Readonly<Record<string, "investigator_count" | "half_investigator_count" | "twice_investigator_count" | "one">>;
 }
 
 export type RuleErrorCode =
@@ -141,6 +145,9 @@ export type RuleErrorCode =
   | "ANCIENT_ONE_REQUIRED"
   | "MYSTERY_CONTENT_MISSING"
   | "RANDOM_INPUT_REQUIRED"
+  | "MYSTERY_REQUIRED"
+  | "INVALID_MYSTERY_PROGRESS"
+  | "GAME_ENDED"
   | "NOT_ACTIVE_PLAYER"
   | "ACTION_ALREADY_PERFORMED"
   | "NO_ACTIONS_REMAINING"
@@ -169,6 +176,8 @@ export function createLobby(playerIds: string[]): GameState {
     actionsRemaining: 0,
     performedActions: [],
     monsterLocationIds: [],
+    mysteryProgress: 0,
+    mysteryTarget: 0,
     completedMysteryIds: [],
     privateState: {
       deckOrderById: {},
@@ -226,6 +235,48 @@ function success(state: GameState, events: GameEvent[]): CommandResult {
   return { ok: true, state, events };
 }
 
+function mysteryTargetValue(target: GameContent["mysteryTargetsById"][string], investigatorCount: number): number {
+  if (target === "half_investigator_count") return Math.ceil(investigatorCount / 2);
+  if (target === "twice_investigator_count") return investigatorCount * 2;
+  if (target === "investigator_count") return investigatorCount;
+  return 1;
+}
+
+function targetForMystery(content: GameContent, mysteryId: string, investigatorCount: number): number | undefined {
+  const target = content.mysteryTargetsById[mysteryId];
+  return target ? mysteryTargetValue(target, investigatorCount) : undefined;
+}
+
+export function applyMysteryProgress(state: GameState, amount: number, content: GameContent): CommandResult {
+  if (state.gameResult) return failure("GAME_ENDED", "The game has already ended.");
+  if (!state.activeMysteryId) return failure("MYSTERY_REQUIRED", "There is no active Mystery.");
+  if (!Number.isInteger(amount) || amount < 1) return failure("INVALID_MYSTERY_PROGRESS", "Mystery progress must be a positive integer.");
+  const solvedId = state.activeMysteryId;
+  const next = structuredClone(state);
+  next.mysteryProgress = Math.min(next.mysteryTarget, next.mysteryProgress + amount);
+  const events: GameEvent[] = [{ type: "MYSTERY_PROGRESS_ADDED", mysteryId: solvedId, amount, progress: next.mysteryProgress }];
+  if (next.mysteryProgress < next.mysteryTarget) return success(next, events);
+  next.completedMysteryIds.push(solvedId);
+  events.push({ type: "MYSTERY_SOLVED", mysteryId: solvedId });
+  if (next.completedMysteryIds.length >= 3) {
+    next.activeMysteryId = undefined;
+    next.mysteryProgress = 0;
+    next.mysteryTarget = 0;
+    next.gameResult = "investigators_win";
+    events.push({ type: "GAME_ENDED", result: "investigators_win", reason: "three_mysteries_solved" });
+    return success(next, events);
+  }
+  const nextMysteryId = next.privateState.deckOrderById.mysteries?.shift();
+  if (!nextMysteryId) return failure("MYSTERY_CONTENT_MISSING", "The Mystery deck is empty before three Mysteries are solved.");
+  const target = targetForMystery(content, nextMysteryId, next.players.length);
+  if (!target) return failure("MYSTERY_CONTENT_MISSING", `Mystery target is missing for ${nextMysteryId}.`);
+  next.activeMysteryId = nextMysteryId;
+  next.mysteryProgress = 0;
+  next.mysteryTarget = target;
+  events.push({ type: "MYSTERY_REVEALED", mysteryId: nextMysteryId });
+  return success(next, events);
+}
+
 function routeBetween(map: GameMap, source: LocationId, target: LocationId) {
   return map.routes.find((route) => (route.source === source && route.target === target) || (route.source === target && route.target === source));
 }
@@ -260,6 +311,7 @@ export function executeCommand(
 ): CommandResult {
   const actorIndex = state.players.findIndex((player) => player.id === actorPlayerId);
   if (actorIndex < 0) return failure("PLAYER_NOT_FOUND", "The acting player is not in this game.");
+  if (state.gameResult) return failure("GAME_ENDED", "The game has already ended.");
 
   const next: GameState = {
     ...state,
@@ -339,6 +391,8 @@ export function executeCommand(
     if (!context) return failure("RANDOM_INPUT_REQUIRED", "Starting the game requires deterministic random input.");
     const shuffledMysteries = context.shuffle(mysteryIds);
     const activeMysteryId = shuffledMysteries.shift()!;
+    const mysteryTarget = targetForMystery(content, activeMysteryId, state.players.length);
+    if (!mysteryTarget) return failure("MYSTERY_CONTENT_MISSING", `Mystery target is missing for ${activeMysteryId}.`);
     next.phase = "action";
     next.activePlayerId = actorPlayerId;
     next.leadInvestigatorId = actorPlayerId;
@@ -346,6 +400,8 @@ export function executeCommand(
     next.actionsRemaining = 2;
     next.performedActions = [];
     next.activeMysteryId = activeMysteryId;
+    next.mysteryProgress = 0;
+    next.mysteryTarget = mysteryTarget;
     next.completedMysteryIds = [];
     next.privateState.deckOrderById.mysteries = shuffledMysteries;
     for (const player of next.players) {
