@@ -38,7 +38,7 @@ export const baseGameContentReadiness: readonly ContentFamilyReadiness[] = [
   { id: "map", status: "verified", source: "map data PDF and registered board scan", notes: "All 36 spaces and 70 routes are validated." },
   { id: "investigators", status: "verified", source: "base investigator data PDF", notes: "All 12 investigator sheets are represented." },
   { id: "starting_possessions", status: "needs_review", source: "investigator sheet transcription", notes: "Names are display strings and are not linked to stable component IDs." },
-  { id: "ancient_ones", status: "absent", source: "not supplied", notes: "No Ancient One sheets or Mythos deck compositions are structured." },
+  { id: "ancient_ones", status: "verified", source: "four base-game Ancient One sheet scans", notes: "Starting Doom, Mythos compositions, setup dependencies, Cultist overrides, awakening effects, and Final Mysteries are structured; referenced components remain separate readiness requirements." },
   { id: "mysteries", status: "absent", source: "not supplied", notes: "No Mystery deck is structured." },
   { id: "monsters", status: "absent", source: "not supplied", notes: "No normal or Epic Monster tokens are structured." },
   { id: "gates", status: "absent", source: "not supplied", notes: "No Gate token faces or pool composition are structured." },
