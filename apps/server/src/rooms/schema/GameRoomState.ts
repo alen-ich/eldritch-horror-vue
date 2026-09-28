@@ -7,6 +7,8 @@ export const PlayerState = schema({
   displayName: t.string(),
   connected: t.boolean().default(true),
   delayed: t.boolean().default(false),
+  defeated: t.boolean().default(false),
+  eliminated: t.boolean().default(false),
   investigatorId: t.string().default(""),
   locationId: t.string().default(""),
   health: t.uint8().default(0),
@@ -54,6 +56,7 @@ export const ActiveTestState = schema({
 export type ActiveTestState = SchemaType<typeof ActiveTestState>;
 
 export const GameRoomState = schema({
+  investigatorLifecycle: t.string().default("{}"),
   doom: t.uint8().default(0),
   omen: t.uint8().default(0),
   greenOmenTokens: t.uint8().default(0),

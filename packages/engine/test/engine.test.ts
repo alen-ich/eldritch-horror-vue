@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   applyMysteryProgress,
   delayInvestigator,
+  damageInvestigator,
+  openReplacementWindow,
   createDeterministicEngineContext,
   createLobby,
   executeCommand,
@@ -80,6 +82,44 @@ function startedGame(): GameState {
 }
 
 describe("executeCommand", () => {
+  it("interrupts a defeated investigator and preserves their possessions on their sheet", () => {
+    const state = startedGame();
+    state.doom = 12;
+    const damaged = damageInvestigator(state, "host", 99, 0, testContent);
+    if (!damaged.ok) throw new Error(damaged.error.message);
+    expect(damaged.state.doom).toBe(11);
+    expect(damaged.state.players[0]?.defeated).toBe(true);
+    expect(executeCommand(damaged.state, "host", { type: "REST" }, testContent).ok).toBe(false);
+    const resolved = executeCommand(damaged.state, "host", { type: "RESOLVE_DEFEAT", cityId: "san_francisco", cause: "health", leadPlayerId: "guest" }, testContent);
+    if (!resolved.ok) throw new Error(resolved.error.message);
+    expect(resolved.state.activePlayerId).toBe("guest");
+    expect(resolved.state.leadInvestigatorId).toBe("guest");
+    expect(resolved.state.defeatedInvestigators?.[0]).toMatchObject({ investigatorId: "akachi_onyele", clues: 1, cause: "health" });
+    expect(resolved.state.players[0]?.clues).toBe(0);
+    expect(state.players[0]?.health).toBe(4);
+  });
+
+  it("offers both causes for simultaneous depletion and blocks premature replacement", () => {
+    const damaged = damageInvestigator(startedGame(), "guest", 99, 99, testContent);
+    if (!damaged.ok) throw new Error(damaged.error.message);
+    expect(damaged.state.pendingDefeat?.causes).toEqual(["health", "sanity"]);
+    expect(openReplacementWindow(damaged.state).ok).toBe(false);
+    expect(executeCommand(damaged.state, "guest", { type: "REPLACE_INVESTIGATOR", investigatorId: "leo_anderson" }, testContent).ok).toBe(false);
+  });
+
+  it("replaces an investigator only in the end-of-Mythos window", () => {
+    const state = startedGame();
+    state.phase = "mythos";
+    state.players[0]!.defeated = true;
+    state.defeatedInvestigators = [{ investigatorId: "akachi_onyele", locationId: "san_francisco", cause: "health", assetIds: [], clues: 1, travelTickets: [] }];
+    const content = { ...testContent, investigators: { ...testContent.investigators, leo_anderson: testContent.investigators.akachi_onyele! } };
+    const window = openReplacementWindow(state);
+    if (!window.ok) throw new Error(window.error.message);
+    const replaced = executeCommand(window.state, "host", { type: "REPLACE_INVESTIGATOR", investigatorId: "leo_anderson" }, content);
+    if (!replaced.ok) throw new Error(replaced.error.message);
+    expect(replaced.state.players[0]).toMatchObject({ investigatorId: "leo_anderson", defeated: false, health: 5, sanity: 7 });
+    expect(replaced.state.defeatedInvestigators).toHaveLength(1);
+  });
   it("requires the recipient's consent and exchanges possessions atomically", () => {
     const state = startedGame();
     const give = { assetIds: [], clues: 1, tickets: [] };

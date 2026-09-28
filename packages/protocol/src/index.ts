@@ -98,6 +98,8 @@ export interface PendingDecisionSummary {
 }
 
 export const gameCommandSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("RESOLVE_DEFEAT"), cityId: z.enum(locationIds), cause: z.enum(["health", "sanity"]), leadPlayerId: z.string().optional() }).strict(),
+  z.object({ type: z.literal("REPLACE_INVESTIGATOR"), investigatorId: z.enum(investigatorIds) }).strict(),
   z.object({ type: z.literal("OFFER_TRADE"), targetPlayerId: z.string().min(1), give: tradeBundleSchema, receive: tradeBundleSchema }).strict(),
   z.object({ type: z.literal("ANSWER_TRADE"), offerId: z.string().min(1), accept: z.boolean() }).strict(),
   z.object({ type: z.literal("SELECT_INVESTIGATOR"), investigatorId: z.enum(investigatorIds) }).strict(),
@@ -125,6 +127,8 @@ export const gameCommandMessageSchema = z.object({
 export type GameCommandMessage = z.infer<typeof gameCommandMessageSchema>;
 
 export type GameEvent =
+  | { type: "INVESTIGATOR_DAMAGED"; playerId: string; healthLost: number; sanityLost: number }
+  | { type: "INVESTIGATOR_DEFEATED" | "INVESTIGATOR_REPLACED"; playerId: string; investigatorId: InvestigatorId }
   | { type: "TRADE_OFFERED" | "TRADE_ACCEPTED" | "TRADE_DECLINED"; offerId: string; playerId: string }
   | { type: "INVESTIGATOR_DELAYED" | "INVESTIGATOR_STOOD_UP"; playerId: string }
   | { type: "INVESTIGATOR_SELECTED"; playerId: string; investigatorId: InvestigatorId }

@@ -3,7 +3,7 @@ import { baseGameAssets } from '@eldritch/content'
 import type { TradeBundle } from '@eldritch/protocol'
 const game = useGameRoom()
 const me = computed(() => game.players.value.find(p => p.id === game.playerId.value))
-const partners = computed(() => game.players.value.filter(p => p.id !== me.value?.id && p.locationId === me.value?.locationId))
+const partners = computed(() => game.players.value.filter(p => !p.defeated && !p.eliminated && p.id !== me.value?.id && p.locationId === me.value?.locationId))
 const targetId = ref('')
 const target = computed(() => partners.value.find(p => p.id === targetId.value))
 const empty = (): TradeBundle => ({ assetIds: [], clues: 0, tickets: [] })

@@ -146,6 +146,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
 
   private toEngineState(): GameState {
     return {
+      ...JSON.parse(this.state.investigatorLifecycle) as Pick<GameState, "pendingDefeat" | "defeatedInvestigators" | "replacementWindow" | "awakened">,
       doom: this.state.doom,
       omen: this.state.omen,
       greenOmenTokens: this.state.greenOmenTokens,
@@ -172,10 +173,12 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       players: [...this.state.players.values()].map((player) => ({
         id: player.id,
         delayed: player.delayed,
+        defeated: player.defeated,
+        eliminated: player.eliminated,
         investigatorId: (player.investigatorId || undefined) as InvestigatorId | undefined,
         locationId: (player.locationId || undefined) as LocationId | undefined,
-        health: player.health || undefined,
-        sanity: player.sanity || undefined,
+        health: player.health,
+        sanity: player.sanity,
         maxHealth: player.maxHealth || undefined,
         maxSanity: player.maxSanity || undefined,
         travelTickets: [
@@ -196,6 +199,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
   }
 
   private applyEngineState(engineState: GameState): void {
+    this.state.investigatorLifecycle = JSON.stringify({ pendingDefeat: engineState.pendingDefeat, defeatedInvestigators: engineState.defeatedInvestigators, replacementWindow: engineState.replacementWindow, awakened: engineState.awakened });
     this.state.doom = engineState.doom ?? 0;
     this.state.omen = engineState.omen ?? 0;
     this.state.greenOmenTokens = engineState.greenOmenTokens ?? 0;
@@ -234,6 +238,8 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       player.assetIds = enginePlayer.assetIds.join(",");
       player.clues = enginePlayer.clues;
       player.delayed = enginePlayer.delayed ?? false;
+      player.defeated = enginePlayer.defeated ?? false;
+      player.eliminated = enginePlayer.eliminated ?? false;
       player.loreImprovement = enginePlayer.skillImprovements.lore ?? 0;
       player.influenceImprovement = enginePlayer.skillImprovements.influence ?? 0;
       player.observationImprovement = enginePlayer.skillImprovements.observation ?? 0;

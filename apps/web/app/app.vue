@@ -318,6 +318,7 @@ async function copyInvite() {
         <div class="board-stage">
           <div class="doom-display">Doom {{ game.doom.value }} · Omen {{ ['Green', 'Blue', 'Red', 'Blue'][game.omen.value] }}</div>
           <TradePanel />
+          <DefeatPanel />
           <section v-if="me?.delayed" class="travel-planner" aria-label="Delayed investigator">
             <strong>You are Delayed</strong><small>Your next action turn is spent standing up.</small>
             <button v-if="isMyTurn" @click="game.send({ type: 'END_ACTIONS' })">Stand up and end actions</button>

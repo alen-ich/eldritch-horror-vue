@@ -18,6 +18,8 @@ interface ClientPlayerState {
   displayName: string
   connected: boolean
   delayed: boolean
+  defeated: boolean
+  eliminated: boolean
   investigatorId: string
   locationId: string
   health: number
@@ -37,6 +39,7 @@ interface ClientPlayerState {
 }
 
 interface ClientGameState {
+  investigatorLifecycle?: string
   doom?: number
   omen?: number
   tradeOffer?: string
@@ -101,6 +104,7 @@ const reserveAssetIds = ref<string[]>([])
 const assetDiscardIds = ref<string[]>([])
 const activeTest = ref<ActiveTest>()
 const tradeOffer = ref<TradeOffer>()
+const investigatorLifecycle = ref<{ pendingDefeat?: { playerId: string; cityIds: string[]; causes: ('health' | 'sanity')[] }; replacementWindow?: boolean; defeatedInvestigators?: { investigatorId: string }[]; awakened?: boolean }>({})
 const pendingDecision = ref<PendingDecision | PendingDecisionSummary>()
 const playerId = ref('')
 const roomId = ref('')
@@ -113,6 +117,7 @@ export function useGameRoom() {
 
   function syncState(state: ClientGameState) {
     if (!state.players) return
+    investigatorLifecycle.value = JSON.parse(state.investigatorLifecycle ?? '{}')
     tradeOffer.value = state.tradeOffer ? JSON.parse(state.tradeOffer) as TradeOffer : undefined
     stateVersion.value = state.stateVersion ?? 0
     phase.value = state.phase ?? 'lobby'
@@ -152,6 +157,8 @@ export function useGameRoom() {
       displayName: player.displayName,
       connected: player.connected,
       delayed: player.delayed,
+      defeated: player.defeated,
+      eliminated: player.eliminated,
       investigatorId: player.investigatorId,
       locationId: player.locationId,
       health: player.health,
@@ -236,6 +243,7 @@ export function useGameRoom() {
   }
 
   return {
+    investigatorLifecycle: readonly(investigatorLifecycle),
     doom: readonly(doom), omen: readonly(omen),
     tradeOffer: readonly(tradeOffer),
     players: readonly(players), stateVersion: readonly(stateVersion), phase: readonly(phase), ancientOneId: readonly(ancientOneId), activeMysteryId: readonly(activeMysteryId), mysteryProgress: readonly(mysteryProgress), mysteryTarget: readonly(mysteryTarget), completedMysteryIds: readonly(completedMysteryIds), gameResult: readonly(gameResult), activePlayerId: readonly(activePlayerId),

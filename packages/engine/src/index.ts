@@ -14,7 +14,7 @@ import type {
   TradeBundle,
 } from "@eldritch/protocol";
 import { calculateDicePool, countTestSuccesses } from "./skill-tests.js";
-import { recoverResource } from "./resources.js";
+import { loseResource, recoverResource } from "./resources.js";
 import { buildMythosDeck, type AncientSetup, type MythosColor } from "./setup.js";
 export * from "./setup.js";
 export * from "./skill-tests.js";
@@ -87,6 +87,8 @@ export function createDeterministicEngineContext(inputs: EngineInputSequences): 
 
 export interface EnginePlayer {
   id: string;
+  defeated?: boolean;
+  eliminated?: boolean;
   delayed?: boolean;
   investigatorId?: InvestigatorId;
   locationId?: LocationId;
@@ -106,6 +108,10 @@ export interface PrivateGameState {
 }
 
 export interface GameState {
+  defeatedInvestigators?: { investigatorId: InvestigatorId; locationId: LocationId; cause: "health" | "sanity"; assetIds: string[]; clues: number; travelTickets: TravelTicketType[] }[];
+  pendingDefeat?: { playerId: string; cityIds: LocationId[]; causes: ("health" | "sanity")[] };
+  replacementWindow?: boolean;
+  awakened?: boolean;
   doom?: number;
   omen?: number;
   greenOmenTokens?: number;
@@ -168,6 +174,7 @@ export interface GameContent {
 }
 
 export type RuleErrorCode =
+  | "INVALID_DEFEAT" | "INVESTIGATOR_DEFEATED" | "INVALID_DAMAGE"
   | "INVALID_TRADE"
   | "INVESTIGATOR_DELAYED"
   | "PLAYER_NOT_FOUND"
@@ -326,6 +333,71 @@ export function applyMysteryProgress(state: GameState, amount: number, content: 
   return success(next, events);
 }
 
+export function nearestCities(map: GameMap, origin: LocationId): LocationId[] {
+  const visited = new Set<LocationId>();
+  let frontier = [origin];
+  while (frontier.length) {
+    const cities = frontier.filter(id => map.locationTypes[id] === "city");
+    if (cities.length) return cities;
+    frontier.forEach(id => visited.add(id));
+    frontier = [...new Set(frontier.flatMap(id => map.adjacentLocationIds[id] ?? []))].filter(id => !visited.has(id));
+  }
+  return [];
+}
+
+/** Internal effect transition; clients cannot assign damage. */
+export function damageInvestigator(state: GameState, playerId: string, health: number, sanity: number, content: GameContent): CommandResult {
+  if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
+  if (state.pendingDefeat) return failure("INVALID_DEFEAT", "Resolve the current defeat first.");
+  if (![health, sanity].every(value => Number.isInteger(value) && value >= 0)) return failure("INVALID_DAMAGE", "Damage must be nonnegative integers.");
+  const index = state.players.findIndex(player => player.id === playerId);
+  const original = state.players[index];
+  if (!original) return failure("PLAYER_NOT_FOUND", "Investigator not found.");
+  if (original.defeated || original.eliminated || !original.investigatorId || !original.locationId) return failure("INVESTIGATOR_DEFEATED", "No active investigator.");
+  const next = structuredClone(state);
+  const player = next.players[index]!;
+  const lostHealth = loseResource(player.health ?? 0, health);
+  const lostSanity = loseResource(player.sanity ?? 0, sanity);
+  player.health = lostHealth.value;
+  player.sanity = lostSanity.value;
+  const events: GameEvent[] = [{ type: "INVESTIGATOR_DAMAGED", playerId, healthLost: lostHealth.amount, sanityLost: lostSanity.amount }];
+  if (player.health === 0 || player.sanity === 0) {
+    const cityIds = nearestCities(content.map, original.locationId);
+    if (!cityIds.length) return failure("INVALID_DEFEAT", "No nearest City exists in map data.");
+    player.defeated = true;
+    player.delayed = false;
+    player.eliminated = state.awakened ?? false;
+    next.doom = Math.max(0, (state.doom ?? content.ancientOnes?.[state.ancientOneId!]?.startingDoom ?? 1) - 1);
+    if (next.doom === 0) {
+      next.awakened = true;
+      if (state.ancientOneId === "azathoth") next.gameResult = "investigators_lose";
+    }
+    next.pendingDefeat = { playerId, cityIds, causes: [...(player.health === 0 ? ["health" as const] : []), ...(player.sanity === 0 ? ["sanity" as const] : [])] };
+    if (next.pendingDecision?.playerId === playerId) next.pendingDecision = undefined;
+    if (next.activeTest?.playerId === playerId) next.activeTest = undefined;
+    if (next.tradeOffer && [next.tradeOffer.fromPlayerId, next.tradeOffer.toPlayerId].includes(playerId)) next.tradeOffer = undefined;
+    events.push({ type: "INVESTIGATOR_DEFEATED", playerId, investigatorId: original.investigatorId });
+    if (next.players.every(p => p.eliminated)) next.gameResult = "investigators_lose";
+    if (next.gameResult) events.push({ type: "GAME_ENDED", result: next.gameResult, reason: "defeat" });
+  }
+  return success(next, events);
+}
+
+/** Called only after all Mythos card effects finish; no client phase-skip command. */
+export function openReplacementWindow(state: GameState, content?: GameContent): CommandResult {
+  if (state.phase !== "mythos" || state.pendingDefeat || state.pendingDecision || state.gameResult) return failure("WRONG_PHASE", "Mythos effects must finish first.");
+  const next = structuredClone(state);
+  next.replacementWindow = true;
+  const used = new Set([...next.players.map(p => p.investigatorId), ...(next.defeatedInvestigators ?? []).map(p => p.investigatorId)]);
+  const available = content ? Object.keys(content.investigators).filter(id => !used.has(id as InvestigatorId)) : [];
+  if (content && !available.length) for (const player of next.players) if (player.defeated) player.eliminated = true;
+  if (next.players.every(player => player.eliminated)) {
+    next.gameResult = "investigators_lose";
+    return success(next, [{ type: "GAME_ENDED", result: "investigators_lose", reason: "all_players_eliminated" }]);
+  }
+  return success(next, []);
+}
+
 function routeBetween(map: GameMap, source: LocationId, target: LocationId) {
   return map.routes.find((route) => (route.source === source && route.target === target) || (route.source === target && route.target === source));
 }
@@ -334,6 +406,10 @@ function advanceActionInvestigator(state: GameState, actorIndex: number, events:
   const nextIndex = actorIndex + 1;
   if (nextIndex < state.players.length) {
     const player = state.players[nextIndex]!;
+    if (player.defeated || player.eliminated) {
+      advanceActionInvestigator(state, nextIndex, events);
+      return;
+    }
     if (player.delayed) {
       player.delayed = false;
       events.push({ type: "INVESTIGATOR_STOOD_UP", playerId: player.id });
@@ -357,6 +433,7 @@ export function delayInvestigator(state: GameState, playerId: string): CommandRe
   if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
   const index = state.players.findIndex(player => player.id === playerId);
   if (index < 0) return failure("PLAYER_NOT_FOUND", "Investigator not found.");
+  if (state.players[index]!.defeated || state.players[index]!.eliminated) return failure("INVESTIGATOR_DEFEATED", "Defeated investigators are not affected.");
   if (state.phase === "lobby") return failure("WRONG_PHASE", "The game has not started.");
   const next = structuredClone(state);
   const events: GameEvent[] = [{ type: "INVESTIGATOR_DELAYED", playerId }];
@@ -392,7 +469,7 @@ function ownsBundle(player: EnginePlayer, bundle: TradeBundle): boolean {
 }
 
 function canTrade(a: EnginePlayer, b: EnginePlayer, give: TradeBundle, receive: TradeBundle): boolean {
-  return a.id !== b.id && !!a.locationId && a.locationId === b.locationId
+  return !a.defeated && !b.defeated && !a.eliminated && !b.eliminated && a.id !== b.id && !!a.locationId && a.locationId === b.locationId
     && ownsBundle(a, give) && ownsBundle(b, receive)
     && (a.travelTickets?.length ?? 0) - give.tickets.length + receive.tickets.length <= 2
     && (b.travelTickets?.length ?? 0) - receive.tickets.length + give.tickets.length <= 2;
@@ -550,6 +627,52 @@ export function executeCommand(
     },
   };
   const actor = next.players[actorIndex]!;
+
+  if (command.type === "RESOLVE_DEFEAT") {
+    const defeat = state.pendingDefeat;
+    if (!defeat || defeat.playerId !== actorPlayerId || !defeat.cityIds.includes(command.cityId) || !defeat.causes.includes(command.cause)) return failure("INVALID_DEFEAT", "Choose a legal defeat location and cause.");
+    const survivors = next.players.filter(player => !player.defeated && !player.eliminated);
+    if (state.leadInvestigatorId === actorPlayerId && survivors.length && !survivors.some(player => player.id === command.leadPlayerId)) return failure("INVALID_DEFEAT", "Choose a surviving lead investigator.");
+    next.defeatedInvestigators = [...(state.defeatedInvestigators ?? []), { investigatorId: actor.investigatorId!, locationId: command.cityId, cause: command.cause, assetIds: [...actor.assetIds], clues: actor.clues, travelTickets: [...(actor.travelTickets ?? [])] }];
+    actor.assetIds = [];
+    actor.clues = 0;
+    actor.travelTickets = [];
+    actor.skillImprovements = {};
+    actor.health = 0;
+    actor.sanity = 0;
+    actor.locationId = command.cityId;
+    next.pendingDefeat = undefined;
+    if (state.leadInvestigatorId === actorPlayerId) next.leadInvestigatorId = command.leadPlayerId ?? survivors[0]?.id;
+    const events: GameEvent[] = [];
+    if (state.phase === "action" && state.activePlayerId === actorPlayerId) advanceActionInvestigator(next, actorIndex, events);
+    else if (state.activePlayerId === actorPlayerId) next.activePlayerId = next.leadInvestigatorId;
+    return success(next, events);
+  }
+  if (state.pendingDefeat) return failure("INVALID_DEFEAT", "Resolve the pending defeat first.");
+  if (command.type === "REPLACE_INVESTIGATOR") {
+    if (!state.replacementWindow || !actor.defeated || actor.eliminated || state.awakened) return failure("WRONG_PHASE", "Replacement is available at the end of Mythos before awakening.");
+    if (state.players.some(player => player.investigatorId === command.investigatorId) || state.defeatedInvestigators?.some(player => player.investigatorId === command.investigatorId)) return failure("INVESTIGATOR_TAKEN", "That investigator is unavailable.");
+    const setup = content.investigators[command.investigatorId];
+    if (!setup) return failure("INVESTIGATOR_CONTENT_MISSING", "Investigator setup is missing.");
+    actor.investigatorId = command.investigatorId;
+    actor.defeated = false;
+    actor.delayed = false;
+    actor.health = actor.maxHealth = setup.health;
+    actor.sanity = actor.maxSanity = setup.sanity;
+    actor.locationId = setup.startingLocationId;
+    actor.clues = setup.startingClues;
+    actor.skillImprovements = {};
+    actor.travelTickets = [];
+    actor.assetIds = [];
+    for (const id of setup.startingAssetIds) {
+      const piles = [next.privateState.deckOrderById.assets ?? [], next.assetDiscardIds, next.reserveAssetIds];
+      const pile = piles.find(cards => cards.includes(id));
+      if (pile) { pile.splice(pile.indexOf(id), 1); actor.assetIds.push(id); }
+    }
+    refillReserve(next);
+    return success(next, [{ type: "INVESTIGATOR_REPLACED", playerId: actorPlayerId, investigatorId: command.investigatorId }]);
+  }
+  if (actor.defeated || actor.eliminated) return failure("INVESTIGATOR_DEFEATED", "This investigator cannot act.");
 
   if (command.type === "ANSWER_TRADE") {
     const offer = state.tradeOffer;
