@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createDeterministicEngineContext, createLobby, discardCondition, gainCondition, projectPublicState, type GameContent } from "../src/index.js";
+import { createDeterministicEngineContext, createLobby, discardCondition, gainCondition, projectPublicState, resolveConditionReckoning, type GameContent } from "../src/index.js";
 
 const content: GameContent = {
   conditions: [
@@ -80,5 +80,46 @@ describe("Condition supply and gain lifecycle", () => {
     expect(result.state.privateState.tokenPoolById["condition:debt"]).toEqual(["condition_debt_01"]);
     expect(discardCondition(result.state, "investigator", "condition_debt_01", content))
       .toMatchObject({ ok: false, error: { code: "CONDITION_NOT_HELD" } });
+  });
+});
+
+describe("front-side Condition Reckoning", () => {
+  it.each([
+    ["condition_blessed_01", 1, true], ["condition_blessed_01", 2, true],
+    ["condition_blessed_01", 3, false], ["condition_cursed_01", 3, false],
+    ["condition_cursed_01", 4, true], ["condition_cursed_01", 6, true],
+  ] as const)("resolves %s on die %i with discard=%s", (cardId, die, discarded) => {
+    const before = state();
+    before.phase = "mythos";
+    before.players[0]!.conditionIds = [cardId];
+    const kind = cardId.includes("blessed") ? "blessed" : "cursed";
+    before.privateState.tokenPoolById[`condition:${kind}`] = [];
+    const result = resolveConditionReckoning(before, "investigator", cardId, content, createDeterministicEngineContext({ dice: [die] }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.stateVersion).toBe(before.stateVersion + 1);
+    expect(result.events[0]).toEqual({ type: "CONDITION_RECKONING_ROLLED", playerId: "investigator", conditionId: `condition_${kind}`, die, discarded });
+    expect(result.state.players[0]!.conditionIds).toEqual(discarded ? [] : [cardId]);
+    expect(result.state.privateState.tokenPoolById[`condition:${kind}`]).toEqual(discarded ? [cardId] : []);
+    expect(before.players[0]!.conditionIds).toEqual([cardId]);
+    expect(JSON.stringify(projectPublicState(result.state))).not.toContain(cardId);
+  });
+
+  it("rejects wrong phase, unheld card, pending decision, and unsupported reverses without mutation", () => {
+    const before = state();
+    before.players[0]!.conditionIds = ["condition_blessed_01", "condition_debt_01"];
+    const snapshot = structuredClone(before);
+    const context = createDeterministicEngineContext({});
+    expect(resolveConditionReckoning(before, "investigator", "condition_blessed_01", content, context))
+      .toMatchObject({ ok: false, error: { code: "WRONG_PHASE" } });
+    before.phase = "mythos";
+    expect(resolveConditionReckoning(before, "investigator", "condition_blessed_02", content, context))
+      .toMatchObject({ ok: false, error: { code: "CONDITION_NOT_HELD" } });
+    expect(resolveConditionReckoning(before, "investigator", "condition_debt_01", content, context))
+      .toMatchObject({ ok: false, error: { code: "CONDITION_EFFECT_UNSUPPORTED" } });
+    before.activeTest = { id: "test", playerId: "investigator", skill: "will", modifier: 0, dicePool: 1, dice: [5], successes: 1, successThreshold: 5, continuation: "condition_action" };
+    expect(resolveConditionReckoning(before, "investigator", "condition_blessed_01", content, context))
+      .toMatchObject({ ok: false, error: { code: "DECISION_PENDING" } });
+    expect({ ...before, phase: snapshot.phase, activeTest: undefined }).toEqual(snapshot);
   });
 });

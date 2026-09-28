@@ -371,6 +371,33 @@ export function discardCondition(state: GameState, playerId: string, cardId: str
   return success(next, [{ type: "CONDITION_DISCARDED", playerId, conditionId: publicConditionId(cardId) }]);
 }
 
+/** Internal Mythos effect, never a client command. The caller must order Reckoning triggers. */
+export function resolveConditionReckoning(
+  state: GameState, playerId: string, cardId: string, content: GameContent, context: EngineContext,
+): CommandResult {
+  if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
+  if (state.phase !== "mythos") return failure("WRONG_PHASE", "Condition Reckoning resolves during Mythos.");
+  if (state.pendingDecision || state.activeTest) return failure("DECISION_PENDING", "Finish the current decision first.");
+  const player = state.players.find(candidate => candidate.id === playerId);
+  if (!player) return failure("PLAYER_NOT_FOUND", "Investigator not found.");
+  if (!player.conditionIds?.includes(cardId)) return failure("CONDITION_NOT_HELD", "That Condition is not held by this investigator.");
+  const condition = content.conditions?.find(candidate => candidate.id === cardId);
+  if (!condition) return failure("CONDITION_CONTENT_MISSING", "Condition content is missing.");
+  if (condition.kind !== "blessed" && condition.kind !== "cursed") {
+    return failure("CONDITION_EFFECT_UNSUPPORTED", "This Condition's Reckoning and reverse are not executable yet.");
+  }
+  const die = context.rollDie();
+  const discarded = condition.kind === "blessed" ? die <= 2 : die >= 4;
+  const next = structuredClone(state);
+  const events: GameEvent[] = [{ type: "CONDITION_RECKONING_ROLLED", playerId, conditionId: publicConditionId(cardId), die, discarded }];
+  if (discarded) {
+    const owner = next.players.find(candidate => candidate.id === playerId)!;
+    returnConditionToPool(next, owner, cardId, content);
+    events.push({ type: "CONDITION_DISCARDED", playerId, conditionId: publicConditionId(cardId) });
+  }
+  return success(next, events);
+}
+
 function failure(code: RuleErrorCode, message: string): CommandResult {
   return { ok: false, error: { code, message } };
 }
