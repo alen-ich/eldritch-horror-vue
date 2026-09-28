@@ -272,6 +272,7 @@ describe("Mystery lifecycle", () => {
 describe("Acquire Assets", () => {
   function marketState(): GameState {
     const state = startedGame();
+    state.players[0]!.clues = 0;
     state.reserveAssetIds = ["asset_bandages", "asset_whiskey", "asset_axe", "asset_holy_water"];
     state.privateState.deckOrderById.assets = ["asset_arcane_tome"];
     return state;
@@ -283,11 +284,15 @@ describe("Acquire Assets", () => {
       "host",
       { type: "ACQUIRE_ASSETS" },
       testContent,
-      createDeterministicEngineContext({ dice: [6, 5], ids: ["buy-assets"] }),
+      createDeterministicEngineContext({ dice: [6, 5], ids: ["influence-test", "buy-assets"] }),
     );
     expect(initiated.ok).toBe(true);
     if (!initiated.ok) return;
-    expect(initiated.events).toEqual([{ type: "ACQUIRE_ASSETS_TESTED", playerId: "host", dice: [6, 5], successes: 2 }]);
+    expect(initiated.events).toEqual([
+      { type: "TEST_ROLLED", testId: "influence-test", playerId: "host", skill: "influence", modifier: 0, dice: [6, 5], successes: 2 },
+      { type: "TEST_RESOLVED", testId: "influence-test", playerId: "host", successes: 2, continuation: "acquire_assets" },
+    ]);
+    expect(initiated.state.activeTest).toBeUndefined();
     expect(initiated.state.pendingDecision).toMatchObject({
       id: "buy-assets",
       kind: "select_acquired_cards",
@@ -315,7 +320,7 @@ describe("Acquire Assets", () => {
       "host",
       { type: "ACQUIRE_ASSETS" },
       testContent,
-      createDeterministicEngineContext({ dice: [6, 1], ids: ["buy-assets"] }),
+      createDeterministicEngineContext({ dice: [6, 1], ids: ["influence-test", "buy-assets"] }),
     );
     if (!initiated.ok) throw new Error("Acquire Assets setup failed.");
     const snapshot = structuredClone(initiated.state);
@@ -333,7 +338,7 @@ describe("Acquire Assets", () => {
       "host",
       { type: "ACQUIRE_ASSETS" },
       testContent,
-      createDeterministicEngineContext({ dice: [1, 2], ids: ["buy-assets"] }),
+      createDeterministicEngineContext({ dice: [1, 2], ids: ["influence-test", "buy-assets"] }),
     );
     if (!initiated.ok) throw new Error("Acquire Assets setup failed.");
     const declined = executeCommand(initiated.state, "host", {
@@ -376,12 +381,78 @@ describe("Acquire Assets", () => {
       "host",
       { type: "ACQUIRE_ASSETS" },
       testContent,
-      createDeterministicEngineContext({ dice: [6, 5, 1], ids: ["enhanced-buy"] }),
+      createDeterministicEngineContext({ dice: [6, 5, 1], ids: ["influence-test", "enhanced-buy"] }),
     );
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.events).toEqual([
-      { type: "ACQUIRE_ASSETS_TESTED", playerId: "host", dice: [6, 5, 1], successes: 3 },
+      { type: "TEST_ROLLED", testId: "influence-test", playerId: "host", skill: "influence", modifier: 0, dice: [6, 5, 1], successes: 3 },
+      { type: "TEST_RESOLVED", testId: "influence-test", playerId: "host", successes: 3, continuation: "acquire_assets" },
     ]);
+  });
+
+  it("applies skill improvements and offers sequential Clue rerolls", () => {
+    const state = marketState();
+    state.players[0]!.clues = 2;
+    state.players[0]!.skillImprovements.influence = 1;
+    const initiated = executeCommand(
+      state,
+      "host",
+      { type: "ACQUIRE_ASSETS" },
+      testContent,
+      createDeterministicEngineContext({ dice: [1, 5, 2], ids: ["influence-test", "reroll-one"] }),
+    );
+    expect(initiated.ok).toBe(true);
+    if (!initiated.ok) return;
+    expect(initiated.state.activeTest).toMatchObject({ id: "influence-test", dicePool: 3, dice: [1, 5, 2], successes: 1 });
+    expect(initiated.state.pendingDecision).toMatchObject({ id: "reroll-one", kind: "select_rerolls", optionIds: ["die-0", "die-1", "die-2"] });
+
+    const reconnectedState = JSON.parse(JSON.stringify(initiated.state)) as GameState;
+    const rerolled = executeCommand(reconnectedState, "host", {
+      type: "RESOLVE_DECISION",
+      decisionId: "reroll-one",
+      selectedOptionIds: ["die-0"],
+    }, testContent, createDeterministicEngineContext({ dice: [6], ids: ["reroll-two"] }));
+    expect(rerolled.ok).toBe(true);
+    if (!rerolled.ok) return;
+    expect(rerolled.state.players[0]!.clues).toBe(1);
+    expect(rerolled.state.activeTest).toMatchObject({ dice: [6, 5, 2], successes: 2 });
+    expect(rerolled.state.pendingDecision).toMatchObject({ id: "reroll-two", kind: "select_rerolls" });
+    expect(rerolled.events).toContainEqual({ type: "CLUE_SPENT_FOR_REROLL", testId: "influence-test", playerId: "host", dieIndex: 0 });
+
+    const kept = executeCommand(rerolled.state, "host", {
+      type: "RESOLVE_DECISION",
+      decisionId: "reroll-two",
+      selectedOptionIds: [],
+    }, testContent, createDeterministicEngineContext({ ids: ["buy-assets"] }));
+    expect(kept.ok).toBe(true);
+    if (!kept.ok) return;
+    expect(kept.state.players[0]!.clues).toBe(1);
+    expect(kept.state.activeTest).toBeUndefined();
+    expect(kept.state.pendingDecision).toMatchObject({ id: "buy-assets", selectionBudget: 2, continuation: "acquire_assets_purchase" });
+    expect(kept.events.at(-1)).toEqual({ type: "TEST_RESOLVED", testId: "influence-test", playerId: "host", successes: 2, continuation: "acquire_assets" });
+  });
+
+  it("rejects an invalid reroll without spending a Clue or mutating the test", () => {
+    const state = marketState();
+    state.players[0]!.clues = 1;
+    const initiated = executeCommand(
+      state,
+      "host",
+      { type: "ACQUIRE_ASSETS" },
+      testContent,
+      createDeterministicEngineContext({ dice: [1, 2], ids: ["influence-test", "reroll"] }),
+    );
+    if (!initiated.ok) throw new Error("Acquire Assets setup failed.");
+    const snapshot = structuredClone(initiated.state);
+    expect(executeCommand(initiated.state, "host", {
+      type: "RESOLVE_DECISION",
+      decisionId: "reroll",
+      selectedOptionIds: ["die-9"],
+    }, testContent, createDeterministicEngineContext({ dice: [6], ids: ["unused"] }))).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_DECISION_SELECTION" },
+    });
+    expect(initiated.state).toEqual(snapshot);
   });
 
   it("resolves Private Care immediately and discards it instead of retaining it", () => {
@@ -392,7 +463,7 @@ describe("Acquire Assets", () => {
       "host",
       { type: "ACQUIRE_ASSETS" },
       testContent,
-      createDeterministicEngineContext({ dice: [6, 5], ids: ["private-care"] }),
+      createDeterministicEngineContext({ dice: [6, 5], ids: ["influence-test", "private-care"] }),
     );
     if (!initiated.ok) throw new Error("Acquire Assets setup failed.");
     const purchased = executeCommand(initiated.state, "host", {

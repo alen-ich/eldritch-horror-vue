@@ -167,6 +167,8 @@ export type RuleErrorCode =
   | "ASSET_CONTENT_MISSING"
   | "ASSET_ACTION_BLOCKED_BY_MONSTER"
   | "ASSET_PURCHASE_OVER_BUDGET"
+  | "ACTIVE_TEST_MISSING"
+  | "CLUE_REQUIRED"
   | "RANDOM_INPUT_REQUIRED"
   | "MYSTERY_REQUIRED"
   | "INVALID_MYSTERY_PROGRESS"
@@ -404,9 +406,8 @@ function beginSkillTest(
   if (!player.investigatorId) throw new Error("Cannot begin a test without an investigator.");
   const investigator = content.investigators[player.investigatorId];
   if (!investigator) throw new Error("Cannot begin a test without investigator content.");
-  const assetBonuses = assetEffectsForPlayer(player, content)
-    .filter((effect) => effect.type === "skill_bonus" && effect.skill === request.skill)
-    .map((effect) => effect.amount);
+  const assetBonuses = assetEffectsForPlayer(player, content).flatMap((effect) =>
+    effect.type === "skill_bonus" && effect.skill === request.skill ? [effect.amount] : []);
   const calculation = calculateDicePool({
     skill: request.skill,
     baseSkill: investigator.skills[request.skill],
@@ -492,6 +493,36 @@ export function executeCommand(
       || selections.some((selection) => !decision.optionIds.includes(selection))
     ) {
       return failure("INVALID_DECISION_SELECTION", "The selected options are not legal for this decision.");
+    }
+    if (decision.continuation === "test_reroll") {
+      const test = state.activeTest;
+      if (!test || test.playerId !== actorPlayerId) {
+        return failure("ACTIVE_TEST_MISSING", "The skill test for this reroll is no longer active.");
+      }
+      if (!context) return failure("RANDOM_INPUT_REQUIRED", "Resolving a test reroll requires deterministic dice and ID input.");
+      const events: GameEvent[] = [{
+        type: "DECISION_RESOLVED",
+        decisionId: decision.id,
+        playerId: actorPlayerId,
+        selectedOptionIds: [...selections],
+      }];
+      next.pendingDecision = undefined;
+      const activeTest = next.activeTest!;
+      const selectedDie = selections[0];
+      if (selectedDie) {
+        if (actor.clues < 1) return failure("CLUE_REQUIRED", "A Clue is required to reroll a test die.");
+        const dieIndex = Number.parseInt(selectedDie.slice("die-".length), 10);
+        actor.clues -= 1;
+        activeTest.dice[dieIndex] = context.rollDie();
+        activeTest.successes = countActiveTestSuccesses(activeTest, actor, content);
+        events.push(
+          { type: "CLUE_SPENT_FOR_REROLL", testId: activeTest.id, playerId: actorPlayerId, dieIndex },
+          { type: "TEST_DIE_REROLLED", testId: activeTest.id, playerId: actorPlayerId, dieIndex, result: activeTest.dice[dieIndex]!, successes: activeTest.successes },
+        );
+      }
+      if (selectedDie && actor.clues > 0) createTestRerollDecision(next, activeTest, context);
+      else events.push(...createAcquireAssetsDecision(next, activeTest, context));
+      return success(next, events);
     }
     if (decision.continuation === "acquire_assets_purchase") {
       const totalValue = selections.reduce((total, assetId) =>
@@ -729,25 +760,11 @@ export function executeCommand(
     const investigator = content.investigators[actor.investigatorId];
     if (!investigator) return failure("INVESTIGATOR_CONTENT_MISSING", "The selected investigator has no setup data.");
     if (!context) return failure("RANDOM_INPUT_REQUIRED", "Acquire Assets requires deterministic dice and ID input.");
-    const effects = assetEffectsForPlayer(actor, content);
-    const influenceBonus = effects.reduce((total, effect) =>
-      total + (effect.type === "skill_bonus" && effect.skill === "influence" ? effect.amount : 0), 0);
-    const dice = Array.from({ length: investigator.skills.influence + influenceBonus }, () => context.rollDie());
-    const doubleSixes = effects.some(({ type }) => type === "acquire_six_counts_as_two");
-    const successes = dice.reduce((total, die) => total + (die === 6 && doubleSixes ? 2 : die >= 5 ? 1 : 0), 0);
-    next.pendingDecision = {
-      id: context.createId(),
-      kind: "select_acquired_cards",
-      playerId: actorPlayerId,
-      visibility: "owner",
-      prompt: `Choose Assets with a total value of ${successes} or less.`,
-      optionIds: [...next.reserveAssetIds],
-      minSelections: 0,
-      maxSelections: next.reserveAssetIds.length,
-      selectionBudget: successes,
-      continuation: "acquire_assets_purchase",
-    };
-    return success(next, [{ type: "ACQUIRE_ASSETS_TESTED", playerId: actorPlayerId, dice, successes }]);
+    return success(next, beginSkillTest(next, actor, {
+      skill: "influence",
+      modifier: 0,
+      continuation: "acquire_assets",
+    }, content, context));
   }
 
   const events: GameEvent[] = [{ type: "ACTIONS_ENDED", playerId: actorPlayerId }];
