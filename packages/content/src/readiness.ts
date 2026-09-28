@@ -42,7 +42,7 @@ export const baseGameContentReadiness: readonly ContentFamilyReadiness[] = [
   { id: "mysteries", status: "verified", source: "16 English base-game Mystery fronts and four Ancient One backs", notes: "All four-card Ancient One decks are structured and linked to scan-verified artwork generated from the current source files." },
   { id: "monsters", status: "verified", source: "Eldritch Horror Wiki Core entries cross-checked against supplied base-game monster PDF", notes: "All 34 normal and 9 Epic Monster tokens are structured with Core counts, combat statistics, effects, and token images." },
   { id: "gates", status: "verified", source: "nine English base-game Gate faces and shared back", notes: "The complete Gate pool is structured with unique city locations, Omen symbols, and scan-verified artwork." },
-  { id: "assets", status: "absent", source: "not supplied", notes: "No executable Asset deck is structured." },
+  { id: "assets", status: "needs_review", source: "40 English base-game Asset front scans", notes: "The complete front roster has stable IDs and artwork; the shared back and verified value, trait, and effect transcription are still pending." },
   { id: "artifacts", status: "absent", source: "not supplied", notes: "No executable Artifact deck is structured." },
   { id: "spells", status: "absent", source: "not supplied", notes: "No executable Spell deck is structured." },
   { id: "conditions", status: "absent", source: "not supplied", notes: "No executable Condition deck or hidden backs are structured." },

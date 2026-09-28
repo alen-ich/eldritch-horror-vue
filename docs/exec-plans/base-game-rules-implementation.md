@@ -10,7 +10,7 @@ The current baseline implements investigator selection and the Travel, Rest, Pre
 
 Last updated: 2026-09-28
 
-- Milestone 0: **in progress**. The 16-page authoritative Reference Guide is checksummed, visually verified, and mapped to implementation status in `docs/rules/base-game-reference-guide.md`. The supplied 2024 Ultimate FAQ compilation is also checksummed and classified by provenance in `docs/rules/base-game-faq.md`; only reproduced errata and explicitly marked official FFG answers qualify as authoritative regression sources. All four base-game Ancient One sheets, all 43 base-game Monster tokens, all nine base-game Gate tokens, the complete 51-card English Mythos roster, all 16 base-game Mysteries, and the 1-8 player Icon Reference tables are structured and scan-verified. Mythos and Mystery effects remain non-executable. A validated readiness inventory prevents complete setup while families are absent or unverified. Remaining blockers include English encounter cards and possessions.
+- Milestone 0: **in progress**. The 16-page authoritative Reference Guide is checksummed, visually verified, and mapped to implementation status in `docs/rules/base-game-reference-guide.md`. The supplied 2024 Ultimate FAQ compilation is also checksummed and classified by provenance in `docs/rules/base-game-faq.md`; only reproduced errata and explicitly marked official FFG answers qualify as authoritative regression sources. All four base-game Ancient One sheets, all 43 base-game Monster tokens, all nine base-game Gate tokens, the complete 51-card English Mythos roster, all 16 base-game Mysteries, the 1-8 player Icon Reference tables, and all 40 base-game Asset fronts are scan-verified. Asset rules and the shared back remain pending; Mythos and Mystery effects remain non-executable. A validated readiness inventory prevents complete setup while families are absent or unverified. Remaining blockers include English encounter cards and incomplete possession categories.
 - Milestone 1: **complete**.
   - Completed: strict versioned command envelopes (`87f5753`).
   - Completed: successful transitions advance the canonical version exactly once; rejected transitions do not mutate state (`4e2c438`).
@@ -27,7 +27,7 @@ Last updated: 2026-09-28
 
 - Protocol: 13 tests passing, including Ancient One command validation and decision payload invariants.
 - Engine: 28 tests passing, including host-only Ancient One selection, Mystery setup preconditions, private deck projection, progress, replacement draws, victory, terminal rejection, decisions, and deterministic inputs.
-- Content: 39 tests passing, including the complete Ancient One, Monster, Gate, Mystery, English Mythos, and Icon Reference rosters, Omen mappings, player-count spawn values, scan asset coverage, setup dependencies, scaled Mystery thresholds, required-family inventory, and incomplete-setup rejection.
+- Content: 44 tests passing, including the complete Ancient One, Monster, Gate, Mystery, Asset-front, English Mythos, and Icon Reference rosters, Omen mappings, player-count spawn values, scan asset coverage, setup dependencies, scaled Mystery thresholds, required-family inventory, and incomplete-setup rejection.
 - Server: 4 multiplayer integration tests passing, including stale-command rejection and reconnect decision delivery.
 - Root `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm build` pass.
 
