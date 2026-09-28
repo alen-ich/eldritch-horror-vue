@@ -54,6 +54,7 @@ export const ActiveTestState = schema({
 export type ActiveTestState = SchemaType<typeof ActiveTestState>;
 
 export const GameRoomState = schema({
+  tradeOffer: t.string().default(""),
   stateVersion: t.uint32().default(0),
   phase: t.string().default("lobby"),
   activePlayerId: t.string().default(""),

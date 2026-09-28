@@ -316,6 +316,7 @@ async function copyInvite() {
         </header>
         <div class="game-workspace">
         <div class="board-stage">
+          <TradePanel />
           <section v-if="me?.delayed" class="travel-planner" aria-label="Delayed investigator">
             <strong>You are Delayed</strong><small>Your next action turn is spent standing up.</small>
             <button v-if="isMyTurn" @click="game.send({ type: 'END_ACTIONS' })">Stand up and end actions</button>

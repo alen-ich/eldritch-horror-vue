@@ -5,6 +5,7 @@ import {
   pendingDecisionMessageType,
   type CommandErrorMessage,
   type ActiveTest,
+  type TradeOffer,
   type GameCommand,
   type PendingDecision,
   type PendingDecisionKind,
@@ -36,6 +37,7 @@ interface ClientPlayerState {
 }
 
 interface ClientGameState {
+  tradeOffer?: string
   stateVersion?: number
   phase?: string
   ancientOneId?: string
@@ -94,6 +96,7 @@ const performedActions = ref<string[]>([])
 const reserveAssetIds = ref<string[]>([])
 const assetDiscardIds = ref<string[]>([])
 const activeTest = ref<ActiveTest>()
+const tradeOffer = ref<TradeOffer>()
 const pendingDecision = ref<PendingDecision | PendingDecisionSummary>()
 const playerId = ref('')
 const roomId = ref('')
@@ -106,6 +109,7 @@ export function useGameRoom() {
 
   function syncState(state: ClientGameState) {
     if (!state.players) return
+    tradeOffer.value = state.tradeOffer ? JSON.parse(state.tradeOffer) as TradeOffer : undefined
     stateVersion.value = state.stateVersion ?? 0
     phase.value = state.phase ?? 'lobby'
     ancientOneId.value = state.ancientOneId ?? ''
@@ -226,6 +230,7 @@ export function useGameRoom() {
   }
 
   return {
+    tradeOffer: readonly(tradeOffer),
     players: readonly(players), stateVersion: readonly(stateVersion), phase: readonly(phase), ancientOneId: readonly(ancientOneId), activeMysteryId: readonly(activeMysteryId), mysteryProgress: readonly(mysteryProgress), mysteryTarget: readonly(mysteryTarget), completedMysteryIds: readonly(completedMysteryIds), gameResult: readonly(gameResult), activePlayerId: readonly(activePlayerId),
     turnNumber: readonly(turnNumber), actionsRemaining: readonly(actionsRemaining), performedActions: readonly(performedActions), reserveAssetIds: readonly(reserveAssetIds), assetDiscardIds: readonly(assetDiscardIds), activeTest: readonly(activeTest), pendingDecision: readonly(pendingDecision), playerId: readonly(playerId), roomId: readonly(roomId),
     status: readonly(status), errorMessage: readonly(errorMessage), createGame, joinGame, reconnect, send

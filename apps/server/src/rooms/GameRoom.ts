@@ -125,7 +125,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
             dice: Array.from({ length: 5 }, () => randomInt(1, 7)),
             ids: [randomUUID(), randomUUID()],
           })
-        : parsed.data.command.type === "RESOLVE_DECISION"
+        : parsed.data.command.type === "RESOLVE_DECISION" || parsed.data.command.type === "OFFER_TRADE"
           ? createDeterministicEngineContext({ dice: [randomInt(1, 7)], ids: [randomUUID(), randomUUID()] })
           : undefined;
     const result = executeCommand(this.toEngineState(), playerId, parsed.data.command, baseGameContent, context);
@@ -138,6 +138,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
 
   private toEngineState(): GameState {
     return {
+      tradeOffer: this.state.tradeOffer ? JSON.parse(this.state.tradeOffer) as GameState["tradeOffer"] : undefined,
       stateVersion: this.state.stateVersion,
       phase: this.state.phase as GameState["phase"],
       activePlayerId: this.state.activePlayerId || undefined,
@@ -184,6 +185,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
   }
 
   private applyEngineState(engineState: GameState): void {
+    this.state.tradeOffer = engineState.tradeOffer ? JSON.stringify(engineState.tradeOffer) : "";
     this.privateState = engineState.privateState;
     this.pendingDecision = engineState.pendingDecision;
     this.activeTest = engineState.activeTest;

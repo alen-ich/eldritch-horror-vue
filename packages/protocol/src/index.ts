@@ -58,6 +58,20 @@ export const pendingDecisionSchema = z.object({
 
 export type PendingDecision = z.infer<typeof pendingDecisionSchema>;
 
+export const tradeBundleSchema = z.object({
+  assetIds: z.array(z.string().min(1)).max(40),
+  clues: z.number().int().min(0).max(255),
+  tickets: z.array(z.enum(["train", "ship"])).max(2),
+}).strict();
+export type TradeBundle = z.infer<typeof tradeBundleSchema>;
+export interface TradeOffer {
+  id: string;
+  fromPlayerId: string;
+  toPlayerId: string;
+  give: TradeBundle;
+  receive: TradeBundle;
+}
+
 export interface ActiveTest {
   id: string;
   playerId: string;
@@ -84,6 +98,8 @@ export interface PendingDecisionSummary {
 }
 
 export const gameCommandSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("OFFER_TRADE"), targetPlayerId: z.string().min(1), give: tradeBundleSchema, receive: tradeBundleSchema }).strict(),
+  z.object({ type: z.literal("ANSWER_TRADE"), offerId: z.string().min(1), accept: z.boolean() }).strict(),
   z.object({ type: z.literal("SELECT_INVESTIGATOR"), investigatorId: z.enum(investigatorIds) }).strict(),
   z.object({ type: z.literal("SELECT_ANCIENT_ONE"), ancientOneId: z.enum(ancientOneIds) }).strict(),
   z.object({ type: z.literal("START_GAME") }).strict(),
@@ -109,6 +125,7 @@ export const gameCommandMessageSchema = z.object({
 export type GameCommandMessage = z.infer<typeof gameCommandMessageSchema>;
 
 export type GameEvent =
+  | { type: "TRADE_OFFERED" | "TRADE_ACCEPTED" | "TRADE_DECLINED"; offerId: string; playerId: string }
   | { type: "INVESTIGATOR_DELAYED" | "INVESTIGATOR_STOOD_UP"; playerId: string }
   | { type: "INVESTIGATOR_SELECTED"; playerId: string; investigatorId: InvestigatorId }
   | { type: "ANCIENT_ONE_SELECTED"; ancientOneId: AncientOneId }

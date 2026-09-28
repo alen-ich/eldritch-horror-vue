@@ -10,6 +10,8 @@ import type {
   PendingDecisionSummary,
   SkillId,
   TravelTicketType,
+  TradeOffer,
+  TradeBundle,
 } from "@eldritch/protocol";
 import { calculateDicePool, countTestSuccesses } from "./skill-tests.js";
 import { recoverResource } from "./resources.js";
@@ -102,6 +104,7 @@ export interface PrivateGameState {
 }
 
 export interface GameState {
+  tradeOffer?: TradeOffer;
   stateVersion: number;
   phase: GamePhase;
   players: EnginePlayer[];
@@ -158,6 +161,7 @@ export interface GameContent {
 }
 
 export type RuleErrorCode =
+  | "INVALID_TRADE"
   | "INVESTIGATOR_DELAYED"
   | "PLAYER_NOT_FOUND"
   | "WRONG_PHASE"
@@ -363,6 +367,39 @@ function completeAction(state: GameState, actorIndex: number, action: ActionType
   if (state.actionsRemaining === 0) advanceActionInvestigator(state, actorIndex, events);
 }
 
+function remainingTickets(player: EnginePlayer, bundle: TradeBundle): TravelTicketType[] | undefined {
+  const tickets = [...(player.travelTickets ?? [])];
+  for (const ticket of bundle.tickets) {
+    const index = tickets.indexOf(ticket);
+    if (index < 0) return undefined;
+    tickets.splice(index, 1);
+  }
+  return tickets;
+}
+
+function ownsBundle(player: EnginePlayer, bundle: TradeBundle): boolean {
+  return Number.isInteger(bundle.clues) && bundle.clues >= 0 && player.clues >= bundle.clues
+    && new Set(bundle.assetIds).size === bundle.assetIds.length
+    && bundle.assetIds.every(id => player.assetIds.includes(id))
+    && remainingTickets(player, bundle) !== undefined;
+}
+
+function canTrade(a: EnginePlayer, b: EnginePlayer, give: TradeBundle, receive: TradeBundle): boolean {
+  return a.id !== b.id && !!a.locationId && a.locationId === b.locationId
+    && ownsBundle(a, give) && ownsBundle(b, receive)
+    && (a.travelTickets?.length ?? 0) - give.tickets.length + receive.tickets.length <= 2
+    && (b.travelTickets?.length ?? 0) - receive.tickets.length + give.tickets.length <= 2;
+}
+
+function exchangePossessions(a: EnginePlayer, b: EnginePlayer, give: TradeBundle, receive: TradeBundle): void {
+  a.assetIds = [...a.assetIds.filter(id => !give.assetIds.includes(id)), ...receive.assetIds];
+  b.assetIds = [...b.assetIds.filter(id => !receive.assetIds.includes(id)), ...give.assetIds];
+  a.clues += receive.clues - give.clues;
+  b.clues += give.clues - receive.clues;
+  a.travelTickets = [...remainingTickets(a, give)!, ...receive.tickets];
+  b.travelTickets = [...remainingTickets(b, receive)!, ...give.tickets];
+}
+
 function refillReserve(state: GameState): string[] {
   const drawn: string[] = [];
   const deck = state.privateState.deckOrderById.assets ?? [];
@@ -506,6 +543,23 @@ export function executeCommand(
     },
   };
   const actor = next.players[actorIndex]!;
+
+  if (command.type === "ANSWER_TRADE") {
+    const offer = state.tradeOffer;
+    if (!offer || offer.id !== command.offerId || (actorPlayerId !== offer.toPlayerId && !(actorPlayerId === offer.fromPlayerId && !command.accept))) {
+      return failure("INVALID_TRADE", "Only the recipient can accept a current offer; either participant can cancel.");
+    }
+    next.tradeOffer = undefined;
+    if (!command.accept) return success(next, [{ type: "TRADE_DECLINED", offerId: offer.id, playerId: actorPlayerId }]);
+    const giverIndex = next.players.findIndex(player => player.id === offer.fromPlayerId);
+    const giver = next.players[giverIndex];
+    if (!giver || !canTrade(giver, actor, offer.give, offer.receive)) return failure("INVALID_TRADE", "The offered possessions or locations changed.");
+    exchangePossessions(giver, actor, offer.give, offer.receive);
+    const events: GameEvent[] = [{ type: "TRADE_ACCEPTED", offerId: offer.id, playerId: actorPlayerId }];
+    completeAction(next, giverIndex, "trade", events);
+    return success(next, events);
+  }
+  if (state.tradeOffer) return failure("INVALID_TRADE", "Resolve the trade offer first.");
 
   if (command.type === "RESOLVE_DECISION") {
     const decision = state.pendingDecision;
@@ -737,6 +791,16 @@ export function executeCommand(
     return success(next, events);
   }
   if (state.actionsRemaining < 1 && command.type !== "END_ACTIONS") return failure("NO_ACTIONS_REMAINING", "This investigator has no actions remaining.");
+
+  if (command.type === "OFFER_TRADE") {
+    if (state.performedActions.includes("trade")) return failure("ACTION_ALREADY_PERFORMED", "Trade can be performed only once per round.");
+    const target = next.players.find(player => player.id === command.targetPlayerId);
+    if (!target || !canTrade(actor, target, command.give, command.receive)) return failure("INVALID_TRADE", "Trade requires owned possessions, shared location, and at most two tickets each.");
+    if (!context) return failure("RANDOM_INPUT_REQUIRED", "Trade requires an offer ID.");
+    const id = context.createId();
+    next.tradeOffer = structuredClone({ id, fromPlayerId: actorPlayerId, toPlayerId: target.id, give: command.give, receive: command.receive });
+    return success(next, [{ type: "TRADE_OFFERED", offerId: id, playerId: actorPlayerId }]);
+  }
 
   if (command.type === "TRAVEL") {
     if (state.performedActions.includes("travel")) return failure("ACTION_ALREADY_PERFORMED", "Travel can be performed only once per round.");

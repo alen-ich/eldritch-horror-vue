@@ -80,6 +80,33 @@ function startedGame(): GameState {
 }
 
 describe("executeCommand", () => {
+  it("requires the recipient's consent and exchanges possessions atomically", () => {
+    const state = startedGame();
+    const give = { assetIds: [], clues: 1, tickets: [] };
+    const receive = { assetIds: ["asset_45_automatic"], clues: 0, tickets: [] };
+    const result = executeCommand(state, "host", { type: "OFFER_TRADE", targetPlayerId: "guest", give, receive }, testContent, createDeterministicEngineContext({ ids: ["trade-1"] }));
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.state.players).toEqual(state.players);
+    expect(executeCommand(result.state, "host", { type: "ANSWER_TRADE", offerId: "trade-1", accept: true }, testContent).ok).toBe(false);
+    const accepted = executeCommand(result.state, "guest", { type: "ANSWER_TRADE", offerId: "trade-1", accept: true }, testContent);
+    if (!accepted.ok) throw new Error(accepted.error.message);
+    expect(accepted.state.players[0]).toMatchObject({ clues: 0, assetIds: ["asset_45_automatic"] });
+    expect(accepted.state.players[1]).toMatchObject({ clues: 1, assetIds: [] });
+    expect(accepted.state.actionsRemaining).toBe(1);
+    expect(accepted.state.tradeOffer).toBeUndefined();
+  });
+
+  it("rejects remote trades and ticket overflow without mutations", () => {
+    const state = startedGame();
+    state.players[0]!.travelTickets = ["ship"];
+    state.players[1]!.travelTickets = ["train", "train"];
+    const snapshot = structuredClone(state);
+    const command = { type: "OFFER_TRADE" as const, targetPlayerId: "guest", give: { assetIds: [], clues: 0, tickets: ["ship" as const] }, receive: { assetIds: [], clues: 0, tickets: [] } };
+    expect(executeCommand(state, "host", command, testContent).ok).toBe(false);
+    expect(state).toEqual(snapshot);
+    state.players[1]!.locationId = "space_1";
+    expect(executeCommand(state, "host", command, testContent).ok).toBe(false);
+  });
   it("ends the active investigator's actions immediately when delayed", () => {
     const state = startedGame();
     const result = delayInvestigator(state, "host");
