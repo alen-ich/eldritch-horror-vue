@@ -17,8 +17,9 @@ describe("base-game Asset cards", () => {
     }
   });
 
-  it("links every catalog entry to a generated front scan", () => {
-    expect(baseGameAssets.every(({ imageUrl }) => existsSync(`${publicDirectory}${imageUrl}`))).toBe(true);
+  it("links every catalog entry to a generated front and shared back", () => {
+    expect(baseGameAssets.every(({ imageUrl, backImageUrl }) =>
+      existsSync(`${publicDirectory}${imageUrl}`) && existsSync(`${publicDirectory}${backImageUrl}`))).toBe(true);
   });
 
   it("keeps rules transcription explicitly incomplete", () => {

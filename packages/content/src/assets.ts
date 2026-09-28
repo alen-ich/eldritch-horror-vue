@@ -24,6 +24,7 @@ export interface AssetCardData {
   id: AssetId;
   name: string;
   imageUrl: string;
+  backImageUrl: "/cards/assets/back.webp";
   verification: "front_verified_from_scan";
   rulesStatus: "pending_verified_transcription";
 }
@@ -32,6 +33,7 @@ export const baseGameAssets: readonly AssetCardData[] = assetDefinitions.map(([s
   id: `asset_${slug}`,
   name,
   imageUrl: `/cards/assets/${slug}.webp`,
+  backImageUrl: "/cards/assets/back.webp",
   verification: "front_verified_from_scan",
   rulesStatus: "pending_verified_transcription",
 }));
@@ -40,6 +42,7 @@ const assetSchema = z.object({
   id: z.string().regex(/^asset_[a-z0-9_]+$/),
   name: z.string().min(1),
   imageUrl: z.string().regex(/^\/cards\/assets\/[a-z0-9_]+\.webp$/),
+  backImageUrl: z.literal("/cards/assets/back.webp"),
   verification: z.literal("front_verified_from_scan"),
   rulesStatus: z.literal("pending_verified_transcription"),
 }).strict();
