@@ -599,7 +599,7 @@ export function resolveCombatEncounter(state: GameState, playerId: string, monst
     next.monsters = next.monsters!.filter(candidate => candidate.id !== monsterInstanceId);
     next.monsterLocationIds = [...new Set(next.monsters.map(candidate => candidate.locationId))];
     if (monster.type === "normal" && !instance.setAside) {
-      next.privateState.tokenPoolById.monsters = [...(next.privateState.tokenPoolById.monsters ?? []), instance.id];
+      next.privateState.tokenPoolById.monsters = [...(next.privateState.tokenPoolById.monsters ?? []), instance.monsterId];
     }
     events.push({ type: "MONSTER_DEFEATED", monsterInstanceId, monsterId: monster.id });
   }

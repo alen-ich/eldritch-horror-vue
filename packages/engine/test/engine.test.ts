@@ -214,7 +214,7 @@ describe("combat encounter integration", () => {
     const result = resolveCombatEncounter(state, "host", "token-1", content, createDeterministicEngineContext({ dice: [5, 1] }));
     if (!result.ok) throw new Error(result.error.message);
     expect(result.state.monsters).toEqual([]);
-    expect(result.state.privateState.tokenPoolById.monsters).toEqual(["token-1"]);
+    expect(result.state.privateState.tokenPoolById.monsters).toEqual(["monster_test"]);
     expect(result.state.players[0]?.defeated).toBe(true);
     expect(result.state.pendingDefeat).toMatchObject({ playerId: "host" });
     expect(result.events.map(event => event.type)).toContain("MONSTER_DEFEATED");
