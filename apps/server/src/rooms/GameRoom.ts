@@ -15,6 +15,7 @@ import {
   type PendingDecision,
 } from "@eldritch/protocol";
 import { ActiveTestState, GameRoomState, PendingDecisionState, PlayerState } from "./schema/GameRoomState.js";
+import { privateConditionBackEffectById } from "../private-condition-backs.js";
 
 const RECONNECTION_SECONDS = 30;
 
@@ -22,7 +23,7 @@ function randomShuffleIndexes(length: number): number[] {
   return Array.from({ length: Math.max(0, length - 1) }, (_, offset) => randomInt(length - offset));
 }
 const baseGameContent: GameContent = {
-  conditions: baseGameConditions.map(({ id, kind }) => ({ id, kind })),
+  conditions: baseGameConditions.map(({ id, kind }) => ({ id, kind, backEffect: privateConditionBackEffectById[id] })),
   monsters: baseGameMonsters.map(({ id, type, horrorCheck, damageCheck, toughness, specialEffect }) => ({
     id, type, horrorCheck, damageCheck, toughness, specialEffect,
   })),

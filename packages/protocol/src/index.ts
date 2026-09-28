@@ -131,6 +131,7 @@ export const gameCommandMessageSchema = z.object({
 export type GameCommandMessage = z.infer<typeof gameCommandMessageSchema>;
 
 export type GameEvent =
+  | { type: "CONDITION_BACK_RESOLVED"; playerId: string; conditionId: string; effect: "discard" | "recover_health_and_sanity_then_flip_front" | "gain_clues_then_flip_front" }
   | { type: "CONDITION_RECKONING_ROLLED"; playerId: string; conditionId: string; die: number; discarded: boolean }
   | { type: "CONDITION_RECOVERY_ROLLED"; playerId: string; conditionId: string; die: number; discarded: boolean }
   | { type: "CONDITION_GAIN_PREVENTED"; playerId: string; kind: string }

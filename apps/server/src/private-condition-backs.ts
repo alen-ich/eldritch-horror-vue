@@ -1,4 +1,5 @@
 import { baseGameConditions } from "@eldritch/content";
+import type { ConditionBackEffect } from "@eldritch/engine";
 
 /** Server-only mechanical transcription of the supplied English backs, in front-sheet slot order. */
 export const baseGameConditionBacks = [
@@ -42,3 +43,10 @@ export const baseGameConditionBacks = [
 
 export const privateConditionBackById: Readonly<Record<string, { title: string; text: string }>> =
   Object.fromEntries(baseGameConditions.map((card, index) => [card.id, baseGameConditionBacks[index]]));
+
+/** Deliberately sparse: absent entries remain blocked until their whole reverse is executable. */
+export const privateConditionBackEffectById: Readonly<Record<string, ConditionBackEffect>> = {
+  condition_cursed_02: { type: "discard" },
+  condition_blessed_01: { type: "recover_health_and_sanity_then_flip_front", amount: 2 },
+  condition_blessed_02: { type: "gain_clues_then_flip_front", amount: 2 },
+};

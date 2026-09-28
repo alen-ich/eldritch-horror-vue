@@ -83,6 +83,52 @@ describe("Condition supply and gain lifecycle", () => {
   });
 });
 
+describe("atomic Condition reverse effects", () => {
+  const withBacks: GameContent = {
+    ...content,
+    conditions: [
+      { id: "condition_blessed_01", kind: "blessed", backEffect: { type: "recover_health_and_sanity_then_flip_front", amount: 2 } },
+      { id: "condition_blessed_02", kind: "blessed", backEffect: { type: "gain_clues_then_flip_front", amount: 2 } },
+      { id: "condition_cursed_01", kind: "cursed", backEffect: { type: "discard" } },
+    ],
+  };
+
+  it("caps recovery at maximum and keeps the same Blessed copy front-side", () => {
+    const before = state();
+    Object.assign(before.players[0]!, { conditionIds: ["condition_blessed_01"], health: 4, maxHealth: 5, sanity: 2, maxSanity: 5 });
+    const result = gainCondition(before, "investigator", "blessed", withBacks, createDeterministicEngineContext({}));
+    expect(result).toMatchObject({ ok: true, events: [{ type: "CONDITION_BACK_RESOLVED", conditionId: "condition_blessed", effect: "recover_health_and_sanity_then_flip_front" }] });
+    if (!result.ok) return;
+    expect(result.state.players[0]).toMatchObject({ health: 5, sanity: 4, conditionIds: ["condition_blessed_01"] });
+    expect(before.players[0]).toMatchObject({ health: 4, sanity: 2 });
+    expect(result.state.privateState.tokenPoolById["condition:blessed"]).toHaveLength(2);
+    expect(JSON.stringify(projectPublicState(result.state))).not.toContain("condition_blessed_01");
+  });
+
+  it("gains two Clues without drawing a duplicate Blessed copy", () => {
+    const before = state();
+    before.players[0]!.conditionIds = ["condition_blessed_02"];
+    before.players[0]!.clues = 1;
+    const result = gainCondition(before, "investigator", "blessed", withBacks, createDeterministicEngineContext({}));
+    expect(result).toMatchObject({ ok: true, events: [{ type: "CONDITION_BACK_RESOLVED", effect: "gain_clues_then_flip_front" }] });
+    if (!result.ok) return;
+    expect(result.state.players[0]!.clues).toBe(3);
+    expect(result.state.players[0]!.conditionIds).toEqual(["condition_blessed_02"]);
+  });
+
+  it("discards the same Cursed copy when its reverse says so", () => {
+    const before = state();
+    before.players[0]!.conditionIds = ["condition_cursed_01"];
+    before.privateState.tokenPoolById["condition:cursed"] = [];
+    const result = gainCondition(before, "investigator", "cursed", withBacks, createDeterministicEngineContext({}));
+    expect(result).toMatchObject({ ok: true, events: [{ type: "CONDITION_BACK_RESOLVED", effect: "discard" }, { type: "CONDITION_DISCARDED", conditionId: "condition_cursed" }] });
+    if (!result.ok) return;
+    expect(result.state.players[0]!.conditionIds).toEqual([]);
+    expect(result.state.privateState.tokenPoolById["condition:cursed"]).toEqual(["condition_cursed_01"]);
+    expect(before.players[0]!.conditionIds).toEqual(["condition_cursed_01"]);
+  });
+});
+
 describe("front-side Condition Reckoning", () => {
   it.each([
     ["condition_blessed_01", 1, true], ["condition_blessed_01", 2, true],

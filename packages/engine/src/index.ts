@@ -188,8 +188,14 @@ export type AssetEngineEffect =
   | { type: "rest_recover_additional_sanity"; amount: 1 }
   | { type: "on_gain_recover_all_and_discard" };
 
+/** Only verified, atomic reverse effects; supplied by the server, never public content. */
+export type ConditionBackEffect =
+  | { type: "discard" }
+  | { type: "recover_health_and_sanity_then_flip_front"; amount: 2 }
+  | { type: "gain_clues_then_flip_front"; amount: 2 };
+
 export interface GameContent {
-  conditions?: readonly { id: string; kind: string }[];
+  conditions?: readonly { id: string; kind: string; backEffect?: ConditionBackEffect }[];
   monsters?: readonly MonsterCombatDefinition[];
   ancientOnes?: Readonly<Partial<Record<AncientOneId, AncientSetup>>>;
   mythosCards?: readonly { id: string; color: MythosColor }[];
@@ -347,7 +353,7 @@ export function gainCondition(state: GameState, playerId: string, kind: string, 
   if (kind === "blessed" || kind === "cursed") {
     const replacement = resolveBoonBaneGain(owned, kind);
     if (replacement.type === "discard_opposite") return discardCondition(state, playerId, replacement.cardId, content);
-    if (replacement.type === "flip_existing") return failure("CONDITION_EFFECT_UNSUPPORTED", "The existing Condition's reverse effect is not executable yet.");
+    if (replacement.type === "flip_existing") return resolveConditionFlip(state, playerId, replacement.cardId, content);
   } else if (owned.some(id => content.conditions?.find(card => card.id === id)?.kind === kind)) {
     return success(structuredClone(state), [{ type: "CONDITION_GAIN_PREVENTED", playerId, kind }]);
   }
@@ -369,6 +375,26 @@ export function discardCondition(state: GameState, playerId: string, cardId: str
   if (!player) return failure("PLAYER_NOT_FOUND", "Investigator not found.");
   if (!returnConditionToPool(next, player, cardId, content)) return failure("CONDITION_NOT_HELD", "That Condition is not held by this investigator.");
   return success(next, [{ type: "CONDITION_DISCARDED", playerId, conditionId: publicConditionId(cardId) }]);
+}
+
+/** Resolves only atomic, transcribed reverse effects. The physical ID stays private. */
+function resolveConditionFlip(state: GameState, playerId: string, cardId: string, content: GameContent): CommandResult {
+  const definition = content.conditions?.find(card => card.id === cardId);
+  const effect = definition?.backEffect;
+  if (!effect) return failure("CONDITION_EFFECT_UNSUPPORTED", "This Condition's reverse effect is not executable yet.");
+  const owner = state.players.find(player => player.id === playerId && player.conditionIds?.includes(cardId));
+  if (!owner) return failure("CONDITION_NOT_HELD", "That Condition is not held by this investigator.");
+  const next = structuredClone(state);
+  const recipient = next.players.find(player => player.id === playerId)!;
+  const publicId = publicConditionId(cardId);
+  if (effect.type === "discard") returnConditionToPool(next, recipient, cardId, content);
+  else if (effect.type === "recover_health_and_sanity_then_flip_front") {
+    recipient.health = recoverResource(recipient.health ?? 0, recipient.maxHealth ?? recipient.health ?? 0, effect.amount).value;
+    recipient.sanity = recoverResource(recipient.sanity ?? 0, recipient.maxSanity ?? recipient.sanity ?? 0, effect.amount).value;
+  } else if (effect.type === "gain_clues_then_flip_front") recipient.clues += effect.amount;
+  const events: GameEvent[] = [{ type: "CONDITION_BACK_RESOLVED", playerId, conditionId: publicId, effect: effect.type }];
+  if (effect.type === "discard") events.push({ type: "CONDITION_DISCARDED", playerId, conditionId: publicId });
+  return success(next, events);
 }
 
 /** Internal Mythos effect, never a client command. The caller must order Reckoning triggers. */
