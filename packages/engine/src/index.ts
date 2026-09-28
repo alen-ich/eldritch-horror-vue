@@ -16,6 +16,7 @@ import type {
 import { calculateDicePool, countTestSuccesses } from "./skill-tests.js";
 import { loseResource, recoverResource } from "./resources.js";
 import { buildMythosDeck, type AncientSetup, type MythosColor } from "./setup.js";
+import { resolveStandardCombat, type CombatCheck } from "./combat.js";
 export * from "./setup.js";
 export * from "./skill-tests.js";
 export * from "./resources.js";
@@ -108,6 +109,23 @@ export interface PrivateGameState {
   tokenPoolById: Record<string, string[]>;
 }
 
+export interface MonsterInstance {
+  id: string;
+  monsterId: string;
+  locationId: LocationId;
+  damage: number;
+  setAside?: boolean;
+}
+
+export interface MonsterCombatDefinition {
+  id: string;
+  type: "normal" | "epic";
+  horrorCheck: CombatCheck | null | "ancient_one";
+  damageCheck: CombatCheck | null | "ancient_one";
+  toughness: { base: number; perInvestigator: number } | "ancient_one";
+  specialEffect?: string;
+}
+
 export interface GameState {
   defeatedInvestigators?: { investigatorId: InvestigatorId; locationId: LocationId; cause: "health" | "sanity"; assetIds: string[]; clues: number; travelTickets: TravelTicketType[] }[];
   pendingDefeat?: { playerId: string; cityIds: LocationId[]; causes: ("health" | "sanity")[] };
@@ -132,6 +150,7 @@ export interface GameState {
   actionsRemaining: number;
   performedActions: ActionType[];
   monsterLocationIds: LocationId[];
+  monsters?: MonsterInstance[];
   reserveAssetIds: string[];
   assetDiscardIds: string[];
   pendingDecision?: PendingDecision;
@@ -165,6 +184,7 @@ export type AssetEngineEffect =
   | { type: "on_gain_recover_all_and_discard" };
 
 export interface GameContent {
+  monsters?: readonly MonsterCombatDefinition[];
   ancientOnes?: Readonly<Partial<Record<AncientOneId, AncientSetup>>>;
   mythosCards?: readonly { id: string; color: MythosColor }[];
   map: GameMap;
@@ -175,6 +195,7 @@ export interface GameContent {
 }
 
 export type RuleErrorCode =
+  | "INVALID_COMBAT" | "MONSTER_CONTENT_MISSING" | "MONSTER_EFFECT_UNSUPPORTED"
   | "INVALID_DEFEAT" | "INVESTIGATOR_DEFEATED" | "INVALID_DAMAGE"
   | "INVALID_TRADE"
   | "INVESTIGATOR_DELAYED"
@@ -267,6 +288,7 @@ export function projectStateForPlayer(state: GameState, viewerPlayerId?: string)
     })),
     performedActions: [...publicState.performedActions],
     monsterLocationIds: [...publicState.monsterLocationIds],
+    monsters: publicState.monsters?.map(monster => ({ ...monster })),
     reserveAssetIds: [...publicState.reserveAssetIds],
     assetDiscardIds: [...publicState.assetDiscardIds],
     completedMysteryIds: [...publicState.completedMysteryIds],
@@ -380,6 +402,67 @@ export function damageInvestigator(state: GameState, playerId: string, health: n
     events.push({ type: "INVESTIGATOR_DEFEATED", playerId, investigatorId: original.investigatorId });
     if (next.players.every(p => p.eliminated)) next.gameResult = "investigators_lose";
     if (next.gameResult) events.push({ type: "GAME_ENDED", result: next.gameResult, reason: "defeat" });
+  }
+  return success(next, events);
+}
+
+/** Internal combat transition for Monsters without combat-specific card text. */
+export function resolveCombatEncounter(state: GameState, playerId: string, monsterInstanceId: string, content: GameContent, context: EngineContext): CommandResult {
+  if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
+  if (state.phase !== "encounter" || state.activePlayerId !== playerId || state.pendingDecision || state.pendingDefeat) {
+    return failure("WRONG_PHASE", "Combat is unavailable during this resolution.");
+  }
+  const player = state.players.find(candidate => candidate.id === playerId);
+  if (!player || player.defeated || player.eliminated || !player.investigatorId || !player.locationId) {
+    return failure("INVESTIGATOR_DEFEATED", "No active investigator can fight.");
+  }
+  const instance = state.monsters?.find(monster => monster.id === monsterInstanceId);
+  if (!instance || instance.locationId !== player.locationId || instance.damage < 0) {
+    return failure("INVALID_COMBAT", "That Monster is not on the investigator's space.");
+  }
+  const monster = content.monsters?.find(candidate => candidate.id === instance.monsterId);
+  if (!monster) return failure("MONSTER_CONTENT_MISSING", "The Monster's combat statistics are unavailable.");
+  if (monster.specialEffect || monster.horrorCheck === "ancient_one" || monster.damageCheck === "ancient_one" || monster.toughness === "ancient_one") {
+    return failure("MONSTER_EFFECT_UNSUPPORTED", "This Monster requires a card-specific combat handler.");
+  }
+  // Possession combat bonuses and abilities must be typed before this transition can be
+  // exposed as a general client command. Never silently ignore a carried Asset.
+  if (player.assetIds.length) return failure("MONSTER_EFFECT_UNSUPPORTED", "Combat effects on possessions are not executable yet.");
+  const investigator = content.investigators[player.investigatorId];
+  if (!investigator) return failure("INVESTIGATOR_CONTENT_MISSING", "Investigator skills are missing.");
+  const toughness = monster.toughness.base + monster.toughness.perInvestigator * state.players.filter(candidate => !candidate.defeated && !candidate.eliminated).length;
+  const combat = resolveStandardCombat({
+    will: investigator.skills.will,
+    strength: investigator.skills.strength,
+    willImprovement: player.skillImprovements.will,
+    strengthImprovement: player.skillImprovements.strength,
+    currentHealth: player.health ?? 0,
+    currentSanity: player.sanity ?? 0,
+    monsterDamage: instance.damage,
+    monsterToughness: toughness,
+    horrorCheck: monster.horrorCheck,
+    damageCheck: monster.damageCheck,
+  }, context.rollDie);
+  const next = structuredClone(state);
+  const target = next.monsters!.find(candidate => candidate.id === monsterInstanceId)!;
+  target.damage += combat.monsterHealthLost;
+  const events: GameEvent[] = [{
+    type: "COMBAT_RESOLVED", playerId, monsterInstanceId,
+    horrorDice: combat.horrorTest?.dice ?? [], strengthDice: combat.strengthTest?.dice ?? [],
+    sanityLost: combat.sanityLost, healthLost: combat.healthLost, monsterHealthLost: combat.monsterHealthLost,
+  }];
+  if (combat.monsterDefeated) {
+    next.monsters = next.monsters!.filter(candidate => candidate.id !== monsterInstanceId);
+    next.monsterLocationIds = [...new Set(next.monsters.map(candidate => candidate.locationId))];
+    if (monster.type === "normal" && !instance.setAside) {
+      next.privateState.tokenPoolById.monsters = [...(next.privateState.tokenPoolById.monsters ?? []), instance.id];
+    }
+    events.push({ type: "MONSTER_DEFEATED", monsterInstanceId, monsterId: monster.id });
+  }
+  if (combat.healthLost || combat.sanityLost) {
+    const damaged = damageInvestigator(next, playerId, combat.healthLost, combat.sanityLost, content);
+    if (!damaged.ok) return damaged;
+    return success(damaged.state, [...events, ...damaged.events]);
   }
   return success(next, events);
 }

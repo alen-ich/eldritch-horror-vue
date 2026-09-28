@@ -3,6 +3,7 @@ import {
   applyMysteryProgress,
   delayInvestigator,
   damageInvestigator,
+  resolveCombatEncounter,
   openReplacementWindow,
   createDeterministicEngineContext,
   createLobby,
@@ -14,6 +15,10 @@ import {
 } from "../src/index.js";
 
 const testContent: GameContent = {
+  monsters: [
+    { id: "monster_test", type: "normal", horrorCheck: null, damageCheck: { modifier: 0, damage: 2 }, toughness: { base: 2, perInvestigator: 0 } },
+    { id: "monster_special", type: "normal", horrorCheck: null, damageCheck: { modifier: 0, damage: 2 }, toughness: { base: 2, perInvestigator: 0 }, specialEffect: "unimplemented" },
+  ],
   map: {
     adjacentLocationIds: {
       san_francisco: ["space_1"],
@@ -80,6 +85,51 @@ function startedGame(): GameState {
     ],
   };
 }
+
+describe("combat encounter integration", () => {
+  function combatState(): GameState {
+    const state = startedGame();
+    state.phase = "encounter";
+    state.doom = 12;
+    state.monsters = [{ id: "token-1", monsterId: "monster_test", locationId: "san_francisco", damage: 0 }];
+    state.monsterLocationIds = ["san_francisco"];
+    return state;
+  }
+
+  it("preserves partial Monster damage and investigator Health loss", () => {
+    const state = combatState();
+    const result = resolveCombatEncounter(state, "host", "token-1", testContent, createDeterministicEngineContext({ dice: [5, 1] }));
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.state.monsters?.[0]).toMatchObject({ damage: 1 });
+    expect(result.state.players[0]?.health).toBe(3);
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "COMBAT_RESOLVED", monsterHealthLost: 1, healthLost: 1 }));
+    expect(state.monsters?.[0]?.damage).toBe(0);
+  });
+
+  it("returns a defeated normal Monster to the cup even on simultaneous investigator defeat", () => {
+    const state = combatState();
+    state.players[0]!.health = 1;
+    const content = { ...testContent, monsters: [{ ...testContent.monsters![0]!, toughness: { base: 1, perInvestigator: 0 } }] };
+    const result = resolveCombatEncounter(state, "host", "token-1", content, createDeterministicEngineContext({ dice: [5, 1] }));
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.state.monsters).toEqual([]);
+    expect(result.state.privateState.tokenPoolById.monsters).toEqual(["token-1"]);
+    expect(result.state.players[0]?.defeated).toBe(true);
+    expect(result.state.pendingDefeat).toMatchObject({ playerId: "host" });
+    expect(result.events.map(event => event.type)).toContain("MONSTER_DEFEATED");
+    expect(state.monsters).toHaveLength(1);
+  });
+
+  it("rejects illegal and unsupported combat without mutating state or rolling", () => {
+    const state = combatState();
+    const context = createDeterministicEngineContext({ dice: [] });
+    expect(resolveCombatEncounter(state, "guest", "token-1", testContent, context)).toMatchObject({ ok: false, error: { code: "WRONG_PHASE" } });
+    expect(resolveCombatEncounter(state, "host", "missing", testContent, context)).toMatchObject({ ok: false, error: { code: "INVALID_COMBAT" } });
+    state.monsters![0]!.monsterId = "monster_special";
+    expect(resolveCombatEncounter(state, "host", "token-1", testContent, context)).toMatchObject({ ok: false, error: { code: "MONSTER_EFFECT_UNSUPPORTED" } });
+    expect(state.players[0]?.health).toBe(4);
+  });
+});
 
 describe("executeCommand", () => {
   it("interrupts a defeated investigator and preserves their possessions on their sheet", () => {
