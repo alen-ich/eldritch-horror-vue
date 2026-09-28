@@ -18,6 +18,7 @@ export const PlayerState = schema({
   trainTickets: t.uint8().default(0),
   shipTickets: t.uint8().default(0),
   assetIds: t.string().default(""),
+  conditionIds: t.string().default(""),
   clues: t.uint8().default(0),
   loreImprovement: t.uint8().default(0),
   influenceImprovement: t.uint8().default(0),

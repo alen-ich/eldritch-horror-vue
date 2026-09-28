@@ -441,6 +441,22 @@ describe("Acquire Assets", () => {
     return state;
   }
 
+  it.each([
+    ["condition_blessed_01", 1, 4],
+    ["condition_cursed_01", 0, 6],
+  ] as const)("applies %s to an authoritative skill test", (conditionId, successes, threshold) => {
+    const state = marketState();
+    state.players[0]!.conditionIds = [conditionId];
+    state.players[0]!.clues = 1;
+    const result = executeCommand(state, "host", { type: "ACQUIRE_ASSETS" }, testContent,
+      createDeterministicEngineContext({ dice: [4, 2], ids: ["test", "decision"] }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.activeTest).toMatchObject({ successThreshold: threshold, successes });
+    expect(result.state.players[0]!.conditionIds).toEqual([conditionId]);
+    expect(state.players[0]!.conditionIds).toEqual([conditionId]);
+  });
+
   it("rolls Influence, buys within the success budget, and refills the Reserve", () => {
     const initiated = executeCommand(
       marketState(),

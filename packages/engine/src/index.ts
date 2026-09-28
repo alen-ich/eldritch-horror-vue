@@ -17,10 +17,12 @@ import { calculateDicePool, countTestSuccesses } from "./skill-tests.js";
 import { loseResource, recoverResource } from "./resources.js";
 import { buildMythosDeck, type AncientSetup, type MythosColor } from "./setup.js";
 import { resolveStandardCombat, type CombatCheck } from "./combat.js";
+import { conditionSuccessThreshold } from "./conditions.js";
 export * from "./setup.js";
 export * from "./skill-tests.js";
 export * from "./resources.js";
 export * from "./combat.js";
+export * from "./conditions.js";
 
 export type ActionType = "travel" | "rest" | "prepare_travel" | "trade" | "acquire_assets" | "component";
 
@@ -100,6 +102,8 @@ export interface EnginePlayer {
   maxSanity?: number;
   travelTickets?: TravelTicketType[];
   assetIds: string[];
+  /** Public front-side physical card IDs; unrevealed backs are never projected. */
+  conditionIds?: string[];
   clues: number;
   skillImprovements: Partial<Record<SkillId, number>>;
 }
@@ -284,6 +288,7 @@ export function projectStateForPlayer(state: GameState, viewerPlayerId?: string)
       ...player,
       travelTickets: player.travelTickets ? [...player.travelTickets] : undefined,
       assetIds: [...player.assetIds],
+      ...(player.conditionIds ? { conditionIds: [...player.conditionIds] } : {}),
       skillImprovements: { ...player.skillImprovements },
     })),
     performedActions: [...publicState.performedActions],
@@ -656,7 +661,7 @@ function beginSkillTest(
     dicePool: calculation.dicePool,
     dice: Array.from({ length: calculation.dicePool }, () => context.rollDie()),
     successes: 0,
-    successThreshold: 5,
+    successThreshold: conditionSuccessThreshold(player.conditionIds ?? []),
     continuation: request.continuation,
   };
   test.successes = countActiveTestSuccesses(test, player, content);
@@ -692,6 +697,7 @@ export function executeCommand(
       ...player,
       travelTickets: player.travelTickets ? [...player.travelTickets] : undefined,
       assetIds: [...player.assetIds],
+      ...(player.conditionIds ? { conditionIds: [...player.conditionIds] } : {}),
       skillImprovements: { ...player.skillImprovements },
     })),
     performedActions: [...state.performedActions],

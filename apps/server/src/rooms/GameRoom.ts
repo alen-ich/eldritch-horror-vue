@@ -213,6 +213,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
           ...Array.from({ length: player.shipTickets }, () => "ship" as const),
         ],
         assetIds: player.assetIds ? player.assetIds.split(",") : [],
+        conditionIds: player.conditionIds ? player.conditionIds.split(",") : [],
         clues: player.clues,
         skillImprovements: {
           lore: player.loreImprovement,
@@ -264,6 +265,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       player.trainTickets = enginePlayer.travelTickets?.filter((ticket) => ticket === "train").length ?? 0;
       player.shipTickets = enginePlayer.travelTickets?.filter((ticket) => ticket === "ship").length ?? 0;
       player.assetIds = enginePlayer.assetIds.join(",");
+      player.conditionIds = (enginePlayer.conditionIds ?? []).join(",");
       player.clues = enginePlayer.clues;
       player.delayed = enginePlayer.delayed ?? false;
       player.defeated = enginePlayer.defeated ?? false;
