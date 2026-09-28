@@ -23,6 +23,7 @@ describe("base-game Conditions", () => {
       expect(existsSync(`${root}apps/server/private-card-assets/conditions/${card.id}.webp`)).toBe(true);
       expect(existsSync(`${root}apps/web/public/cards/conditions/${card.id}-back.webp`)).toBe(false);
       expect(card.backVisibility).toBe("server_only");
+      expect(card.backTextStatus).toBe("verified");
       expect(card.effectStatus).toBe("not_executable");
     }
     expect(baseGameConditions.find(card => card.id === "condition_blessed_03")?.sourceFrontSheet).toBe("source-assets/conditions/front-2.jpg");

@@ -16,7 +16,7 @@ export interface ConditionCard {
   sourceBackSheet: string;
   sheetSlot: number;
   backVisibility: "server_only";
-  backTextStatus: "not_transcribed";
+  backTextStatus: "verified";
   effectStatus: "not_executable";
 }
 
@@ -53,7 +53,7 @@ export const baseGameConditions: readonly ConditionCard[] = definitions.flatMap(
       sourceBackSheet: `source-assets/conditions/back-${sheet}.jpg`,
       sheetSlot: sheet === 1 ? ordinal : ordinal - 32,
       backVisibility: "server_only" as const,
-      backTextStatus: "not_transcribed" as const,
+      backTextStatus: "verified" as const,
       effectStatus: "not_executable" as const,
     };
   }),
@@ -71,7 +71,7 @@ const conditionSchema = z.object({
   sourceBackSheet: z.string().startsWith("source-assets/conditions/back-"),
   sheetSlot: z.number().int().nonnegative(),
   backVisibility: z.literal("server_only"),
-  backTextStatus: z.literal("not_transcribed"),
+  backTextStatus: z.literal("verified"),
   effectStatus: z.literal("not_executable"),
 }).strict();
 
