@@ -26,8 +26,9 @@ const baseGameContent: GameContent = {
     startingLocationId: investigator.startingLocationId,
     health: investigator.health,
     sanity: investigator.sanity,
-    influence: investigator.skills.influence,
+    skills: investigator.skills,
     startingAssetIds: investigator.startingAssetIds,
+    startingClues: investigator.startingClues,
   }])),
   assets: baseGameAssets.map(({ id, value, engineEffects }) => ({ id, value, engineEffects })),
   mysteryIdsByAncientOne: Object.fromEntries(
@@ -166,6 +167,14 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
           ...Array.from({ length: player.shipTickets }, () => "ship" as const),
         ],
         assetIds: player.assetIds ? player.assetIds.split(",") : [],
+        clues: player.clues,
+        skillImprovements: {
+          lore: player.loreImprovement,
+          influence: player.influenceImprovement,
+          observation: player.observationImprovement,
+          strength: player.strengthImprovement,
+          will: player.willImprovement,
+        },
       })),
     };
   }
@@ -201,6 +210,12 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       player.trainTickets = enginePlayer.travelTickets?.filter((ticket) => ticket === "train").length ?? 0;
       player.shipTickets = enginePlayer.travelTickets?.filter((ticket) => ticket === "ship").length ?? 0;
       player.assetIds = enginePlayer.assetIds.join(",");
+      player.clues = enginePlayer.clues;
+      player.loreImprovement = enginePlayer.skillImprovements.lore ?? 0;
+      player.influenceImprovement = enginePlayer.skillImprovements.influence ?? 0;
+      player.observationImprovement = enginePlayer.skillImprovements.observation ?? 0;
+      player.strengthImprovement = enginePlayer.skillImprovements.strength ?? 0;
+      player.willImprovement = enginePlayer.skillImprovements.will ?? 0;
     }
     for (const client of this.clients) this.sendPendingDecision(client);
   }

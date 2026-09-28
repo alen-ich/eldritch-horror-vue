@@ -60,6 +60,7 @@ describe("authoritative game room", () => {
     assert.equal(hostPlayer.locationId, "space_15");
     assert.equal(hostPlayer.health, 5);
     assert.equal(hostPlayer.sanity, 7);
+    assert.equal(hostPlayer.clues, 1);
     assert.equal(guestPlayer.locationId, "space_16");
     assert.equal(guestPlayer.assetIds, "asset_45_automatic");
     assert.equal(room.state.reserveAssetIds.split(",").length, 4);

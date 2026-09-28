@@ -7,6 +7,7 @@ import type {
   LocationId,
   PendingDecision,
   PendingDecisionSummary,
+  SkillId,
   TravelTicketType,
 } from "@eldritch/protocol";
 export * from "./skill-tests.js";
@@ -86,6 +87,8 @@ export interface EnginePlayer {
   maxSanity?: number;
   travelTickets?: TravelTicketType[];
   assetIds: string[];
+  clues: number;
+  skillImprovements: Partial<Record<SkillId, number>>;
 }
 
 export interface PrivateGameState {
@@ -129,8 +132,9 @@ export interface InvestigatorSetup {
   startingLocationId: LocationId;
   health: number;
   sanity: number;
-  influence: number;
+  skills: Readonly<Record<SkillId, number>>;
   startingAssetIds: readonly string[];
+  startingClues: number;
 }
 
 export type AssetEngineEffect =
@@ -187,7 +191,7 @@ export function createLobby(playerIds: string[]): GameState {
   return {
     stateVersion: 0,
     phase: "lobby",
-    players: playerIds.map((id): EnginePlayer => ({ id, assetIds: [] })),
+    players: playerIds.map((id): EnginePlayer => ({ id, assetIds: [], clues: 0, skillImprovements: {} })),
     turnNumber: 0,
     actionsRemaining: 0,
     performedActions: [],
@@ -231,6 +235,7 @@ export function projectStateForPlayer(state: GameState, viewerPlayerId?: string)
       ...player,
       travelTickets: player.travelTickets ? [...player.travelTickets] : undefined,
       assetIds: [...player.assetIds],
+      skillImprovements: { ...player.skillImprovements },
     })),
     performedActions: [...publicState.performedActions],
     monsterLocationIds: [...publicState.monsterLocationIds],
@@ -357,6 +362,7 @@ export function executeCommand(
       ...player,
       travelTickets: player.travelTickets ? [...player.travelTickets] : undefined,
       assetIds: [...player.assetIds],
+      skillImprovements: { ...player.skillImprovements },
     })),
     performedActions: [...state.performedActions],
     monsterLocationIds: [...state.monsterLocationIds],
@@ -550,6 +556,8 @@ export function executeCommand(
       player.maxSanity = setup.sanity;
       player.travelTickets = [];
       player.assetIds = [...setup.startingAssetIds];
+      player.clues = setup.startingClues;
+      player.skillImprovements = {};
       events.push(...player.assetIds.map((assetId) => ({
         type: "ASSET_GAINED" as const,
         playerId: player.id,
@@ -626,7 +634,7 @@ export function executeCommand(
     const effects = assetEffectsForPlayer(actor, content);
     const influenceBonus = effects.reduce((total, effect) =>
       total + (effect.type === "skill_bonus" && effect.skill === "influence" ? effect.amount : 0), 0);
-    const dice = Array.from({ length: investigator.influence + influenceBonus }, () => context.rollDie());
+    const dice = Array.from({ length: investigator.skills.influence + influenceBonus }, () => context.rollDie());
     const doubleSixes = effects.some(({ type }) => type === "acquire_six_counts_as_two");
     const successes = dice.reduce((total, die) => total + (die === 6 && doubleSixes ? 2 : die >= 5 ? 1 : 0), 0);
     next.pendingDecision = {

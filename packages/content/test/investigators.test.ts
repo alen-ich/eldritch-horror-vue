@@ -15,6 +15,15 @@ describe("base game investigator content", () => {
     }
   });
 
+  it("structures printed starting Clues", () => {
+    expect(baseGameInvestigators.filter(({ startingClues }) => startingClues === 1).map(({ id }) => id)).toEqual([
+      "akachi_onyele",
+      "jacqueline_fine",
+      "jim_culver",
+    ]);
+    expect(baseGameInvestigators.every(({ startingClues }) => startingClues === 0 || startingClues === 1)).toBe(true);
+  });
+
   it("rejects duplicate investigator IDs", () => {
     expect(() => validateInvestigatorContent([...baseGameInvestigators, baseGameInvestigators[0]!])).toThrow(/duplicate IDs/);
   });

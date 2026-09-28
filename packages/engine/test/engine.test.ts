@@ -28,8 +28,8 @@ const testContent: GameContent = {
     locationTypes: { san_francisco: "city", space_1: "city", space_4: "wilderness", space_15: "city", space_16: "wilderness" },
   },
   investigators: {
-    akachi_onyele: { startingLocationId: "space_15", health: 5, sanity: 7, influence: 2, startingAssetIds: [] },
-    trish_scarborough: { startingLocationId: "space_16", health: 7, sanity: 5, influence: 3, startingAssetIds: ["asset_45_automatic"] },
+    akachi_onyele: { startingLocationId: "space_15", health: 5, sanity: 7, skills: { lore: 3, influence: 2, observation: 2, strength: 2, will: 4 }, startingAssetIds: [], startingClues: 1 },
+    trish_scarborough: { startingLocationId: "space_16", health: 7, sanity: 5, skills: { lore: 1, influence: 3, observation: 4, strength: 3, will: 2 }, startingAssetIds: ["asset_45_automatic"], startingClues: 0 },
   },
   assets: [
     { id: "asset_45_automatic", value: 3, engineEffects: [] },
@@ -72,8 +72,8 @@ function startedGame(): GameState {
     completedMysteryIds: [],
     privateState: { deckOrderById: {}, tokenPoolById: {} },
     players: [
-      { id: "host", investigatorId: "akachi_onyele", locationId: "san_francisco", health: 4, sanity: 6, maxHealth: 5, maxSanity: 7, travelTickets: [], assetIds: [] },
-      { id: "guest", investigatorId: "trish_scarborough", locationId: "san_francisco", health: 7, sanity: 5, maxHealth: 7, maxSanity: 5, travelTickets: [], assetIds: ["asset_45_automatic"] },
+      { id: "host", investigatorId: "akachi_onyele", locationId: "san_francisco", health: 4, sanity: 6, maxHealth: 5, maxSanity: 7, travelTickets: [], assetIds: [], clues: 1, skillImprovements: {} },
+      { id: "guest", investigatorId: "trish_scarborough", locationId: "san_francisco", health: 7, sanity: 5, maxHealth: 7, maxSanity: 5, travelTickets: [], assetIds: ["asset_45_automatic"], clues: 0, skillImprovements: {} },
     ],
   };
 }
@@ -208,8 +208,8 @@ describe("executeCommand", () => {
     const state: GameState = {
       ...createLobby(["host", "guest"]),
       players: [
-        { id: "host", investigatorId: "akachi_onyele", assetIds: [] },
-        { id: "guest", assetIds: [] },
+        { id: "host", investigatorId: "akachi_onyele", assetIds: [], clues: 0, skillImprovements: {} },
+        { id: "guest", assetIds: [], clues: 0, skillImprovements: {} },
       ],
     };
     expect(executeCommand(state, "guest", { type: "SELECT_INVESTIGATOR", investigatorId: "akachi_onyele" }, testContent)).toMatchObject({

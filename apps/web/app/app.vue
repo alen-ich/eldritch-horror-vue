@@ -131,6 +131,20 @@ function cycleTrayState() {
   trayState.value = trayState.value === 'collapsed' ? 'peek' : trayState.value === 'peek' ? 'expanded' : 'collapsed'
 }
 
+function displayedSkillValue(skill: typeof skillNames[number]) {
+  const investigator = displayedInvestigator.value
+  const player = displayedPlayer.value
+  if (!investigator || !player) return 0
+  const improvements = {
+    lore: player.loreImprovement,
+    influence: player.influenceImprovement,
+    observation: player.observationImprovement,
+    strength: player.strengthImprovement,
+    will: player.willImprovement,
+  }
+  return investigator.skills[skill] + improvements[skill]
+}
+
 function toggleReserveAsset(assetId: string) {
   const decision = privateAssetDecision.value
   if (!decision || !decision.optionIds.includes(assetId)) return
@@ -310,8 +324,8 @@ async function copyInvite() {
             <h2>{{ displayedInvestigator?.name }}</h2>
             <p class="investigator-role">{{ displayedInvestigator?.occupation }} · {{ displayedInvestigator?.role }}</p>
             <div class="dock-vitals"><div><small>Health</small><strong class="health">♥ {{ displayedPlayer.health }}</strong></div><div><small>Sanity</small><strong class="sanity">✦ {{ displayedPlayer.sanity }}</strong></div></div>
-            <dl class="investigator-facts"><div><dt>Location</dt><dd>{{ locationById[displayedPlayer.locationId as LocationId]?.name }}</dd></div><div><dt>Tickets</dt><dd>Train {{ displayedPlayer.trainTickets }} · Ship {{ displayedPlayer.shipTickets }}</dd></div><div><dt>Turn</dt><dd>{{ displayedPlayer.id === game.activePlayerId.value ? 'Active' : 'Waiting' }}</dd></div><div><dt>Status</dt><dd>{{ displayedPlayer.connected ? 'Connected' : 'Away' }}</dd></div></dl>
-            <template v-if="displayedInvestigator"><div class="dock-skills"><span v-for="skill in skillNames" :key="skill"><small>{{ skill.slice(0, 3) }}</small><b>{{ displayedInvestigator.skills[skill] }}</b></span></div><p class="dock-ability"><b>Action</b>{{ displayedInvestigator.actionAbility }}</p><p class="dock-ability"><b>Passive</b>{{ displayedInvestigator.passiveAbility }}</p></template>
+            <dl class="investigator-facts"><div><dt>Location</dt><dd>{{ locationById[displayedPlayer.locationId as LocationId]?.name }}</dd></div><div><dt>Clues</dt><dd>{{ displayedPlayer.clues }}</dd></div><div><dt>Tickets</dt><dd>Train {{ displayedPlayer.trainTickets }} · Ship {{ displayedPlayer.shipTickets }}</dd></div><div><dt>Turn</dt><dd>{{ displayedPlayer.id === game.activePlayerId.value ? 'Active' : 'Waiting' }}</dd></div><div><dt>Status</dt><dd>{{ displayedPlayer.connected ? 'Connected' : 'Away' }}</dd></div></dl>
+            <template v-if="displayedInvestigator"><div class="dock-skills"><span v-for="skill in skillNames" :key="skill"><small>{{ skill.slice(0, 3) }}</small><b>{{ displayedSkillValue(skill) }}</b></span></div><p class="dock-ability"><b>Action</b>{{ displayedInvestigator.actionAbility }}</p><p class="dock-ability"><b>Passive</b>{{ displayedInvestigator.passiveAbility }}</p></template>
           </div>
         </aside>
         </div>

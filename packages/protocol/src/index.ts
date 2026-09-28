@@ -125,6 +125,8 @@ export interface PublicPlayerState {
   health?: number;
   sanity?: number;
   assetIds: string[];
+  clues: number;
+  skillImprovements: Partial<Record<SkillId, number>>;
   isHost: boolean;
 }
 

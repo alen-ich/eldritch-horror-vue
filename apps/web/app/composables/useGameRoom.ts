@@ -24,6 +24,12 @@ interface ClientPlayerState {
   trainTickets: number
   shipTickets: number
   assetIds: string
+  clues: number
+  loreImprovement: number
+  influenceImprovement: number
+  observationImprovement: number
+  strengthImprovement: number
+  willImprovement: number
   isHost: boolean
 }
 
@@ -124,6 +130,12 @@ export function useGameRoom() {
       trainTickets: player.trainTickets,
       shipTickets: player.shipTickets,
       assetIds: player.assetIds,
+      clues: player.clues,
+      loreImprovement: player.loreImprovement,
+      influenceImprovement: player.influenceImprovement,
+      observationImprovement: player.observationImprovement,
+      strengthImprovement: player.strengthImprovement,
+      willImprovement: player.willImprovement,
       isHost: player.isHost
     }))
     playerId.value = players.value.find((player) => player.sessionId === room.value?.sessionId)?.id ?? ''

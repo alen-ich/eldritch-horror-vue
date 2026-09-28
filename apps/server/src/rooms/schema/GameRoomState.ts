@@ -15,6 +15,12 @@ export const PlayerState = schema({
   trainTickets: t.uint8().default(0),
   shipTickets: t.uint8().default(0),
   assetIds: t.string().default(""),
+  clues: t.uint8().default(0),
+  loreImprovement: t.uint8().default(0),
+  influenceImprovement: t.uint8().default(0),
+  observationImprovement: t.uint8().default(0),
+  strengthImprovement: t.uint8().default(0),
+  willImprovement: t.uint8().default(0),
   isHost: t.boolean().default(false),
 });
 export type PlayerState = SchemaType<typeof PlayerState>;
