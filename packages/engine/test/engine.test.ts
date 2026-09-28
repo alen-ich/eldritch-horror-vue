@@ -28,9 +28,17 @@ const testContent: GameContent = {
     locationTypes: { san_francisco: "city", space_1: "city", space_4: "wilderness", space_15: "city", space_16: "wilderness" },
   },
   investigators: {
-    akachi_onyele: { startingLocationId: "space_15", health: 5, sanity: 7 },
-    trish_scarborough: { startingLocationId: "space_16", health: 7, sanity: 5 },
+    akachi_onyele: { startingLocationId: "space_15", health: 5, sanity: 7, influence: 2, startingAssetIds: [] },
+    trish_scarborough: { startingLocationId: "space_16", health: 7, sanity: 5, influence: 3, startingAssetIds: ["asset_45_automatic"] },
   },
+  assets: [
+    { id: "asset_45_automatic", value: 3 },
+    { id: "asset_bandages", value: 1 },
+    { id: "asset_whiskey", value: 1 },
+    { id: "asset_axe", value: 2 },
+    { id: "asset_holy_water", value: 2 },
+    { id: "asset_arcane_tome", value: 3 },
+  ],
   mysteryIdsByAncientOne: {
     cthulhu: ["cthulhu_one", "cthulhu_two", "cthulhu_three", "cthulhu_four"],
     yog_sothoth: ["yog_one", "yog_two", "yog_three", "yog_four"],
@@ -52,14 +60,16 @@ function startedGame(): GameState {
     actionsRemaining: 2,
     performedActions: [],
     monsterLocationIds: [],
+    reserveAssetIds: [],
+    assetDiscardIds: [],
     activeMysteryId: "cthulhu_one",
     mysteryProgress: 0,
     mysteryTarget: 2,
     completedMysteryIds: [],
     privateState: { deckOrderById: {}, tokenPoolById: {} },
     players: [
-      { id: "host", investigatorId: "akachi_onyele", locationId: "san_francisco", health: 4, sanity: 6, maxHealth: 5, maxSanity: 7, travelTickets: [] },
-      { id: "guest", investigatorId: "trish_scarborough", locationId: "san_francisco", health: 7, sanity: 5, maxHealth: 7, maxSanity: 5, travelTickets: [] },
+      { id: "host", investigatorId: "akachi_onyele", locationId: "san_francisco", health: 4, sanity: 6, maxHealth: 5, maxSanity: 7, travelTickets: [], assetIds: [] },
+      { id: "guest", investigatorId: "trish_scarborough", locationId: "san_francisco", health: 7, sanity: 5, maxHealth: 7, maxSanity: 5, travelTickets: [], assetIds: ["asset_45_automatic"] },
     ],
   };
 }
@@ -91,23 +101,26 @@ describe("executeCommand", () => {
     const selectedAncientOne = executeCommand(selectedGuest.state, "host", { type: "SELECT_ANCIENT_ONE", ancientOneId: "cthulhu" }, testContent);
     expect(selectedAncientOne.ok).toBe(true);
     if (!selectedAncientOne.ok) return;
-    const context = createDeterministicEngineContext({ shuffleIndexes: [0, 1, 0] });
+    const context = createDeterministicEngineContext({ shuffleIndexes: [0, 1, 0, 0, 0, 0, 0] });
     const started = executeCommand(selectedAncientOne.state, "host", { type: "START_GAME" }, testContent, context);
     expect(started.ok).toBe(true);
     if (started.ok) expect(started.state).toMatchObject({
       phase: "action", activePlayerId: "host", leadInvestigatorId: "host", turnNumber: 1, actionsRemaining: 2,
       players: [
-        { locationId: "space_15", health: 5, sanity: 7 },
-        { locationId: "space_16", health: 7, sanity: 5 },
+        { locationId: "space_15", health: 5, sanity: 7, assetIds: [] },
+        { locationId: "space_16", health: 7, sanity: 5, assetIds: ["asset_45_automatic"] },
       ],
       activeMysteryId: "cthulhu_three",
       mysteryProgress: 0,
       mysteryTarget: 1,
       completedMysteryIds: [],
+      reserveAssetIds: ["asset_whiskey", "asset_axe", "asset_holy_water", "asset_arcane_tome"],
     });
     if (started.ok) {
       expect(started.state.privateState.deckOrderById.mysteries).toEqual(["cthulhu_four", "cthulhu_two", "cthulhu_one"]);
-      expect(started.events.at(-1)).toEqual({ type: "MYSTERY_REVEALED", mysteryId: "cthulhu_three" });
+      expect(started.state.privateState.deckOrderById.assets).toEqual(["asset_bandages"]);
+      expect(started.events).toContainEqual({ type: "ASSET_GAINED", playerId: "guest", assetId: "asset_45_automatic", source: "setup" });
+      expect(started.events.at(-1)).toEqual({ type: "RESERVE_REFILLED", assetIds: started.state.reserveAssetIds });
     }
   });
 
@@ -184,7 +197,10 @@ describe("executeCommand", () => {
   it("prevents duplicate investigator selection", () => {
     const state: GameState = {
       ...createLobby(["host", "guest"]),
-      players: [{ id: "host", investigatorId: "akachi_onyele" }, { id: "guest" }],
+      players: [
+        { id: "host", investigatorId: "akachi_onyele", assetIds: [] },
+        { id: "guest", assetIds: [] },
+      ],
     };
     expect(executeCommand(state, "guest", { type: "SELECT_INVESTIGATOR", investigatorId: "akachi_onyele" }, testContent)).toMatchObject({
       ok: false,

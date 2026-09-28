@@ -14,6 +14,7 @@ export const PlayerState = schema({
   maxSanity: t.uint8().default(0),
   trainTickets: t.uint8().default(0),
   shipTickets: t.uint8().default(0),
+  assetIds: t.string().default(""),
   isHost: t.boolean().default(false),
 });
 export type PlayerState = SchemaType<typeof PlayerState>;
@@ -44,6 +45,8 @@ export const GameRoomState = schema({
   turnNumber: t.uint16().default(0),
   actionsRemaining: t.uint8().default(0),
   performedActions: t.string().default(""),
+  reserveAssetIds: t.string().default(""),
+  assetDiscardIds: t.string().default(""),
   pendingDecision: t.ref(PendingDecisionState).optional(),
   players: t.map(PlayerState),
 });

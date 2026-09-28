@@ -84,6 +84,7 @@ export interface EnginePlayer {
   maxHealth?: number;
   maxSanity?: number;
   travelTickets?: TravelTicketType[];
+  assetIds: string[];
 }
 
 export interface PrivateGameState {
@@ -107,6 +108,8 @@ export interface GameState {
   actionsRemaining: number;
   performedActions: ActionType[];
   monsterLocationIds: LocationId[];
+  reserveAssetIds: string[];
+  assetDiscardIds: string[];
   pendingDecision?: PendingDecision;
   privateState: PrivateGameState;
 }
@@ -125,11 +128,14 @@ export interface InvestigatorSetup {
   startingLocationId: LocationId;
   health: number;
   sanity: number;
+  influence: number;
+  startingAssetIds: readonly string[];
 }
 
 export interface GameContent {
   map: GameMap;
   investigators: Readonly<Partial<Record<InvestigatorId, InvestigatorSetup>>>;
+  assets: readonly { id: string; value: number }[];
   mysteryIdsByAncientOne: Readonly<Partial<Record<AncientOneId, readonly string[]>>>;
   mysteryTargetsById: Readonly<Record<string, "investigator_count" | "half_investigator_count" | "twice_investigator_count" | "one">>;
 }
@@ -144,6 +150,7 @@ export type RuleErrorCode =
   | "INVESTIGATOR_TAKEN"
   | "ANCIENT_ONE_REQUIRED"
   | "MYSTERY_CONTENT_MISSING"
+  | "ASSET_CONTENT_MISSING"
   | "RANDOM_INPUT_REQUIRED"
   | "MYSTERY_REQUIRED"
   | "INVALID_MYSTERY_PROGRESS"
@@ -171,11 +178,13 @@ export function createLobby(playerIds: string[]): GameState {
   return {
     stateVersion: 0,
     phase: "lobby",
-    players: playerIds.map((id) => ({ id })),
+    players: playerIds.map((id): EnginePlayer => ({ id, assetIds: [] })),
     turnNumber: 0,
     actionsRemaining: 0,
     performedActions: [],
     monsterLocationIds: [],
+    reserveAssetIds: [],
+    assetDiscardIds: [],
     mysteryProgress: 0,
     mysteryTarget: 0,
     completedMysteryIds: [],
@@ -210,9 +219,12 @@ export function projectStateForPlayer(state: GameState, viewerPlayerId?: string)
     players: publicState.players.map((player) => ({
       ...player,
       travelTickets: player.travelTickets ? [...player.travelTickets] : undefined,
+      assetIds: [...player.assetIds],
     })),
     performedActions: [...publicState.performedActions],
     monsterLocationIds: [...publicState.monsterLocationIds],
+    reserveAssetIds: [...publicState.reserveAssetIds],
+    assetDiscardIds: [...publicState.assetDiscardIds],
     completedMysteryIds: [...publicState.completedMysteryIds],
     pendingDecision: pendingDecision
       ? pendingDecision.visibility === "public" || pendingDecision.playerId === viewerPlayerId
@@ -315,9 +327,15 @@ export function executeCommand(
 
   const next: GameState = {
     ...state,
-    players: state.players.map((player) => ({ ...player })),
+    players: state.players.map((player) => ({
+      ...player,
+      travelTickets: player.travelTickets ? [...player.travelTickets] : undefined,
+      assetIds: [...player.assetIds],
+    })),
     performedActions: [...state.performedActions],
     monsterLocationIds: [...state.monsterLocationIds],
+    reserveAssetIds: [...state.reserveAssetIds],
+    assetDiscardIds: [...state.assetDiscardIds],
     completedMysteryIds: [...state.completedMysteryIds],
     pendingDecision: state.pendingDecision ? cloneDecision(state.pendingDecision) : undefined,
     privateState: {
@@ -388,6 +406,20 @@ export function executeCommand(
     if (!mysteryIds || mysteryIds.length !== 4) {
       return failure("MYSTERY_CONTENT_MISSING", "The selected Ancient One must have exactly four Mysteries.");
     }
+    const assetCatalogIds = content.assets.map(({ id }) => id);
+    if (new Set(assetCatalogIds).size !== assetCatalogIds.length) {
+      return failure("ASSET_CONTENT_MISSING", "The Asset catalog contains duplicate IDs.");
+    }
+    const startingAssetIds = next.players.flatMap((player) =>
+      content.investigators[player.investigatorId!]?.startingAssetIds ?? [],
+    );
+    if (startingAssetIds.some((id) => !assetCatalogIds.includes(id))) {
+      return failure("ASSET_CONTENT_MISSING", "An investigator starting Asset is missing from the Asset catalog.");
+    }
+    const availableAssetIds = assetCatalogIds.filter((id) => !startingAssetIds.includes(id));
+    if (availableAssetIds.length < 4) {
+      return failure("ASSET_CONTENT_MISSING", "At least four Assets must remain after granting starting possessions.");
+    }
     if (!context) return failure("RANDOM_INPUT_REQUIRED", "Starting the game requires deterministic random input.");
     const shuffledMysteries = context.shuffle(mysteryIds);
     const activeMysteryId = shuffledMysteries.shift()!;
@@ -404,6 +436,14 @@ export function executeCommand(
     next.mysteryTarget = mysteryTarget;
     next.completedMysteryIds = [];
     next.privateState.deckOrderById.mysteries = shuffledMysteries;
+    const shuffledAssets = context.shuffle(availableAssetIds);
+    next.reserveAssetIds = shuffledAssets.splice(0, 4);
+    next.assetDiscardIds = [];
+    next.privateState.deckOrderById.assets = shuffledAssets;
+    const events: GameEvent[] = [
+      { type: "GAME_STARTED", activePlayerId: actorPlayerId },
+      { type: "MYSTERY_REVEALED", mysteryId: activeMysteryId },
+    ];
     for (const player of next.players) {
       const setup = content.investigators[player.investigatorId!];
       if (!setup) return failure("INVESTIGATOR_CONTENT_MISSING", "The selected investigator has no setup data.");
@@ -413,11 +453,16 @@ export function executeCommand(
       player.maxHealth = setup.health;
       player.maxSanity = setup.sanity;
       player.travelTickets = [];
+      player.assetIds = [...setup.startingAssetIds];
+      events.push(...player.assetIds.map((assetId) => ({
+        type: "ASSET_GAINED" as const,
+        playerId: player.id,
+        assetId,
+        source: "setup" as const,
+      })));
     }
-    return success(next, [
-      { type: "GAME_STARTED", activePlayerId: actorPlayerId },
-      { type: "MYSTERY_REVEALED", mysteryId: activeMysteryId },
-    ]);
+    events.push({ type: "RESERVE_REFILLED", assetIds: [...next.reserveAssetIds] });
+    return success(next, events);
   }
 
   if (state.phase !== "action") return failure("WRONG_PHASE", "That action is not available in the lobby.");

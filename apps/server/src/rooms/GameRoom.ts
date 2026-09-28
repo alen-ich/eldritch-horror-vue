@@ -1,6 +1,6 @@
 import { randomInt, randomUUID } from "node:crypto";
 import { Client, CloseCode, Room } from "colyseus";
-import { baseGameInvestigators, baseGameMap, baseGameMysteries } from "@eldritch/content";
+import { baseGameAssets, baseGameInvestigators, baseGameMap, baseGameMysteries } from "@eldritch/content";
 import { createDeterministicEngineContext, executeCommand, type GameContent, type GameState, type PrivateGameState } from "@eldritch/engine";
 import {
   commandErrorMessageType,
@@ -16,13 +16,20 @@ import {
 import { GameRoomState, PendingDecisionState, PlayerState } from "./schema/GameRoomState.js";
 
 const RECONNECTION_SECONDS = 30;
+
+function randomShuffleIndexes(length: number): number[] {
+  return Array.from({ length: Math.max(0, length - 1) }, (_, offset) => randomInt(length - offset));
+}
 const baseGameContent: GameContent = {
   map: baseGameMap,
   investigators: Object.fromEntries(baseGameInvestigators.map((investigator) => [investigator.id, {
     startingLocationId: investigator.startingLocationId,
     health: investigator.health,
     sanity: investigator.sanity,
+    influence: investigator.skills.influence,
+    startingAssetIds: investigator.startingAssetIds,
   }])),
+  assets: baseGameAssets.map(({ id, value }) => ({ id, value })),
   mysteryIdsByAncientOne: Object.fromEntries(
     ["cthulhu", "shub_niggurath", "yog_sothoth", "azathoth"].map((ancientOneId) => [
       ancientOneId,
@@ -101,7 +108,15 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       return;
     }
     const context = parsed.data.command.type === "START_GAME"
-      ? createDeterministicEngineContext({ shuffleIndexes: [randomInt(4), randomInt(3), randomInt(2)] })
+      ? createDeterministicEngineContext({
+          shuffleIndexes: [
+            ...randomShuffleIndexes(4),
+            ...randomShuffleIndexes(baseGameAssets.length - [...this.state.players.values()].reduce((count, player) => {
+              const investigator = baseGameInvestigators.find(({ id }) => id === player.investigatorId);
+              return count + (investigator?.startingAssetIds.length ?? 0);
+            }, 0)),
+          ],
+        })
       : undefined;
     const result = executeCommand(this.toEngineState(), playerId, parsed.data.command, baseGameContent, context);
     if (result.ok === false) {
@@ -127,6 +142,8 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       actionsRemaining: this.state.actionsRemaining,
       performedActions: this.state.performedActions ? this.state.performedActions.split(",") as GameState["performedActions"] : [],
       monsterLocationIds: [],
+      reserveAssetIds: this.state.reserveAssetIds ? this.state.reserveAssetIds.split(",") : [],
+      assetDiscardIds: this.state.assetDiscardIds ? this.state.assetDiscardIds.split(",") : [],
       pendingDecision: this.pendingDecision,
       privateState: this.privateState,
       players: [...this.state.players.values()].map((player) => ({
@@ -141,6 +158,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
           ...Array.from({ length: player.trainTickets }, () => "train" as const),
           ...Array.from({ length: player.shipTickets }, () => "ship" as const),
         ],
+        assetIds: player.assetIds ? player.assetIds.split(",") : [],
       })),
     };
   }
@@ -162,6 +180,8 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     this.state.turnNumber = engineState.turnNumber;
     this.state.actionsRemaining = engineState.actionsRemaining;
     this.state.performedActions = engineState.performedActions.join(",");
+    this.state.reserveAssetIds = engineState.reserveAssetIds.join(",");
+    this.state.assetDiscardIds = engineState.assetDiscardIds.join(",");
     for (const enginePlayer of engineState.players) {
       const player = this.state.players.get(enginePlayer.id);
       if (!player) continue;
@@ -173,6 +193,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       player.maxSanity = enginePlayer.maxSanity ?? 0;
       player.trainTickets = enginePlayer.travelTickets?.filter((ticket) => ticket === "train").length ?? 0;
       player.shipTickets = enginePlayer.travelTickets?.filter((ticket) => ticket === "ship").length ?? 0;
+      player.assetIds = enginePlayer.assetIds.join(",");
     }
     for (const client of this.clients) this.sendPendingDecision(client);
   }

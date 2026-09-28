@@ -92,6 +92,8 @@ export type GameEvent =
   | { type: "INVESTIGATOR_SELECTED"; playerId: string; investigatorId: InvestigatorId }
   | { type: "ANCIENT_ONE_SELECTED"; ancientOneId: AncientOneId }
   | { type: "GAME_STARTED"; activePlayerId: string }
+  | { type: "ASSET_GAINED"; playerId: string; assetId: string; source: "setup" | "reserve" }
+  | { type: "RESERVE_REFILLED"; assetIds: string[] }
   | { type: "MYSTERY_REVEALED"; mysteryId: string }
   | { type: "MYSTERY_PROGRESS_ADDED"; mysteryId: string; amount: number; progress: number }
   | { type: "MYSTERY_SOLVED"; mysteryId: string }
@@ -111,6 +113,7 @@ export interface PublicPlayerState {
   locationId?: LocationId;
   health?: number;
   sanity?: number;
+  assetIds: string[];
   isHost: boolean;
 }
 
@@ -124,6 +127,8 @@ export interface PublicGameState {
   mysteryProgress: number;
   mysteryTarget: number;
   completedMysteryIds: string[];
+  reserveAssetIds: string[];
+  assetDiscardIds: string[];
   gameResult?: "investigators_win" | "investigators_lose";
   players: PublicPlayerState[];
 }

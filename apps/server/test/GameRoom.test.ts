@@ -61,6 +61,11 @@ describe("authoritative game room", () => {
     assert.equal(hostPlayer.health, 5);
     assert.equal(hostPlayer.sanity, 7);
     assert.equal(guestPlayer.locationId, "space_16");
+    assert.equal(guestPlayer.assetIds, "asset_45_automatic");
+    assert.equal(room.state.reserveAssetIds.split(",").length, 4);
+    const privateAssets = (room as unknown as { privateState: { deckOrderById: Record<string, string[]> } }).privateState.deckOrderById.assets;
+    assert.equal(privateAssets?.length, 35);
+    assert.ok(!JSON.stringify(room.state).includes(privateAssets![0]!));
 
     sendCommand(room, host, { type: "TRAVEL", destinationIds: ["space_10"] });
     await room.waitForMessage(commandMessageType);

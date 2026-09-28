@@ -23,6 +23,7 @@ interface ClientPlayerState {
   maxSanity: number
   trainTickets: number
   shipTickets: number
+  assetIds: string
   isHost: boolean
 }
 
@@ -39,6 +40,8 @@ interface ClientGameState {
   turnNumber?: number
   actionsRemaining?: number
   performedActions?: string
+  reserveAssetIds?: string
+  assetDiscardIds?: string
   pendingDecision?: {
     id: string
     kind: string
@@ -67,6 +70,8 @@ const activePlayerId = ref('')
 const turnNumber = ref(0)
 const actionsRemaining = ref(0)
 const performedActions = ref<string[]>([])
+const reserveAssetIds = ref<string[]>([])
+const assetDiscardIds = ref<string[]>([])
 const pendingDecision = ref<PendingDecision | PendingDecisionSummary>()
 const playerId = ref('')
 const roomId = ref('')
@@ -91,6 +96,8 @@ export function useGameRoom() {
     turnNumber.value = state.turnNumber ?? 0
     actionsRemaining.value = state.actionsRemaining ?? 0
     performedActions.value = state.performedActions ? state.performedActions.split(',') : []
+    reserveAssetIds.value = state.reserveAssetIds ? state.reserveAssetIds.split(',') : []
+    assetDiscardIds.value = state.assetDiscardIds ? state.assetDiscardIds.split(',') : []
     if (!state.pendingDecision) {
       pendingDecision.value = undefined
     } else if (pendingDecision.value?.id !== state.pendingDecision.id || !('optionIds' in pendingDecision.value)) {
@@ -113,6 +120,7 @@ export function useGameRoom() {
       maxSanity: player.maxSanity,
       trainTickets: player.trainTickets,
       shipTickets: player.shipTickets,
+      assetIds: player.assetIds,
       isHost: player.isHost
     }))
     playerId.value = players.value.find((player) => player.sessionId === room.value?.sessionId)?.id ?? ''
@@ -183,7 +191,7 @@ export function useGameRoom() {
 
   return {
     players: readonly(players), stateVersion: readonly(stateVersion), phase: readonly(phase), ancientOneId: readonly(ancientOneId), activeMysteryId: readonly(activeMysteryId), mysteryProgress: readonly(mysteryProgress), mysteryTarget: readonly(mysteryTarget), completedMysteryIds: readonly(completedMysteryIds), gameResult: readonly(gameResult), activePlayerId: readonly(activePlayerId),
-    turnNumber: readonly(turnNumber), actionsRemaining: readonly(actionsRemaining), performedActions: readonly(performedActions), pendingDecision: readonly(pendingDecision), playerId: readonly(playerId), roomId: readonly(roomId),
+    turnNumber: readonly(turnNumber), actionsRemaining: readonly(actionsRemaining), performedActions: readonly(performedActions), reserveAssetIds: readonly(reserveAssetIds), assetDiscardIds: readonly(assetDiscardIds), pendingDecision: readonly(pendingDecision), playerId: readonly(playerId), roomId: readonly(roomId),
     status: readonly(status), errorMessage: readonly(errorMessage), createGame, joinGame, reconnect, send
   }
 }
