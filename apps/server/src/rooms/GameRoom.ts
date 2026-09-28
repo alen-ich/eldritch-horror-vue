@@ -1,6 +1,6 @@
 import { randomInt, randomUUID } from "node:crypto";
 import { Client, CloseCode, Room } from "colyseus";
-import { baseGameAncientOnes, baseGameMythosCards, baseGameAssets, baseGameInvestigators, baseGameMap, baseGameMysteries } from "@eldritch/content";
+import { baseGameAncientOnes, baseGameMythosCards, baseGameAssets, baseGameInvestigators, baseGameMap, baseGameMysteries, baseGameMonsters } from "@eldritch/content";
 import { createDeterministicEngineContext, executeCommand, type GameContent, type GameState, type PrivateGameState } from "@eldritch/engine";
 import {
   commandErrorMessageType,
@@ -22,6 +22,9 @@ function randomShuffleIndexes(length: number): number[] {
   return Array.from({ length: Math.max(0, length - 1) }, (_, offset) => randomInt(length - offset));
 }
 const baseGameContent: GameContent = {
+  monsters: baseGameMonsters.map(({ id, type, horrorCheck, damageCheck, toughness, specialEffect }) => ({
+    id, type, horrorCheck, damageCheck, toughness, specialEffect,
+  })),
   ancientOnes: Object.fromEntries(baseGameAncientOnes.map(ancient => [ancient.id, {
     startingDoom: ancient.startingDoom,
     mythosDeck: ancient.mythosDeck,

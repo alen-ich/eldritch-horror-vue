@@ -18,10 +18,10 @@ This means component-specific behavior cannot be declared complete until the cor
 | --- | --- | --- |
 | Actions, Acquire Assets, Bank Loan | 2 | Travel, Rest, Prepare for Travel, ending actions, and Acquire Assets implemented; Debt, Trade, and component/local actions remain |
 | Clues and rerolls | 3, 10 | Individual sequential Clue rerolls are authoritative and reconnectable for tests; non-test fixed rolls remain distinct |
-| Combat and Monster damage | 3 | Not implemented |
+| Combat and Monster damage | 3 | Generic printed-stat Will/Horror and Strength/Damage resolution, simultaneous Health loss, partial Monster damage, and normal-Monster return to the cup are implemented as internal deterministic transitions. Monster-specific text, possession bonuses, encounter sequencing, spawning, and client commands remain unsupported. |
 | Complex encounters | 3 | Decision infrastructure implemented; encounter resolution remains |
 | Component actions and limitations | 3 | Once-per-action tracking foundation exists; component identity and availability rules remain |
-| Conditions, conflicts, defeat, delay, devouring | 4 | Not implemented |
+| Conditions, conflicts, defeat, delay, devouring | 4 | Delayed action timing, basic defeat choices, and replacement state are implemented. Their encounter/Mythos trigger wiring, Conditions, devouring, and conflict choices remain pending. |
 | Doom, Epic Monsters, expeditions | 5 | Not implemented |
 | Encounters, possessions, Gates | 6-7 | Not implemented |
 | Health, Sanity, hidden information, skill improvements | 7 | Maximums, capped resource math, state boundaries, skills, and improvements implemented; authoritative loss events and defeat remain |
