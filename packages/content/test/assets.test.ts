@@ -22,8 +22,17 @@ describe("base-game Asset cards", () => {
       existsSync(`${publicDirectory}${imageUrl}`) && existsSync(`${publicDirectory}${backImageUrl}`))).toBe(true);
   });
 
-  it("keeps rules transcription explicitly incomplete", () => {
-    expect(baseGameAssets.every(({ rulesStatus }) => rulesStatus === "pending_verified_transcription")).toBe(true);
+  it("registers values, traits, timing categories, and effect text from the supplied metadata", () => {
+    expect(baseGameAssets.filter(({ value }) => value === 1)).toHaveLength(14);
+    expect(baseGameAssets.filter(({ value }) => value === 2)).toHaveLength(16);
+    expect(baseGameAssets.filter(({ value }) => value === 3)).toHaveLength(7);
+    expect(baseGameAssets.filter(({ value }) => value === 4)).toHaveLength(3);
+    expect(baseGameAssets.find(({ id }) => id === "asset_spirit_dagger")).toMatchObject({
+      traits: ["item", "weapon", "magical"],
+      abilityType: "passive",
+      effectText: "Gain +1 [Lore] and +2 [Strength] during Combat Encounters.",
+    });
+    expect(baseGameAssets.every(({ rulesStatus }) => rulesStatus === "transcribed_pending_execution")).toBe(true);
   });
 
   it("rejects incomplete and duplicate catalogs", () => {
