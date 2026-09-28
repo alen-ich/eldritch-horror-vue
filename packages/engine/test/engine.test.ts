@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyMysteryProgress,
+  delayInvestigator,
   createDeterministicEngineContext,
   createLobby,
   executeCommand,
@@ -79,6 +80,26 @@ function startedGame(): GameState {
 }
 
 describe("executeCommand", () => {
+  it("ends the active investigator's actions immediately when delayed", () => {
+    const state = startedGame();
+    const result = delayInvestigator(state, "host");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.activePlayerId).toBe("guest");
+    expect(result.state.players[0]?.delayed).not.toBe(true);
+    expect(state.activePlayerId).toBe("host");
+  });
+
+  it("stands up and skips a delayed investigator when their action turn starts", () => {
+    const delayed = delayInvestigator(startedGame(), "guest");
+    if (!delayed.ok) throw new Error("Delay failed");
+    expect(delayed.state.players[1]?.delayed).toBe(true);
+    const result = executeCommand(delayed.state, "host", { type: "END_ACTIONS" }, testContent);
+    if (!result.ok) throw new Error("End actions failed");
+    expect(result.state.phase).toBe("encounter");
+    expect(result.state.players[1]?.delayed).toBe(false);
+    expect(result.events).toContainEqual({ type: "INVESTIGATOR_STOOD_UP", playerId: "guest" });
+  });
   it("increments the state version exactly once for an accepted command", () => {
     const result = executeCommand(startedGame(), "host", { type: "REST" }, testContent);
     expect(result.ok).toBe(true);

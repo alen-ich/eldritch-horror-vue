@@ -109,6 +109,7 @@ export const gameCommandMessageSchema = z.object({
 export type GameCommandMessage = z.infer<typeof gameCommandMessageSchema>;
 
 export type GameEvent =
+  | { type: "INVESTIGATOR_DELAYED" | "INVESTIGATOR_STOOD_UP"; playerId: string }
   | { type: "INVESTIGATOR_SELECTED"; playerId: string; investigatorId: InvestigatorId }
   | { type: "ANCIENT_ONE_SELECTED"; ancientOneId: AncientOneId }
   | { type: "GAME_STARTED"; activePlayerId: string }

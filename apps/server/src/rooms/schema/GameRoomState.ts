@@ -6,6 +6,7 @@ export const PlayerState = schema({
   sessionId: t.string(),
   displayName: t.string(),
   connected: t.boolean().default(true),
+  delayed: t.boolean().default(false),
   investigatorId: t.string().default(""),
   locationId: t.string().default(""),
   health: t.uint8().default(0),

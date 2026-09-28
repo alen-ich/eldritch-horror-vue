@@ -159,6 +159,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       privateState: this.privateState,
       players: [...this.state.players.values()].map((player) => ({
         id: player.id,
+        delayed: player.delayed,
         investigatorId: (player.investigatorId || undefined) as InvestigatorId | undefined,
         locationId: (player.locationId || undefined) as LocationId | undefined,
         health: player.health || undefined,
@@ -216,6 +217,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       player.shipTickets = enginePlayer.travelTickets?.filter((ticket) => ticket === "ship").length ?? 0;
       player.assetIds = enginePlayer.assetIds.join(",");
       player.clues = enginePlayer.clues;
+      player.delayed = enginePlayer.delayed ?? false;
       player.loreImprovement = enginePlayer.skillImprovements.lore ?? 0;
       player.influenceImprovement = enginePlayer.skillImprovements.influence ?? 0;
       player.observationImprovement = enginePlayer.skillImprovements.observation ?? 0;

@@ -16,6 +16,7 @@ interface ClientPlayerState {
   sessionId: string
   displayName: string
   connected: boolean
+  delayed: boolean
   investigatorId: string
   locationId: string
   health: number
@@ -140,6 +141,7 @@ export function useGameRoom() {
       sessionId: player.sessionId,
       displayName: player.displayName,
       connected: player.connected,
+      delayed: player.delayed,
       investigatorId: player.investigatorId,
       locationId: player.locationId,
       health: player.health,

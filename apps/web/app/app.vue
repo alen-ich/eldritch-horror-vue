@@ -316,6 +316,10 @@ async function copyInvite() {
         </header>
         <div class="game-workspace">
         <div class="board-stage">
+          <section v-if="me?.delayed" class="travel-planner" aria-label="Delayed investigator">
+            <strong>You are Delayed</strong><small>Your next action turn is spent standing up.</small>
+            <button v-if="isMyTurn" @click="game.send({ type: 'END_ACTIONS' })">Stand up and end actions</button>
+          </section>
           <section v-if="travelRoute.length" class="travel-planner" aria-label="Planned travel" aria-live="polite">
             <strong>{{ me?.locationId ? locationById[me.locationId as LocationId]?.name : '' }} → {{ travelRoute.map(id => locationById[id].name).join(' → ') }}</strong>
             <small>1 action · {{ travelTicketsUsed.train }} train / {{ travelTicketsUsed.ship }} ship tickets. Select another highlighted space to extend.</small>

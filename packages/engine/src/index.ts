@@ -83,6 +83,7 @@ export function createDeterministicEngineContext(inputs: EngineInputSequences): 
 
 export interface EnginePlayer {
   id: string;
+  delayed?: boolean;
   investigatorId?: InvestigatorId;
   locationId?: LocationId;
   health?: number;
@@ -157,6 +158,7 @@ export interface GameContent {
 }
 
 export type RuleErrorCode =
+  | "INVESTIGATOR_DELAYED"
   | "PLAYER_NOT_FOUND"
   | "WRONG_PHASE"
   | "NOT_HOST"
@@ -320,6 +322,13 @@ function routeBetween(map: GameMap, source: LocationId, target: LocationId) {
 function advanceActionInvestigator(state: GameState, actorIndex: number, events: GameEvent[]): void {
   const nextIndex = actorIndex + 1;
   if (nextIndex < state.players.length) {
+    const player = state.players[nextIndex]!;
+    if (player.delayed) {
+      player.delayed = false;
+      events.push({ type: "INVESTIGATOR_STOOD_UP", playerId: player.id });
+      advanceActionInvestigator(state, nextIndex, events);
+      return;
+    }
     state.activePlayerId = state.players[nextIndex]!.id;
     state.actionsRemaining = 2;
     state.performedActions = [];
@@ -330,6 +339,22 @@ function advanceActionInvestigator(state: GameState, actorIndex: number, events:
   state.actionsRemaining = 0;
   state.performedActions = [];
   events.push({ type: "PHASE_ADVANCED", phase: "encounter", activePlayerId: state.activePlayerId });
+}
+
+/** Called by verified effects, never exposed as a client command. */
+export function delayInvestigator(state: GameState, playerId: string): CommandResult {
+  if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
+  const index = state.players.findIndex(player => player.id === playerId);
+  if (index < 0) return failure("PLAYER_NOT_FOUND", "Investigator not found.");
+  if (state.phase === "lobby") return failure("WRONG_PHASE", "The game has not started.");
+  const next = structuredClone(state);
+  const events: GameEvent[] = [{ type: "INVESTIGATOR_DELAYED", playerId }];
+  if (next.phase === "action" && next.activePlayerId === playerId) {
+    if (next.pendingDecision?.playerId === playerId) next.pendingDecision = undefined;
+    if (next.activeTest?.playerId === playerId) next.activeTest = undefined;
+    advanceActionInvestigator(next, index, events);
+  } else next.players[index]!.delayed = true;
+  return success(next, events);
 }
 
 function completeAction(state: GameState, actorIndex: number, action: ActionType, events: GameEvent[]): void {
@@ -704,6 +729,13 @@ export function executeCommand(
 
   if (state.phase !== "action") return failure("WRONG_PHASE", "That action is not available in the lobby.");
   if (state.activePlayerId !== actorPlayerId) return failure("NOT_ACTIVE_PLAYER", "It is not your turn.");
+  if (actor.delayed) {
+    if (command.type !== "END_ACTIONS") return failure("INVESTIGATOR_DELAYED", "Stand up instead of taking actions.");
+    actor.delayed = false;
+    const events: GameEvent[] = [{ type: "INVESTIGATOR_STOOD_UP", playerId: actorPlayerId }];
+    advanceActionInvestigator(next, actorIndex, events);
+    return success(next, events);
+  }
   if (state.actionsRemaining < 1 && command.type !== "END_ACTIONS") return failure("NO_ACTIONS_REMAINING", "This investigator has no actions remaining.");
 
   if (command.type === "TRAVEL") {
