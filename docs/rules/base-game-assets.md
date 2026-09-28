@@ -9,6 +9,19 @@ The supplied JSON is retained as source data under `source-assets/assets`, and `
 The Asset family remains `needs_review` rather than `verified` because:
 
 - the transcribed effects still need comprehensive card-by-card scan verification;
-- Asset effects are not yet executable in the rules engine;
+- most Asset effects still depend on unimplemented tests, combat, encounters, Conditions, Spells, Clues, Monsters, or component actions.
+
+## Engine coverage
+
+The authoritative engine now removes starting Assets from the deck, grants them by stable ID, shuffles the remaining deck privately, and exposes a four-card Reserve. Acquire Assets rolls Influence from injected deterministic dice, validates selected cards against total successes, refills the Reserve, and supports the optional one-card discard after buying nothing. Bank Loan is intentionally unavailable until Debt Conditions are implemented.
+
+Four cards have explicit typed effect nodes and executable tests:
+
+- Personal Assistant adds one die to Influence tests, including Acquire Assets. Its optional reroll remains pending the general test/reroll system.
+- Fine Clothes makes each 6 count as two successes during Acquire Assets.
+- King James Bible recovers one additional Sanity during Rest. Its combat reroll remains pending combat tests.
+- Private Care immediately restores Health and Sanity to maximum, then enters the Asset discard pile.
+
+The engine never parses `effectText`. Cards without typed nodes remain display-only until their prerequisites and verified handlers are present.
 
 Run `pnpm assets:generate` to reproduce the 40 WebP fronts and shared back under `apps/web/public/cards/assets` from the committed sources.
