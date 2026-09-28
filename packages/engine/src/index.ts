@@ -15,7 +15,7 @@ import type {
 } from "@eldritch/protocol";
 import { calculateDicePool, countTestSuccesses } from "./skill-tests.js";
 import { loseResource, recoverResource } from "./resources.js";
-import { buildMythosDeck, type AncientSetup, type MythosColor } from "./setup.js";
+import { buildGateStack, buildMythosDeck, type AncientSetup, type MythosColor } from "./setup.js";
 import { resolveStandardCombat, type CombatCheck } from "./combat.js";
 import { conditionSuccessThreshold, publicConditionId, resolveBoonBaneGain } from "./conditions.js";
 export * from "./setup.js";
@@ -199,6 +199,7 @@ export type ConditionBackEffect =
   | { type: "discard_all_clues_then_discard" };
 
 export interface GameContent {
+  gates?: readonly { id: string; omenSymbol: "comet" | "constellation" | "eclipse"; locationId: LocationId }[];
   conditions?: readonly { id: string; kind: string; backEffect?: ConditionBackEffect }[];
   monsters?: readonly MonsterCombatDefinition[];
   ancientOnes?: Readonly<Partial<Record<AncientOneId, AncientSetup>>>;
@@ -1197,6 +1198,7 @@ export function executeCommand(
       next.greenOmenTokens = ancient.greenOmenTokens;
       next.privateState.deckOrderById.mythos = buildMythosDeck(content.mythosCards ?? [], ancient.mythosDeck, context.shuffle);
     }
+    if (content.gates?.length) next.privateState.deckOrderById.gates = buildGateStack(content.gates.map(gate => gate.id), context.shuffle);
     const events: GameEvent[] = [
       { type: "GAME_STARTED", activePlayerId: actorPlayerId },
       { type: "MYSTERY_REVEALED", mysteryId: activeMysteryId },

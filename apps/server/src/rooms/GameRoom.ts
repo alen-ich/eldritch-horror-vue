@@ -1,6 +1,6 @@
 import { randomInt, randomUUID } from "node:crypto";
 import { Client, CloseCode, Room } from "colyseus";
-import { baseGameAncientOnes, baseGameMythosCards, baseGameAssets, baseGameConditions, baseGameInvestigators, baseGameMap, baseGameMysteries, baseGameMonsters } from "@eldritch/content";
+import { baseGameAncientOnes, baseGameMythosCards, baseGameAssets, baseGameConditions, baseGameGates, baseGameInvestigators, baseGameMap, baseGameMysteries, baseGameMonsters } from "@eldritch/content";
 import { createDeterministicEngineContext, executeCommand, publicConditionId, type GameContent, type GameState, type PrivateGameState } from "@eldritch/engine";
 import {
   commandErrorMessageType,
@@ -23,6 +23,7 @@ function randomShuffleIndexes(length: number): number[] {
   return Array.from({ length: Math.max(0, length - 1) }, (_, offset) => randomInt(length - offset));
 }
 const baseGameContent: GameContent = {
+  gates: baseGameGates.map(({ id, omenSymbol, locationId }) => ({ id, omenSymbol, locationId })),
   conditions: baseGameConditions.map(({ id, kind }) => ({ id, kind, backEffect: privateConditionBackEffectById[id] })),
   monsters: baseGameMonsters.map(({ id, type, horrorCheck, damageCheck, toughness, specialEffect }) => ({
     id, type, horrorCheck, damageCheck, toughness, specialEffect,
@@ -157,6 +158,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
             }, 0)),
             ...["green", "yellow", "blue"].flatMap(color => randomShuffleIndexes(baseGameMythosCards.filter(card => card.color === color).length)),
             ...(baseGameAncientOnes.find(ancient => ancient.id === this.state.ancientOneId)?.mythosDeck ?? []).flatMap(stage => randomShuffleIndexes(stage.green + stage.yellow + stage.blue)),
+            ...randomShuffleIndexes(baseGameGates.length),
           ],
         })
         : parsed.data.command.type === "ACQUIRE_ASSETS" || parsed.data.command.type === "USE_CONDITION_ACTION"

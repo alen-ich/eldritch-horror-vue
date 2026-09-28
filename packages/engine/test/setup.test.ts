@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMythosDeck } from "../src/setup.js";
+import { buildGateStack, buildMythosDeck } from "../src/setup.js";
 
 describe("staged Mythos setup", () => {
   const cards = ["green", "yellow", "blue"].flatMap(color => Array.from({ length: 4 }, (_, index) => ({ id: `${color}-${index}`, color: color as "green" | "yellow" | "blue" })));
@@ -18,5 +18,18 @@ describe("staged Mythos setup", () => {
   it("rejects shortages and duplicate IDs", () => {
     expect(() => buildMythosDeck([], stages, items => [...items])).toThrow();
     expect(() => buildMythosDeck([...cards, cards[0]!], stages, items => [...items])).toThrow();
+  });
+});
+
+describe("private Gate stack setup", () => {
+  it("shuffles each physical Gate once and treats the first result as the top", () => {
+    const ids = ["gate_arkham", "gate_london", "gate_tokyo"];
+    expect(buildGateStack(ids, cards => [...cards].reverse())).toEqual(["gate_tokyo", "gate_london", "gate_arkham"]);
+    expect(ids).toEqual(["gate_arkham", "gate_london", "gate_tokyo"]);
+  });
+
+  it("rejects empty and duplicate Gate catalogs", () => {
+    expect(() => buildGateStack([], cards => [...cards])).toThrow(/unique/);
+    expect(() => buildGateStack(["gate_arkham", "gate_arkham"], cards => [...cards])).toThrow(/unique/);
   });
 });

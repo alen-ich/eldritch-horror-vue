@@ -1,4 +1,12 @@
 export type MythosColor = "green" | "yellow" | "blue";
+
+/** The first element remains the hidden top of the Gate stack. */
+export function buildGateStack(gateIds: readonly string[], shuffle: <T>(items: readonly T[]) => T[]): string[] {
+  if (!gateIds.length || new Set(gateIds).size !== gateIds.length || gateIds.some(id => !id)) {
+    throw new Error("Gate stack requires unique, nonempty Gate IDs.");
+  }
+  return shuffle(gateIds);
+}
 export interface AncientSetup {
   startingDoom: number;
   mythosDeck: readonly Readonly<Record<MythosColor, number>>[];
