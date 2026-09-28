@@ -13,12 +13,15 @@ The rulebook says the separate Reference Guide is definitive for exceptions and 
 - Rest recovers one Health and one Sanity without exceeding maximums and is prohibited on a Monster space.
 - Prepare for Travel requires a City with a connected path of the requested type and enforces the two-ticket limit.
 - Ending actions advances to the next investigator; finishing the final investigator advances the game to the Encounter phase.
+- Skill tests use printed skill, improvements, modifiers, the highest applicable item bonus, other bonuses, and a minimum result of one die; 5-6 count as successes.
+- An investigator may spend Clues one at a time to reroll individual test dice. The active test and reroll choice survive reconnection.
+- Acquire Assets uses this authoritative Influence-test lifecycle, then resolves Reserve purchases and refill atomically.
 - Action choices and resources are synchronized through authoritative Colyseus room state.
 
 ## Remaining rules layers
 
-1. Complete Action phase: Trade, Acquire Assets and component/local actions.
-2. Tests: skill values, modifiers, one item bonus, successes, Clue rerolls and improvements.
+1. Complete Action phase: Trade, Bank Loan/Debt, and component/local actions.
+2. Tests and resources: generic Health/Sanity loss and recovery, plus Blessed/Cursed thresholds after Conditions are verified.
 3. Encounter phase: Monster ordering, combat, location decks, token encounters and complex encounters.
 4. Mythos phase: ordered icons, Omen/Doom, reckoning, Gates, surges, Monsters, Clues, Rumors and events.
 5. Setup: Ancient One selection, Mythos deck construction, randomized token pools, Reserve and starting possessions.

@@ -16,19 +16,19 @@ This means component-specific behavior cannot be declared complete until the cor
 
 | Rule family | Reference Guide pages | Current implementation |
 | --- | --- | --- |
-| Actions, Acquire Assets, Bank Loan | 2 | Travel, Rest, Prepare for Travel, and ending actions implemented; Acquire Assets, Debt, Trade, and component/local actions remain |
-| Clues and rerolls | 3, 10 | Deterministic inputs and pending decisions implemented; test and Clue-spending rules remain |
+| Actions, Acquire Assets, Bank Loan | 2 | Travel, Rest, Prepare for Travel, ending actions, and Acquire Assets implemented; Debt, Trade, and component/local actions remain |
+| Clues and rerolls | 3, 10 | Individual sequential Clue rerolls are authoritative and reconnectable for tests; non-test fixed rolls remain distinct |
 | Combat and Monster damage | 3 | Not implemented |
 | Complex encounters | 3 | Decision infrastructure implemented; encounter resolution remains |
 | Component actions and limitations | 3 | Once-per-action tracking foundation exists; component identity and availability rules remain |
 | Conditions, conflicts, defeat, delay, devouring | 4 | Not implemented |
 | Doom, Epic Monsters, expeditions | 5 | Not implemented |
 | Encounters, possessions, Gates | 6-7 | Not implemented |
-| Health, Sanity, hidden information, skill improvements | 7 | Maximum Health/Sanity and public/private state boundaries implemented; loss, recovery effects, tests, and improvements remain |
+| Health, Sanity, hidden information, skill improvements | 7 | Maximums, state boundaries, skills, and improvements implemented; generic loss/recovery and defeat remain |
 | Lead Investigator, local actions, Monsters, surges, Mysteries, Mythos | 8 | Lead Investigator and turn order partially implemented; remaining systems absent |
 | Omen, paths, Prepare for Travel, random spaces, Reckoning | 9 | Path types and Prepare for Travel implemented; remaining systems absent |
 | Reference cards, Reserve, Research, Rumors | 10 | Not implemented; player-count Reference card data is still missing |
-| Spawning, Spells, tests, ties, train/ship rules | 11 | Route types implemented; remaining systems absent |
+| Spawning, Spells, tests, ties, train/ship rules | 11 | Generic tests and route types implemented; spawning, Spells, and tie handling remain |
 | Trade, traits, Travel, victory/loss, FAQ clarifications | 12 | Travel implemented; remaining systems absent |
 | Investigator ability clarifications | 13 | Display text exists; executable abilities remain |
 | Optional difficulty and solo rules | 14 | Explicitly deferred until the base game is complete |

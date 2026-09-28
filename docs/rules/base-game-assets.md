@@ -13,7 +13,7 @@ The Asset family remains `needs_review` rather than `verified` because:
 
 ## Engine coverage
 
-The authoritative engine now removes starting Assets from the deck, grants them by stable ID, shuffles the remaining deck privately, and exposes a four-card Reserve. Acquire Assets rolls Influence from injected deterministic dice, validates selected cards against total successes, refills the Reserve, and supports the optional one-card discard after buying nothing. Bank Loan is intentionally unavailable until Debt Conditions are implemented.
+The authoritative engine now removes starting Assets from the deck, grants them by stable ID, shuffles the remaining deck privately, and exposes a four-card Reserve. Acquire Assets uses the generic Influence-test lifecycle, including improvements, supported bonuses, and sequential Clue rerolls; it then validates selected cards against total successes, refills the Reserve, and supports the optional one-card discard after buying nothing. Active tests and owner-only choices survive serialization and reconnection. Bank Loan is intentionally unavailable until Debt Conditions are implemented.
 
 Four cards have explicit typed effect nodes and executable tests:
 
