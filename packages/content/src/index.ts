@@ -1,4 +1,5 @@
 export * from "./ancient-ones.js";
+export * from "./assets.js";
 export * from "./gates.js";
 export * from "./investigators.js";
 export * from "./map.js";
