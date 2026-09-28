@@ -55,16 +55,33 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
   state = new GameRoomState();
 
   private readonly playerIdBySession = new Map<string, string>();
+  private readonly seatTokens = new Map<string, string>();
   private privateState: PrivateGameState = { deckOrderById: {}, tokenPoolById: {} };
   private pendingDecision?: PendingDecision;
   private activeTest?: ActiveTest;
 
   messages = {
+    "request-seat-token": (client: Client) => {
+      const player = this.playerFor(client);
+      if (player) client.send("seat-token", this.seatTokens.get(player.id));
+      this.sendPendingDecision(client);
+    },
     [commandMessageType]: (client: Client, payload: unknown) => this.handleCommand(client, payload),
   };
 
   onJoin(client: Client, rawOptions: unknown): void {
     const options = joinOptionsSchema.parse(rawOptions);
+    if (options.resumeToken) {
+      const entry = [...this.seatTokens.entries()].find(([, token]) => token === options.resumeToken);
+      const seat = entry ? this.state.players.get(entry[0]) : undefined;
+      if (!seat || seat.connected) throw new Error("The requested seat is unavailable.");
+      this.playerIdBySession.delete(seat.sessionId);
+      seat.sessionId = client.sessionId;
+      seat.connected = true;
+      this.playerIdBySession.set(client.sessionId, seat.id);
+      return;
+    }
+    if (this.state.phase !== "lobby" || this.state.players.size >= this.maxClients) throw new Error("This game is already in progress or full.");
     const playerId = randomUUID();
     const player = new PlayerState();
     player.id = playerId;
@@ -73,6 +90,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     player.isHost = this.state.players.size === 0;
     this.playerIdBySession.set(client.sessionId, playerId);
     this.state.players.set(playerId, player);
+    this.seatTokens.set(playerId, randomUUID());
   }
 
   onDrop(client: Client, _code: CloseCode): void {
@@ -93,7 +111,13 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
   onLeave(client: Client): void {
     const playerId = this.playerIdBySession.get(client.sessionId);
     if (!playerId) return;
+    if (this.state.phase !== "lobby") {
+      const player = this.state.players.get(playerId);
+      if (player) player.connected = false;
+      return;
+    }
     this.playerIdBySession.delete(client.sessionId);
+    this.seatTokens.delete(playerId);
     this.state.players.delete(playerId);
     if (this.state.phase === "lobby") this.assignHost();
   }
@@ -199,6 +223,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
   }
 
   private applyEngineState(engineState: GameState): void {
+    if (engineState.phase !== "lobby") this.autoDispose = false;
     this.state.investigatorLifecycle = JSON.stringify({ pendingDefeat: engineState.pendingDefeat, defeatedInvestigators: engineState.defeatedInvestigators, replacementWindow: engineState.replacementWindow, awakened: engineState.awakened });
     this.state.doom = engineState.doom ?? 0;
     this.state.omen = engineState.omen ?? 0;

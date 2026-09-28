@@ -27,6 +27,86 @@ describe("authoritative game room", () => {
     client.send(commandMessageType, { expectedStateVersion, command });
   }
 
+  async function eventually(check: () => boolean): Promise<void> {
+    const deadline = Date.now() + 4000;
+    while (!check()) {
+      if (Date.now() > deadline) throw new Error("State transition timed out");
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+  }
+
+  for (const stage of ["reroll", "purchase"] as const) {
+    it(`restores an actual dropped connection during ${stage}`, async () => {
+      const room = await colyseus.createRoom<GameRoom>("game", {});
+      const host = await colyseus.connectTo(room, { displayName: "Host" });
+      const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+      host.onMessage(pendingDecisionMessageType, () => undefined);
+      sendCommand(room, host, { type: "SELECT_INVESTIGATOR", investigatorId: "akachi_onyele" });
+      await room.waitForMessage(commandMessageType);
+      sendCommand(room, guest, { type: "SELECT_INVESTIGATOR", investigatorId: "trish_scarborough" });
+      await room.waitForMessage(commandMessageType);
+      sendCommand(room, host, { type: "SELECT_ANCIENT_ONE", ancientOneId: "cthulhu" });
+      await room.waitForMessage(commandMessageType);
+      sendCommand(room, host, { type: "START_GAME" });
+      await room.waitForMessage(commandMessageType);
+      sendCommand(room, host, { type: "ACQUIRE_ASSETS" });
+      await room.waitForMessage(commandMessageType);
+      if (stage === "purchase") {
+        sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: room.state.pendingDecision!.id, selectedOptionIds: [] });
+        await room.waitForMessage(commandMessageType);
+      }
+      const seat = [...room.state.players.values()].find(player => player.isHost)!;
+      const decisionId = room.state.pendingDecision!.id;
+      const dice = room.state.activeTest?.dice;
+      const token = host.reconnectionToken;
+      host.reconnection.enabled = false;
+      host.connection.close();
+      await eventually(() => !seat.connected);
+      assert.equal(room.state.players.size, 2);
+      const restored = await colyseus.sdk.reconnect(token);
+      restored.onMessage("seat-token", () => undefined);
+      const options = restored.waitForMessage(pendingDecisionMessageType);
+      restored.send("request-seat-token");
+      assert.equal((await options as PendingDecision).id, decisionId);
+      assert.equal(room.state.activeTest?.dice, dice);
+      assert.equal(seat.connected, true);
+      sendCommand(room, restored, { type: "RESOLVE_DECISION", decisionId, selectedOptionIds: [] });
+      await room.waitForMessage(commandMessageType);
+      assert.notEqual(room.state.pendingDecision?.id, decisionId);
+    });
+  }
+
+  it("reclaims a disconnected seat by private token without exposing it in room state", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+    const seatTokenMessage = host.waitForMessage("seat-token");
+    host.send("request-seat-token");
+    const seatToken = await seatTokenMessage as string;
+    assert.ok(seatToken);
+    assert.ok(!JSON.stringify(room.state).includes(seatToken));
+    const hostSeat = [...room.state.players.values()].find(player => player.isHost)!;
+    sendCommand(room, host, { type: "SELECT_INVESTIGATOR", investigatorId: "akachi_onyele" });
+    await room.waitForMessage(commandMessageType);
+    sendCommand(room, guest, { type: "SELECT_INVESTIGATOR", investigatorId: "trish_scarborough" });
+    await room.waitForMessage(commandMessageType);
+    sendCommand(room, host, { type: "SELECT_ANCIENT_ONE", ancientOneId: "cthulhu" });
+    await room.waitForMessage(commandMessageType);
+    sendCommand(room, host, { type: "START_GAME" });
+    await room.waitForMessage(commandMessageType);
+    host.reconnection.enabled = false;
+    host.connection.close();
+    await eventually(() => !hostSeat.connected);
+    const formerClient = room.clients.find(client => client.sessionId === host.sessionId);
+    if (formerClient) room.onLeave(formerClient);
+    const restored = await colyseus.sdk.joinById(room.roomId, { displayName: "Impostor name", resumeToken: seatToken });
+    assert.equal(hostSeat.id, [...room.state.players.values()].find(player => player.isHost)?.id);
+    assert.equal(hostSeat.sessionId, restored.sessionId);
+    assert.equal(hostSeat.investigatorId, "akachi_onyele");
+    assert.equal(room.state.players.size, 2);
+    await assert.rejects(() => colyseus.sdk.joinById(room.roomId, { resumeToken: seatToken }));
+  });
+
   it("runs investigator selection, game start, and movement for two players", async () => {
     const room = await colyseus.createRoom<GameRoomState>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });

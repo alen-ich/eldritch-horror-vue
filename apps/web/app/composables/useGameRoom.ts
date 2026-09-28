@@ -187,6 +187,10 @@ export function useGameRoom() {
     nextRoom.onStateChange(syncState)
     nextRoom.onMessage<CommandErrorMessage>(commandErrorMessageType, (message) => { errorMessage.value = message.message })
     nextRoom.onMessage<PendingDecision>(pendingDecisionMessageType, (decision) => { pendingDecision.value = decision })
+    nextRoom.onMessage<string>('seat-token', (token) => {
+      localStorage.setItem(`eldritch-seat-${nextRoom.roomId}`, token)
+    })
+    nextRoom.send('request-seat-token')
     nextRoom.onDrop(() => { status.value = 'connecting' })
     nextRoom.onReconnect(() => { status.value = 'connected' })
     nextRoom.onLeave(() => { status.value = 'disconnected' })
@@ -207,7 +211,8 @@ export function useGameRoom() {
     status.value = 'connecting'
     errorMessage.value = ''
     try {
-      attach(await client.joinById<ClientGameState>(targetRoomId, { displayName }))
+      const resumeToken = localStorage.getItem(`eldritch-seat-${targetRoomId}`) ?? undefined
+      attach(await client.joinById<ClientGameState>(targetRoomId, { displayName, resumeToken }))
     } catch (error) {
       handleConnectionError(error)
     }

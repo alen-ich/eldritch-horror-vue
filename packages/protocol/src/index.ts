@@ -184,6 +184,7 @@ export interface PublicGameState {
 }
 
 export const joinOptionsSchema = z.object({
+  resumeToken: z.string().uuid().optional(),
   displayName: z.string().trim().min(1).max(32).default("Investigator"),
 }).strict();
 
