@@ -1,0 +1,578 @@
+[
+  {
+    "name": "Spirit Dagger",
+    "value": 2,
+    "traits": [
+      "Item",
+      "Weapon",
+      "Magical"
+    ],
+    "effect": "Gain +1 [Lore] and +2 [Strength] during Combat Encounters.",
+    "ability_type": "passive",
+    "starting_investigator": null,
+    "image_filename": "01_spirit_dagger.jpg",
+    "id": "spirit_dagger",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Holy Water",
+    "value": 2,
+    "traits": [
+      "Item",
+      "Magical"
+    ],
+    "effect": "You may discard this card to gain +5 [Will] and +5 [Strength] during a Combat Encounter. Action: Discard this card to choose an investigator on your space to gain a Blessed Condition.",
+    "ability_type": "passive + action",
+    "starting_investigator": null,
+    "image_filename": "02_holy_water.jpg",
+    "id": "holy_water",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Private Care",
+    "value": 2,
+    "traits": [
+      "Service"
+    ],
+    "effect": "When you gain this card, immediately recover all Health and Sanity. Then discard this card.",
+    "ability_type": "on gain",
+    "starting_investigator": null,
+    "image_filename": "03_private_care.jpg",
+    "id": "private_care",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Bull Whip",
+    "value": 1,
+    "traits": [
+      "Item",
+      "Weapon"
+    ],
+    "effect": "Gain +1 [Strength] during Combat Encounters. You may reroll 1 die when resolving a [Strength] test during a Combat Encounter.",
+    "ability_type": "passive",
+    "starting_investigator": null,
+    "image_filename": "04_bull_whip.jpg",
+    "id": "bull_whip",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Axe",
+    "value": 2,
+    "traits": [
+      "Item",
+      "Weapon"
+    ],
+    "effect": "Gain +2 [Strength] during Combat Encounters. You may spend 2 Sanity to reroll any number of dice when resolving a [Strength] test during a Combat Encounter.",
+    "ability_type": "passive",
+    "starting_investigator": null,
+    "image_filename": "05_axe.jpg",
+    "id": "axe",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Personal Assistant",
+    "value": 2,
+    "traits": [
+      "Ally"
+    ],
+    "effect": "Gain +1 [Influence]. You may reroll 1 die when resolving a [Influence] test.",
+    "ability_type": "passive",
+    "starting_investigator": null,
+    "image_filename": "06_personal_assistant.jpg",
+    "id": "personal_assistant",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Puzzle Box",
+    "value": 3,
+    "traits": [
+      "Trinket"
+    ],
+    "effect": "When you perform a Rest action, you may attempt to open the puzzle box ([Observation] -2). If you pass, discard this card and gain 1 Artifact.",
+    "ability_type": "rest trigger",
+    "starting_investigator": null,
+    "image_filename": "07_puzzle_box.jpg",
+    "id": "puzzle_box",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Lodge Researcher",
+    "value": 3,
+    "traits": [
+      "Ally"
+    ],
+    "effect": "If you defeat a Monster during a Combat Encounter, recover 1 Sanity and gain 1 Clue.",
+    "ability_type": "triggered passive",
+    "starting_investigator": null,
+    "image_filename": "08_lodge_researcher.jpg",
+    "id": "lodge_researcher",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Fishing Net",
+    "value": 2,
+    "traits": [
+      "Item"
+    ],
+    "effect": "You may reroll 1 die when resolving a [Strength] test during a Combat Encounter. Reduce the damage of Monsters you encounter by 1 to a minimum of 1.",
+    "ability_type": "passive",
+    "starting_investigator": null,
+    "image_filename": "09_fishing_net.jpg",
+    "id": "fishing_net",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Hired Muscle",
+    "value": 2,
+    "traits": [
+      "Ally"
+    ],
+    "effect": "Gain +1 [Strength]. You may reroll 1 die when resolving a [Strength] test.",
+    "ability_type": "passive",
+    "starting_investigator": null,
+    "image_filename": "10_hired_muscle.jpg",
+    "id": "hired_muscle",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Bandages",
+    "value": 1,
+    "traits": [
+      "Item"
+    ],
+    "effect": "You may discard this card to prevent an investigator on your space from losing up to 2 Health.",
+    "ability_type": "reaction",
+    "starting_investigator": null,
+    "image_filename": "11_bandages.jpg",
+    "id": "bandages",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Private Investigator",
+    "value": 2,
+    "traits": [
+      "Ally"
+    ],
+    "effect": "Gain +1 [Observation]. You may reroll 1 die when resolving a [Observation] test.",
+    "ability_type": "passive",
+    "starting_investigator": null,
+    "image_filename": "12_private_investigator.jpg",
+    "id": "private_investigator",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": ".18 Derringer",
+    "value": 1,
+    "traits": [
+      "Trinket",
+      "Weapon"
+    ],
+    "effect": "You may add 1 to the result of 1 die when resolving a [Strength] test during Combat Encounters.",
+    "ability_type": "passive",
+    "starting_investigator": null,
+    "image_filename": "13_18_derringer.jpg",
+    "id": "18_derringer",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Double-barreled Shotgun",
+    "value": 4,
+    "traits": [
+      "Item",
+      "Weapon"
+    ],
+    "effect": "Gain +4 [Strength] during Combat Encounters. Each 6 you roll when resolving a [Strength] test during a Combat Encounter counts as 2 successes.",
+    "ability_type": "passive",
+    "starting_investigator": null,
+    "image_filename": "14_double_barreled_shotgun.jpg",
+    "id": "double_barreled_shotgun",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Arcane Scholar",
+    "value": 2,
+    "traits": [
+      "Ally"
+    ],
+    "effect": "Gain +1 [Lore]. You may reroll 1 die when resolving a [Lore] test.",
+    "ability_type": "passive",
+    "starting_investigator": null,
+    "image_filename": "15_arcane_scholar.jpg",
+    "id": "arcane_scholar",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Arcane Manuscripts",
+    "value": 1,
+    "traits": [
+      "Item",
+      "Tome"
+    ],
+    "effect": "Gain +1 [Lore] when resolving Spell effects.",
+    "ability_type": "passive",
+    "starting_investigator": null,
+    "image_filename": "16_arcane_manuscripts.jpg",
+    "id": "arcane_manuscripts",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Dynamite",
+    "value": 3,
+    "traits": [
+      "Item",
+      "Weapon"
+    ],
+    "effect": "Action: Each Monster on your space loses 3 Health. Then discard this card.",
+    "ability_type": "action",
+    "starting_investigator": null,
+    "image_filename": "17_dynamite.jpg",
+    "id": "dynamite",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Fine Clothes",
+    "value": 2,
+    "traits": [
+      "Item"
+    ],
+    "effect": "Each 6 you roll when performing an Acquire Assets action counts as 2 successes.",
+    "ability_type": "passive",
+    "starting_investigator": null,
+    "image_filename": "18_fine_clothes.jpg",
+    "id": "fine_clothes",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Cat Burglar",
+    "value": 1,
+    "traits": [
+      "Ally"
+    ],
+    "effect": "Action: Roll 1 die. On a 5 or 6, gain 1 Item or Trinket Asset from the reserve. On a 1, discard this card.",
+    "ability_type": "action",
+    "starting_investigator": null,
+    "image_filename": "19_cat_burglar.jpg",
+    "id": "cat_burglar",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Lucky Cigarette Case",
+    "value": 2,
+    "traits": [
+      "Trinket"
+    ],
+    "effect": "Once per round, you may add 1 to the result of 1 die when resolving a test.",
+    "ability_type": "once per round",
+    "starting_investigator": null,
+    "image_filename": "20_lucky_cigarette_case.jpg",
+    "id": "lucky_cigarette_case",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Protective Amulet",
+    "value": 1,
+    "traits": [
+      "Item"
+    ],
+    "effect": "Gain +1 [Will] during Combat Encounters.",
+    "ability_type": "passive",
+    "starting_investigator": null,
+    "image_filename": "21_protective_amulet.jpg",
+    "id": "protective_amulet",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Vatican Missionary",
+    "value": 2,
+    "traits": [
+      "Ally"
+    ],
+    "effect": "Gain +1 [Will]. You may reroll 1 die when resolving a [Will] test.",
+    "ability_type": "passive",
+    "starting_investigator": null,
+    "image_filename": "22_vatican_missionary.jpg",
+    "id": "vatican_missionary",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Whiskey",
+    "value": 1,
+    "traits": [
+      "Item"
+    ],
+    "effect": "You may discard this card to prevent an investigator on your space from losing up to 2 Sanity.",
+    "ability_type": "reaction",
+    "starting_investigator": null,
+    "image_filename": "23_whiskey.jpg",
+    "id": "whiskey",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Kerosene",
+    "value": 1,
+    "traits": [
+      "Item"
+    ],
+    "effect": "You may discard this card to gain +5 [Strength] during a Combat Encounter.",
+    "ability_type": "combat consumable",
+    "starting_investigator": null,
+    "image_filename": "24_kerosene.jpg",
+    "id": "kerosene",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Delivery Service",
+    "value": 1,
+    "traits": [
+      "Service",
+      "Teamwork"
+    ],
+    "effect": "When you gain this card, immediately give any number of Item possessions to another investigator on any space. Then discard this card.",
+    "ability_type": "on gain",
+    "starting_investigator": null,
+    "image_filename": "25_delivery_service.jpg",
+    "id": "delivery_service",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Silver Twilight Ritual",
+    "value": 3,
+    "traits": [
+      "Service"
+    ],
+    "effect": "When you gain this card, immediately retreat Doom by 1. Then discard this card.",
+    "ability_type": "on gain",
+    "starting_investigator": null,
+    "image_filename": "26_silver_twilight_ritual.jpg",
+    "id": "silver_twilight_ritual",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Pocket Watch",
+    "value": 1,
+    "traits": [
+      "Trinket"
+    ],
+    "effect": "You cannot become Delayed unless you choose to.",
+    "ability_type": "passive",
+    "starting_investigator": null,
+    "image_filename": "27_pocket_watch.jpg",
+    "id": "pocket_watch",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Carbine Rifle",
+    "value": 3,
+    "traits": [
+      "Item",
+      "Weapon"
+    ],
+    "effect": "Once per round, you may gain +5 [Strength] during a Combat Encounter.",
+    "ability_type": "once per round",
+    "starting_investigator": null,
+    "image_filename": "28_carbine_rifle.jpg",
+    "id": "carbine_rifle",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": ".45 Automatic",
+    "value": 2,
+    "traits": [
+      "Item",
+      "Weapon"
+    ],
+    "effect": "Gain +3 [Strength] during Combat Encounters.",
+    "ability_type": "passive",
+    "starting_investigator": null,
+    "image_filename": "29_45_automatic.jpg",
+    "id": "45_automatic",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": ".38 Revolver",
+    "value": 1,
+    "traits": [
+      "Item",
+      "Weapon"
+    ],
+    "effect": "Gain +2 [Strength] during Combat Encounters.",
+    "ability_type": "passive",
+    "starting_investigator": null,
+    "image_filename": "30_38_revolver.jpg",
+    "id": "38_revolver",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Sanctuary",
+    "value": 2,
+    "traits": [
+      "Service"
+    ],
+    "effect": "When you gain this card, you may immediately discard 1 Condition. Then discard this card.",
+    "ability_type": "on gain",
+    "starting_investigator": null,
+    "image_filename": "31_sanctuary.jpg",
+    "id": "sanctuary",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Urban Guide",
+    "value": 4,
+    "traits": [
+      "Ally"
+    ],
+    "effect": "If you are on a City space, investigators on your space roll 1 additional die when resolving tests except when resolving Other World Encounters.",
+    "ability_type": "passive aura",
+    "starting_investigator": null,
+    "image_filename": "32_urban_guide.jpg",
+    "id": "urban_guide",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Charter Flight",
+    "value": 1,
+    "traits": [
+      "Service"
+    ],
+    "effect": "When you gain this card, immediately move up to 2 spaces. Then discard this card.",
+    "ability_type": "on gain",
+    "starting_investigator": null,
+    "image_filename": "33_charter_flight.jpg",
+    "id": "charter_flight",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Witch Doctor",
+    "value": 3,
+    "traits": [
+      "Ally"
+    ],
+    "effect": "Investigators on your space may recover 1 additional Health or discard a Cursed Condition when performing a Rest action.",
+    "ability_type": "passive aura",
+    "starting_investigator": null,
+    "image_filename": "34_witch_doctor.jpg",
+    "id": "witch_doctor",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Lucky Rabbit's Foot",
+    "value": 1,
+    "traits": [
+      "Trinket"
+    ],
+    "effect": "Once per round, you may reroll 1 die when resolving a test.",
+    "ability_type": "once per round",
+    "starting_investigator": null,
+    "image_filename": "35_lucky_rabbits_foot.jpg",
+    "id": "lucky_rabbits_foot",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Wireless Report",
+    "value": 1,
+    "traits": [
+      "Service",
+      "Teamwork"
+    ],
+    "effect": "When you gain this card, immediately give any number of Clues to another investigator on any space. Then discard this card.",
+    "ability_type": "on gain",
+    "starting_investigator": null,
+    "image_filename": "36_wireless_report.jpg",
+    "id": "wireless_report",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Arcane Tome",
+    "value": 3,
+    "traits": [
+      "Item",
+      "Tome"
+    ],
+    "effect": "Gain +2 [Lore] when resolving Spell effects. When you perform a Rest action, you may test [Lore]. If you pass, gain 1 Spell.",
+    "ability_type": "passive + rest trigger",
+    "starting_investigator": null,
+    "image_filename": "37_arcane_tome.jpg",
+    "id": "arcane_tome",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "King James Bible",
+    "value": 2,
+    "traits": [
+      "Item",
+      "Tome"
+    ],
+    "effect": "You may reroll 1 die when resolving a [Will] test during a Combat Encounter. When you perform a Rest action, recover 1 additional Sanity.",
+    "ability_type": "passive + rest trigger",
+    "starting_investigator": null,
+    "image_filename": "38_king_james_bible.jpg",
+    "id": "king_james_bible",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Agency Quarantine",
+    "value": 4,
+    "traits": [
+      "Service"
+    ],
+    "effect": "When you gain this card, immediately choose a space. Each Monster on the chosen space loses 4 Health. Then discard this card.",
+    "ability_type": "on gain",
+    "starting_investigator": null,
+    "image_filename": "39_agency_quarantine.jpg",
+    "id": "agency_quarantine",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  },
+  {
+    "name": "Holy Cross",
+    "value": 2,
+    "traits": [
+      "Item"
+    ],
+    "effect": "Gain +2 [Will] during Combat Encounters.",
+    "ability_type": "passive",
+    "starting_investigator": null,
+    "image_filename": "40_holy_cross.jpg",
+    "id": "holy_cross",
+    "card_type": "Asset",
+    "set": "Eldritch Horror Base Game"
+  }
+]

@@ -15,7 +15,8 @@
     "mythos:generate": "node scripts/generate-mythos-assets.mjs",
     "reference-cards:generate": "node scripts/generate-reference-card-assets.mjs",
     "gates:generate": "node scripts/generate-gate-assets.mjs",
-    "assets:generate": "node scripts/generate-asset-card-assets.mjs"
+    "assets:generate": "node scripts/generate-asset-card-assets.mjs",
+    "assets:data": "node scripts/generate-asset-content.mjs"
   },
   "keywords": [],
   "author": "",
