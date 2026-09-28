@@ -13,7 +13,7 @@ export const baseGameLocationEncounterCounts: Readonly<Record<LocationEncounterD
 
 const sectionsByDeck: Readonly<Record<LocationEncounterDeck, readonly EncounterSection[]>> = {
   general: ["city", "wilderness", "sea"],
-  america: ["san_francisco", "arkham", "buenos_aires"],
+  america: ["arkham", "san_francisco", "buenos_aires"],
   europe: ["london", "rome", "istanbul"],
   asia_australia: ["shanghai", "tokyo", "sydney"],
 };
@@ -31,6 +31,8 @@ export interface LocationEncounterCard {
 }
 
 const scannedSheets = [
+  { deck: "america", numbers: [1, 2, 3, 4, 5], sourceScan: "source-assets/america/photo_2026-09-28_21-17-55.jpg" },
+  { deck: "america", numbers: [6, 7, 8], sourceScan: "source-assets/america/photo_2026-09-28_21-18-03.jpg" },
   { deck: "general", numbers: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], sourceScan: "source-assets/general/photo_2026-09-28_21-07-03.jpg" },
   { deck: "general", numbers: [11, 12], sourceScan: "source-assets/general/photo_2026-09-28_21-07-15.jpg" },
   { deck: "europe", numbers: [1, 2, 3, 4, 5], sourceScan: "source-assets/europe/photo_2026-09-28_21-08-11.jpg" },

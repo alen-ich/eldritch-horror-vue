@@ -9,18 +9,19 @@ import {
 const root = new URL("../../../", import.meta.url).pathname;
 
 describe("base-game scanned location encounters", () => {
-  it("has complete General, Europe, and Asia/Australia decks with stable card numbers", () => {
-    for (const [deck, count] of [["general", 12], ["europe", 8], ["asia_australia", 8]] as const) {
+  it("has all four complete base-game location decks with stable card numbers", () => {
+    for (const [deck, count] of [["general", 12], ["america", 8], ["europe", 8], ["asia_australia", 8]] as const) {
       expect(baseGameScannedLocationEncounters.filter(card => card.deck === deck).map(card => card.number).sort((a, b) => a - b))
         .toEqual(Array.from({ length: count }, (_, index) => index + 1));
     }
-    expect(baseGameScannedLocationEncounters).toHaveLength(28);
+    expect(baseGameScannedLocationEncounters).toHaveLength(36);
     expect(() => validateLocationEncounterContent(baseGameScannedLocationEncounters)).not.toThrow();
   });
 
-  it("identifies exactly the missing eight America cards", () => {
-    expect(missingBaseGameLocationEncounterIds(baseGameScannedLocationEncounters))
-      .toEqual(Array.from({ length: 8 }, (_, index) => `encounter_america_${String(index + 1).padStart(2, "0")}`));
+  it("has no missing location cards and preserves America's printed section order", () => {
+    expect(missingBaseGameLocationEncounterIds(baseGameScannedLocationEncounters)).toEqual([]);
+    expect(baseGameScannedLocationEncounters.find(card => card.id === "encounter_america_01")?.sections)
+      .toEqual(["arkham", "san_francisco", "buenos_aires"]);
   });
 
   it("links each card to a generated face, shared back, and supplied source sheet", () => {
