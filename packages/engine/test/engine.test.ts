@@ -32,12 +32,16 @@ const testContent: GameContent = {
     trish_scarborough: { startingLocationId: "space_16", health: 7, sanity: 5, influence: 3, startingAssetIds: ["asset_45_automatic"] },
   },
   assets: [
-    { id: "asset_45_automatic", value: 3 },
-    { id: "asset_bandages", value: 1 },
-    { id: "asset_whiskey", value: 1 },
-    { id: "asset_axe", value: 2 },
-    { id: "asset_holy_water", value: 2 },
-    { id: "asset_arcane_tome", value: 3 },
+    { id: "asset_45_automatic", value: 3, engineEffects: [] },
+    { id: "asset_bandages", value: 1, engineEffects: [] },
+    { id: "asset_whiskey", value: 1, engineEffects: [] },
+    { id: "asset_axe", value: 2, engineEffects: [] },
+    { id: "asset_holy_water", value: 2, engineEffects: [] },
+    { id: "asset_arcane_tome", value: 3, engineEffects: [] },
+    { id: "asset_personal_assistant", value: 2, engineEffects: [{ type: "skill_bonus", skill: "influence", amount: 1 }] },
+    { id: "asset_fine_clothes", value: 2, engineEffects: [{ type: "acquire_six_counts_as_two" }] },
+    { id: "asset_king_james_bible", value: 2, engineEffects: [{ type: "rest_recover_additional_sanity", amount: 1 }] },
+    { id: "asset_private_care", value: 2, engineEffects: [{ type: "on_gain_recover_all_and_discard" }] },
   ],
   mysteryIdsByAncientOne: {
     cthulhu: ["cthulhu_one", "cthulhu_two", "cthulhu_three", "cthulhu_four"],
@@ -101,7 +105,7 @@ describe("executeCommand", () => {
     const selectedAncientOne = executeCommand(selectedGuest.state, "host", { type: "SELECT_ANCIENT_ONE", ancientOneId: "cthulhu" }, testContent);
     expect(selectedAncientOne.ok).toBe(true);
     if (!selectedAncientOne.ok) return;
-    const context = createDeterministicEngineContext({ shuffleIndexes: [0, 1, 0, 0, 0, 0, 0] });
+    const context = createDeterministicEngineContext({ shuffleIndexes: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0] });
     const started = executeCommand(selectedAncientOne.state, "host", { type: "START_GAME" }, testContent, context);
     expect(started.ok).toBe(true);
     if (started.ok) expect(started.state).toMatchObject({
@@ -118,7 +122,13 @@ describe("executeCommand", () => {
     });
     if (started.ok) {
       expect(started.state.privateState.deckOrderById.mysteries).toEqual(["cthulhu_four", "cthulhu_two", "cthulhu_one"]);
-      expect(started.state.privateState.deckOrderById.assets).toEqual(["asset_bandages"]);
+      expect(started.state.privateState.deckOrderById.assets).toEqual([
+        "asset_personal_assistant",
+        "asset_fine_clothes",
+        "asset_king_james_bible",
+        "asset_private_care",
+        "asset_bandages",
+      ]);
       expect(started.events).toContainEqual({ type: "ASSET_GAINED", playerId: "guest", assetId: "asset_45_automatic", source: "setup" });
       expect(started.events.at(-1)).toEqual({ type: "RESERVE_REFILLED", assetIds: started.state.reserveAssetIds });
     }
@@ -356,6 +366,56 @@ describe("Acquire Assets", () => {
     state.monsterLocationIds = [];
     state.players[0]!.locationId = "space_4";
     expect(executeCommand(state, "host", { type: "ACQUIRE_ASSETS" }, testContent)).toMatchObject({ ok: false, error: { code: "CITY_REQUIRED" } });
+  });
+
+  it("applies structured Influence and six-counting effects", () => {
+    const state = marketState();
+    state.players[0]!.assetIds = ["asset_personal_assistant", "asset_fine_clothes"];
+    const result = executeCommand(
+      state,
+      "host",
+      { type: "ACQUIRE_ASSETS" },
+      testContent,
+      createDeterministicEngineContext({ dice: [6, 5, 1], ids: ["enhanced-buy"] }),
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.events).toEqual([
+      { type: "ACQUIRE_ASSETS_TESTED", playerId: "host", dice: [6, 5, 1], successes: 3 },
+    ]);
+  });
+
+  it("resolves Private Care immediately and discards it instead of retaining it", () => {
+    const state = marketState();
+    state.reserveAssetIds = ["asset_private_care", "asset_whiskey", "asset_axe", "asset_holy_water"];
+    const initiated = executeCommand(
+      state,
+      "host",
+      { type: "ACQUIRE_ASSETS" },
+      testContent,
+      createDeterministicEngineContext({ dice: [6, 5], ids: ["private-care"] }),
+    );
+    if (!initiated.ok) throw new Error("Acquire Assets setup failed.");
+    const purchased = executeCommand(initiated.state, "host", {
+      type: "RESOLVE_DECISION",
+      decisionId: "private-care",
+      selectedOptionIds: ["asset_private_care"],
+    }, testContent);
+    expect(purchased.ok).toBe(true);
+    if (!purchased.ok) return;
+    expect(purchased.state.players[0]).toMatchObject({ health: 5, sanity: 7, assetIds: [] });
+    expect(purchased.state.assetDiscardIds).toContain("asset_private_care");
+    expect(purchased.events).toContainEqual({ type: "ASSET_DISCARDED", playerId: "host", assetId: "asset_private_care", reason: "on_gain_effect" });
+  });
+});
+
+describe("Asset Rest effects", () => {
+  it("recovers one additional Sanity from the King James Bible", () => {
+    const state = startedGame();
+    state.players[0]!.sanity = 4;
+    state.players[0]!.assetIds = ["asset_king_james_bible"];
+    const result = executeCommand(state, "host", { type: "REST" }, testContent);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.state.players[0]?.sanity).toBe(6);
   });
 });
 

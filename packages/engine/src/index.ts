@@ -132,10 +132,16 @@ export interface InvestigatorSetup {
   startingAssetIds: readonly string[];
 }
 
+export type AssetEngineEffect =
+  | { type: "skill_bonus"; skill: "influence"; amount: 1 }
+  | { type: "acquire_six_counts_as_two" }
+  | { type: "rest_recover_additional_sanity"; amount: 1 }
+  | { type: "on_gain_recover_all_and_discard" };
+
 export interface GameContent {
   map: GameMap;
   investigators: Readonly<Partial<Record<InvestigatorId, InvestigatorSetup>>>;
-  assets: readonly { id: string; value: number }[];
+  assets: readonly { id: string; value: number; engineEffects: readonly AssetEngineEffect[] }[];
   mysteryIdsByAncientOne: Readonly<Partial<Record<AncientOneId, readonly string[]>>>;
   mysteryTargetsById: Readonly<Record<string, "investigator_count" | "half_investigator_count" | "twice_investigator_count" | "one">>;
 }
@@ -329,6 +335,10 @@ function refillReserve(state: GameState): string[] {
   return drawn;
 }
 
+function assetEffectsForPlayer(player: EnginePlayer, content: GameContent): AssetEngineEffect[] {
+  return player.assetIds.flatMap((assetId) => content.assets.find(({ id }) => id === assetId)?.engineEffects ?? []);
+}
+
 export function executeCommand(
   state: GameState,
   actorPlayerId: string,
@@ -405,7 +415,6 @@ export function executeCommand(
         }]);
       }
       next.pendingDecision = undefined;
-      actor.assetIds.push(...selections);
       next.reserveAssetIds = next.reserveAssetIds.filter((assetId) => !selections.includes(assetId));
       refillReserve(next);
       const events: GameEvent[] = [{
@@ -414,7 +423,18 @@ export function executeCommand(
         playerId: actorPlayerId,
         selectedOptionIds: [...selections],
       }];
-      events.push(...selections.map((assetId) => ({ type: "ASSET_GAINED" as const, playerId: actorPlayerId, assetId, source: "reserve" as const })));
+      for (const assetId of selections) {
+        events.push({ type: "ASSET_GAINED", playerId: actorPlayerId, assetId, source: "reserve" });
+        const asset = content.assets.find(({ id }) => id === assetId);
+        if (asset?.engineEffects.some(({ type }) => type === "on_gain_recover_all_and_discard")) {
+          actor.health = actor.maxHealth;
+          actor.sanity = actor.maxSanity;
+          next.assetDiscardIds.push(assetId);
+          events.push({ type: "ASSET_DISCARDED", playerId: actorPlayerId, assetId, reason: "on_gain_effect" });
+        } else {
+          actor.assetIds.push(assetId);
+        }
+      }
       events.push({ type: "RESERVE_REFILLED", assetIds: [...next.reserveAssetIds] });
       completeAction(next, actorIndex, "acquire_assets", events);
       return success(next, events);
@@ -572,8 +592,10 @@ export function executeCommand(
   if (command.type === "REST") {
     if (state.performedActions.includes("rest")) return failure("ACTION_ALREADY_PERFORMED", "Rest can be performed only once per round.");
     if (actor.locationId && state.monsterLocationIds.includes(actor.locationId)) return failure("REST_BLOCKED_BY_MONSTER", "An investigator cannot rest on a space containing a Monster.");
+    const additionalSanity = assetEffectsForPlayer(actor, content).reduce((total, effect) =>
+      total + (effect.type === "rest_recover_additional_sanity" ? effect.amount : 0), 0);
     actor.health = Math.min(actor.maxHealth ?? actor.health ?? 0, (actor.health ?? 0) + 1);
-    actor.sanity = Math.min(actor.maxSanity ?? actor.sanity ?? 0, (actor.sanity ?? 0) + 1);
+    actor.sanity = Math.min(actor.maxSanity ?? actor.sanity ?? 0, (actor.sanity ?? 0) + 1 + additionalSanity);
     const events: GameEvent[] = [{ type: "INVESTIGATOR_RESTED", playerId: actorPlayerId, health: actor.health, sanity: actor.sanity }];
     completeAction(next, actorIndex, "rest", events);
     return success(next, events);
@@ -600,8 +622,12 @@ export function executeCommand(
     const investigator = content.investigators[actor.investigatorId];
     if (!investigator) return failure("INVESTIGATOR_CONTENT_MISSING", "The selected investigator has no setup data.");
     if (!context) return failure("RANDOM_INPUT_REQUIRED", "Acquire Assets requires deterministic dice and ID input.");
-    const dice = Array.from({ length: investigator.influence }, () => context.rollDie());
-    const successes = dice.filter((die) => die >= 5).length;
+    const effects = assetEffectsForPlayer(actor, content);
+    const influenceBonus = effects.reduce((total, effect) =>
+      total + (effect.type === "skill_bonus" && effect.skill === "influence" ? effect.amount : 0), 0);
+    const dice = Array.from({ length: investigator.influence + influenceBonus }, () => context.rollDie());
+    const doubleSixes = effects.some(({ type }) => type === "acquire_six_counts_as_two");
+    const successes = dice.reduce((total, die) => total + (die === 6 && doubleSixes ? 2 : die >= 5 ? 1 : 0), 0);
     next.pendingDecision = {
       id: context.createId(),
       kind: "select_acquired_cards",

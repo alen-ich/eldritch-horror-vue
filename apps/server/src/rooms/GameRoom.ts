@@ -29,7 +29,7 @@ const baseGameContent: GameContent = {
     influence: investigator.skills.influence,
     startingAssetIds: investigator.startingAssetIds,
   }])),
-  assets: baseGameAssets.map(({ id, value }) => ({ id, value })),
+  assets: baseGameAssets.map(({ id, value, engineEffects }) => ({ id, value, engineEffects })),
   mysteryIdsByAncientOne: Object.fromEntries(
     ["cthulhu", "shub_niggurath", "yog_sothoth", "azathoth"].map((ancientOneId) => [
       ancientOneId,
@@ -119,7 +119,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
         })
       : parsed.data.command.type === "ACQUIRE_ASSETS"
         ? createDeterministicEngineContext({
-            dice: Array.from({ length: 4 }, () => randomInt(1, 7)),
+            dice: Array.from({ length: 5 }, () => randomInt(1, 7)),
             ids: [randomUUID()],
           })
         : parsed.data.command.type === "RESOLVE_DECISION"

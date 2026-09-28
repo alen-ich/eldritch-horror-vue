@@ -99,6 +99,7 @@ export type GameEvent =
   | { type: "ANCIENT_ONE_SELECTED"; ancientOneId: AncientOneId }
   | { type: "GAME_STARTED"; activePlayerId: string }
   | { type: "ASSET_GAINED"; playerId: string; assetId: string; source: "setup" | "reserve" }
+  | { type: "ASSET_DISCARDED"; playerId: string; assetId: string; reason: "on_gain_effect" }
   | { type: "ACQUIRE_ASSETS_TESTED"; playerId: string; dice: number[]; successes: number }
   | { type: "RESERVE_ASSET_DISCARDED"; assetId: string }
   | { type: "RESERVE_REFILLED"; assetIds: string[] }
