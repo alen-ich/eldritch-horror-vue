@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { assetIds, baseGameAssets, validateAssetContent } from "../src/assets.js";
+import { baseGameInvestigators } from "../src/investigators.js";
 
 const publicDirectory = new URL("../../../apps/web/public", import.meta.url).pathname;
 
@@ -15,6 +16,18 @@ describe("base-game Asset cards", () => {
     for (const name of ["Personal Assistant", "Arcane Manuscripts", "Fishing Net", "Hired Muscle", "Protective Amulet", "Lucky Rabbit's Foot", ".18 Derringer", ".38 Revolver", "Kerosene", ".45 Automatic"]) {
       expect(baseGameAssets.some((asset) => asset.name === name), name).toBe(true);
     }
+  });
+
+  it("cross-references every investigator starting Asset by stable ID", () => {
+    const catalogIds = new Set(assetIds);
+    const referencedIds = baseGameInvestigators.flatMap(({ startingAssetIds }) => startingAssetIds);
+
+    expect(referencedIds).toHaveLength(10);
+    expect(referencedIds.every((id) => catalogIds.has(id))).toBe(true);
+    expect(baseGameInvestigators.find(({ id }) => id === "lily_chen")?.startingAssetIds).toEqual([
+      "asset_protective_amulet",
+      "asset_lucky_rabbits_foot",
+    ]);
   });
 
   it("links every catalog entry to a generated front and shared back", () => {
