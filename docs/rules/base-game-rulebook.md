@@ -10,6 +10,7 @@ The rulebook says the separate Reference Guide is definitive for exceptions and 
 - The Lead Investigator acts first and remains the first investigator for the following phase.
 - Each investigator receives up to two actions and cannot repeat the same action in one round.
 - Travel moves one adjacent space. Additional movement requires one matching train or ship ticket per path; uncharted paths cannot consume tickets.
+- The map supports drafting a route of up to three spaces with a ticket preview, undo/cancel, and explicit confirmation. The server validates and resolves the entire route as one action.
 - Rest recovers one Health and one Sanity without exceeding maximums and is prohibited on a Monster space.
 - Prepare for Travel requires a City with a connected path of the requested type and enforces the two-ticket limit.
 - Ending actions advances to the next investigator; finishing the final investigator advances the game to the Encounter phase.

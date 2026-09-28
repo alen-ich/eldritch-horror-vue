@@ -14,6 +14,7 @@ const selectedPlayerId = ref('')
 const trayState = ref<'collapsed' | 'peek' | 'expanded'>('collapsed')
 const activeTrayTab = ref('assets')
 const selectedReserveAssetIds = ref<string[]>([])
+const travelRoute = ref<LocationId[]>([])
 const selectedRerollOptionId = ref<string>()
 const trayTabs = [
   { id: 'assets', label: 'Assets', icon: '◆' },
@@ -34,11 +35,29 @@ const activeMystery = computed(() => baseGameMysteries.find((mystery) => mystery
 const selectedByInvestigator = computed(() => new Map(game.players.value
   .filter((player) => player.investigatorId)
   .map((player) => [player.investigatorId, player])))
-const isMyTurn = computed(() => game.phase.value === 'action' && game.activePlayerId.value === game.playerId.value)
+const isMyTurn = computed(() => game.phase.value === 'action' && game.activePlayerId.value === game.playerId.value && !game.pendingDecision.value && !game.gameResult.value)
+const travelOrigin = computed(() => travelRoute.value.at(-1) ?? me.value?.locationId as LocationId | undefined)
+const travelTicketsUsed = computed(() => {
+  const used = { train: 0, ship: 0 }
+  for (let index = 1; index < travelRoute.value.length; index++) {
+    const route = baseGameRoutes.find(route =>
+      (route.source === travelRoute.value[index - 1] && route.target === travelRoute.value[index])
+      || (route.target === travelRoute.value[index - 1] && route.source === travelRoute.value[index]))
+    if (route && route.type !== 'uncharted') used[route.type]++
+  }
+  return used
+})
 const legalDestinations = computed(() => new Set(
-  me.value?.locationId
-    ? baseGameMap.adjacentLocationIds[me.value.locationId as LocationId] ?? []
-    : []
+  !isMyTurn.value || game.performedActions.value.includes('travel') || travelRoute.value.length >= 3 || !travelOrigin.value
+    ? []
+    : (baseGameMap.adjacentLocationIds[travelOrigin.value] ?? []).filter(destination => {
+      if (!travelRoute.value.length) return true
+      const route = baseGameRoutes.find(route =>
+        (route.source === travelOrigin.value && route.target === destination)
+        || (route.target === travelOrigin.value && route.source === destination))
+      return route?.type === 'train' ? travelTicketsUsed.value.train < (me.value?.trainTickets ?? 0)
+        : route?.type === 'ship' && travelTicketsUsed.value.ship < (me.value?.shipTickets ?? 0)
+    })
 ))
 const inspectedLocation = computed(() => inspectedLocationId.value ? locationById[inspectedLocationId.value] : undefined)
 const myAssetIds = computed(() => me.value?.assetIds ? me.value.assetIds.split(',') : [])
@@ -83,6 +102,8 @@ watch(() => game.roomId.value, (id) => {
 })
 
 watch(() => privateAssetDecision.value?.id, () => { selectedReserveAssetIds.value = [] })
+watch(() => game.stateVersion.value, () => { travelRoute.value = [] })
+watch(() => game.roomId.value, () => { travelRoute.value = [] })
 watch(() => privateRerollDecision.value?.id, () => { selectedRerollOptionId.value = undefined })
 
 async function createGame() {
@@ -108,7 +129,12 @@ function isTakenByAnother(investigatorId: InvestigatorId) {
 }
 
 function move(destinationId: LocationId) {
-  if (isMyTurn.value && legalDestinations.value.has(destinationId)) game.send({ type: 'TRAVEL', destinationIds: [destinationId] })
+  if (legalDestinations.value.has(destinationId)) travelRoute.value.push(destinationId)
+}
+
+function confirmTravel() {
+  if (!isMyTurn.value || !travelRoute.value.length) return
+  game.send({ type: 'TRAVEL', destinationIds: [...travelRoute.value] })
 }
 
 function selectLocation(destinationId: LocationId) {
@@ -117,7 +143,7 @@ function selectLocation(destinationId: LocationId) {
 }
 
 function isLegalRoute(source: LocationId, target: LocationId) {
-  const current = me.value?.locationId
+  const current = travelOrigin.value
   return Boolean(isMyTurn.value && current && ((source === current && legalDestinations.value.has(target)) || (target === current && legalDestinations.value.has(source))))
 }
 
@@ -290,6 +316,11 @@ async function copyInvite() {
         </header>
         <div class="game-workspace">
         <div class="board-stage">
+          <section v-if="travelRoute.length" class="travel-planner" aria-label="Planned travel" aria-live="polite">
+            <strong>{{ me?.locationId ? locationById[me.locationId as LocationId]?.name : '' }} → {{ travelRoute.map(id => locationById[id].name).join(' → ') }}</strong>
+            <small>1 action · {{ travelTicketsUsed.train }} train / {{ travelTicketsUsed.ship }} ship tickets. Select another highlighted space to extend.</small>
+            <div><button @click="travelRoute.pop()">Undo</button><button @click="travelRoute = []">Cancel</button><button :disabled="!isMyTurn" @click="confirmTravel">Confirm travel</button></div>
+          </section>
           <section v-if="privateRerollDecision && game.activeTest.value" class="test-dialog" role="dialog" aria-modal="true" aria-labelledby="test-title">
             <p class="chapter">Skill test</p>
             <h2 id="test-title">{{ game.activeTest.value.skill }} test</h2>
@@ -443,6 +474,7 @@ input:focus { border-color: #d5aa63; box-shadow: 0 0 0 3px #d5aa6322; }
 .game-hud__brand, .game-hud__room, .game-hud__turn { display: flex; align-items: center; gap: 10px; }.game-hud__brand strong { font: 600 1rem Georgia, serif; }.sigil-small { color: #d5aa63; }.game-hud__turn { flex-direction: column; gap: 1px; text-align: center; }.game-hud__turn span { color: #91a7a8; font-size: .62rem; text-transform: uppercase; letter-spacing: .12em; }.game-hud__turn strong { color: #e9ce8b; font-size: .8rem; }.game-hud__room { justify-content: flex-end; }.game-hud__room code { color: #91a7a8; font-size: .68rem; }.hud-button { color: #e8e8dc; background: #29464e; border: 1px solid #47646c; border-radius: 7px; padding: 6px 10px; font-size: .7rem; font-weight: 800; }
 .game-workspace { position: relative; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 58px; }
 .board-stage { position: relative; min-width: 0; min-height: 0; display: grid; place-items: center; overflow: hidden; padding: 10px; background: radial-gradient(circle at 50% 45%, #18333a, #050f12 75%); }
+.travel-planner { position: absolute; z-index: 7; top: 70px; left: 50%; transform: translateX(-50%); width: min(480px, calc(100% - 32px)); display: grid; gap: 9px; padding: 14px; background: #07171cf2; border: 1px solid #d5aa63; border-radius: 10px; box-shadow: 0 10px 30px #0009; }.travel-planner small { color: #c9d5d1; }.travel-planner div { display: flex; gap: 8px; }.travel-planner button { padding: 8px 12px; border: 1px solid #647e86; border-radius: 6px; color: #edf0df; background: #29464e; }.travel-planner button:last-child { background: #d5aa63; color: #142127; }
 .board-stage .board { display: block; width: 100%; height: 100%; max-height: 100%; border-radius: 12px; }
 .active-mystery { position: absolute; z-index: 5; top: 60px; right: 18px; min-width: 180px; padding: 10px 12px; color: #edf0df; background: #07171cee; border: 1px solid #6e5a36; border-radius: 10px; box-shadow: 0 8px 28px #0009; backdrop-filter: blur(10px); }.active-mystery div { display: grid; gap: 3px; }.active-mystery strong { font: 600 .78rem/1.15 Georgia, serif; }.active-mystery small { color: #91a7a8; font-size: .6rem; }
 .game-result { position: absolute; z-index: 8; top: 18px; left: 50%; min-width: 220px; display: grid; gap: 3px; padding: 11px 22px; transform: translateX(-50%); color: #f7efd8; background: #1b1510ee; border: 1px solid #d5aa63; border-radius: 10px; box-shadow: 0 10px 35px #000b, 0 0 24px #d5aa6330; text-align: center; backdrop-filter: blur(10px); }.game-result strong { color: #e9ce8b; font: 600 1.1rem Georgia, serif; }

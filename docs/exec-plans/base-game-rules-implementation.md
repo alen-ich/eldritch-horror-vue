@@ -116,7 +116,7 @@ Scope:
 - Trade possessions and tickets only between investigators sharing a space.
 - Acquire Assets using Influence tests, total-value selection, Reserve refill, optional discard after buying nothing, and verified Bank Loan/Debt behavior.
 - Execute investigator, possession, and local component actions through structured effect nodes.
-- Support multi-step Travel selection and ticket spending in the UI.
+- Support multi-step Travel selection and ticket spending in the UI. **Complete:** select up to three adjacent spaces, preview train/ship costs, undo or cancel, and confirm one authoritative Travel command. Pending decisions and completed Travel actions disable route selection; synchronized state changes clear the draft.
 - Handle Delayed investigators by standing them up instead of taking actions.
 
 Exit criteria:
