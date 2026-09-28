@@ -19,6 +19,21 @@ describe("base-game Mythos cards", () => {
     expect(() => validateMythosContent(baseGameMythosCards)).not.toThrow();
   });
 
+  it("records the printed left-to-right icon sequence and blue-card token operands", () => {
+    expect(baseGameMythosCards.find(card => card.id === "mythos_green_01")?.icons)
+      .toEqual([{ type: "advance_omen" }, { type: "monster_surge" }, { type: "spawn_clues" }]);
+    expect(baseGameMythosCards.find(card => card.id === "mythos_yellow_21")?.icons)
+      .toEqual([{ type: "advance_omen" }, { type: "resolve_reckoning" }, { type: "spawn_gates" }]);
+    expect(baseGameMythosCards.find(card => card.id === "mythos_blue_01")?.icons)
+      .toEqual([{ type: "spawn_clues" }]);
+    expect(baseGameMythosCards.find(card => card.id === "mythos_blue_02")?.icons)
+      .toEqual([{ type: "spawn_clues" }, { type: "place_rumor_token", spaceId: "space_2" }, { type: "place_eldritch_tokens", count: 4 }]);
+    expect(baseGameMythosCards.find(card => card.id === "mythos_blue_06")?.icons)
+      .toEqual([{ type: "spawn_clues" }, { type: "place_rumor_token", spaceId: "space_11" }, { type: "place_eldritch_tokens", count: 8 }]);
+    expect(baseGameMythosCards.find(card => card.id === "mythos_blue_12")?.icons)
+      .toEqual([{ type: "spawn_clues" }, { type: "place_eldritch_tokens", count: 4 }]);
+  });
+
   it("links every record to a generated English scan", () => {
     expect(baseGameMythosCards.every((card) => card.verification === "verified_from_scan")).toBe(true);
     expect(baseGameMythosCards.every((card) => existsSync(`${publicDirectory}${card.imageUrl}`))).toBe(true);
@@ -27,5 +42,6 @@ describe("base-game Mythos cards", () => {
   it("rejects incomplete and duplicate decks", () => {
     expect(() => validateMythosContent(baseGameMythosCards.slice(1))).toThrow(/exactly 51/);
     expect(() => validateMythosContent([...baseGameMythosCards.slice(0, -1), baseGameMythosCards[0]!])).toThrow(/duplicate IDs/);
+    expect(() => validateMythosContent([baseGameMythosCards[0]!, { ...baseGameMythosCards[1]!, icons: [{ type: "spawn_clues" }] }, ...baseGameMythosCards.slice(2)])).toThrow(/Invalid icon sequence/);
   });
 });

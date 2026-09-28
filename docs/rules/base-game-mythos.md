@@ -16,6 +16,7 @@ The source sheets live under `source-assets/mythos`. Run `pnpm mythos:generate` 
 
 - stable ID and English title;
 - color and printed card kind;
+- verified left-to-right icon sequence, including Rumor spaces and Eldritch-token counts;
 - source-sheet row and column;
 - generated browser asset path;
 - scan-verification and executable-effect status.
@@ -24,7 +25,7 @@ Validation requires exactly 18 green, 21 yellow, and 12 blue cards, unique IDs a
 
 ## Authority boundary
 
-The card roster, titles, colors, and visible card kinds are verified from the English scans. The detailed icon sequence and printed effect for each card have not yet been transcribed into executable content, so the `mythos_cards` readiness family remains `needs_review`.
+The card roster, titles, colors, visible card kinds, and printed icon sequences are verified from the English scans. The rulebook's Mythos-phase icon key was visually checked against the scanned cards. Green cards share Advance Omen, Monster Surge, Spawn Clues; yellow cards share Advance Omen, Resolve Reckoning, Spawn Gates; blue cards begin with Spawn Clues, then their printed Rumor/Eldritch placement icons. The printed text effect for each card has not yet been transcribed into executable content, so the `mythos_cards` readiness family remains `needs_review`.
 
 The engine must not execute OCR or display text. A later rules slice will model the shared Mythos resolution sequence first, then encode repeated effect patterns and Rumor state with deterministic tests.
 
