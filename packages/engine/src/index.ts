@@ -9,6 +9,7 @@ import type {
   PendingDecisionSummary,
   TravelTicketType,
 } from "@eldritch/protocol";
+export * from "./skill-tests.js";
 
 export type ActionType = "travel" | "rest" | "prepare_travel" | "trade" | "acquire_assets" | "component";
 

@@ -15,10 +15,12 @@ export const investigatorIds = [
   "norman_withers", "silas_marsh", "trish_scarborough",
 ] as const;
 export const ancientOneIds = ["cthulhu", "shub_niggurath", "yog_sothoth", "azathoth"] as const;
+export const skillIds = ["lore", "influence", "observation", "strength", "will"] as const;
 
 export type LocationId = (typeof locationIds)[number];
 export type InvestigatorId = (typeof investigatorIds)[number];
 export type AncientOneId = (typeof ancientOneIds)[number];
+export type SkillId = (typeof skillIds)[number];
 export type GamePhase = "lobby" | "action" | "encounter" | "mythos";
 export type TravelTicketType = "train" | "ship";
 export const pendingDecisionKinds = [

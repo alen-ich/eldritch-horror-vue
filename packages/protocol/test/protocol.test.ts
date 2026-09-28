@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { gameCommandMessageSchema, gameCommandSchema, pendingDecisionSchema } from "../src/index.js";
+import { gameCommandMessageSchema, gameCommandSchema, pendingDecisionSchema, skillIds } from "../src/index.js";
 
 describe("gameCommandSchema", () => {
+  it("publishes the five base-game skills as stable protocol IDs", () => {
+    expect(skillIds).toEqual(["lore", "influence", "observation", "strength", "will"]);
+  });
   it("accepts rulebook action commands without player identity", () => {
     expect(gameCommandSchema.parse({ type: "TRAVEL", destinationIds: ["rome", "istanbul"] })).toEqual({
       type: "TRAVEL",
