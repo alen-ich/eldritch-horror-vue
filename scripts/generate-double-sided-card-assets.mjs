@@ -23,7 +23,7 @@ const ids = {
     ...["amnesia", "dark_pact", "leg_injury", "internal_injury", "paranoia", "cursed", "hallucinations", "detained", "blessed", "back_injury"]
       .flatMap(name => Array(3).fill(name)),
   ],
-  spells: ["instill_bravery", "blessing_of_isis", "shriveling", "clairvoyance", "feed_the_mind", "flesh_ward", "plumb_the_void", "wither", "conjuration", "mists_of_rlyeh"]
+  spells: ["instill_bravery", "blessing_of_isis", "shriveling", "clairvoyance", "feed_the_mind", "flesh_ward", "plumb_the_void", "wither", "conjuration", "mists_of_releh"]
     .flatMap(name => [name, name]),
 };
 
