@@ -2,6 +2,7 @@ export * from "./ancient-ones.js";
 export * from "./assets.js";
 export * from "./gates.js";
 export * from "./investigators.js";
+export * from "./location-encounters.js";
 export * from "./map.js";
 export * from "./monsters.js";
 export * from "./mysteries.js";
