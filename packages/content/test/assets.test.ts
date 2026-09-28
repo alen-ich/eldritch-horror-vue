@@ -48,6 +48,22 @@ describe("base-game Asset cards", () => {
     expect(baseGameAssets.every(({ rulesStatus }) => rulesStatus === "transcribed_pending_execution")).toBe(true);
   });
 
+  it("structures only verified engine-supported effects instead of parsing card text at runtime", () => {
+    expect(baseGameAssets.find(({ id }) => id === "asset_personal_assistant")?.engineEffects).toEqual([
+      { type: "skill_bonus", skill: "influence", amount: 1 },
+    ]);
+    expect(baseGameAssets.find(({ id }) => id === "asset_fine_clothes")?.engineEffects).toEqual([
+      { type: "acquire_six_counts_as_two" },
+    ]);
+    expect(baseGameAssets.find(({ id }) => id === "asset_king_james_bible")?.engineEffects).toEqual([
+      { type: "rest_recover_additional_sanity", amount: 1 },
+    ]);
+    expect(baseGameAssets.find(({ id }) => id === "asset_private_care")?.engineEffects).toEqual([
+      { type: "on_gain_recover_all_and_discard" },
+    ]);
+    expect(baseGameAssets.filter(({ engineEffects }) => engineEffects.length > 0)).toHaveLength(4);
+  });
+
   it("rejects incomplete and duplicate catalogs", () => {
     expect(() => validateAssetContent(baseGameAssets.slice(1))).toThrow();
     expect(() => validateAssetContent([...baseGameAssets.slice(0, -1), baseGameAssets[0]!])).toThrow(/duplicate IDs/);
