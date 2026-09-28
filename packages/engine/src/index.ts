@@ -23,6 +23,7 @@ export * from "./skill-tests.js";
 export * from "./resources.js";
 export * from "./combat.js";
 export * from "./conditions.js";
+export * from "./omen.js";
 
 export type ActionType = "travel" | "rest" | "prepare_travel" | "trade" | "acquire_assets" | "component";
 
