@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createDeterministicEngineContext, createLobby, discardCondition, gainCondition, projectPublicState, resolveConditionReckoning, type GameContent } from "../src/index.js";
+import { createDeterministicEngineContext, createLobby, discardCondition, executeCommand, gainCondition, projectPublicState, resolveConditionReckoning, type GameContent } from "../src/index.js";
 
 const content: GameContent = {
   conditions: [
@@ -130,6 +130,65 @@ describe("atomic Condition reverse effects", () => {
 });
 
 describe("front-side Condition Reckoning", () => {
+  const testContent: GameContent = {
+    ...content,
+    conditions: [
+      { id: "condition_leg_injury_02", kind: "leg_injury", backEffect: { type: "become_delayed_then_flip_front" } },
+      { id: "condition_hallucinations_01", kind: "hallucinations", backEffect: { type: "discard_all_clues_then_discard" } },
+      { id: "condition_leg_injury_01", kind: "leg_injury" },
+    ],
+    investigators: { akachi_onyele: { startingLocationId: "london", health: 5, sanity: 5, skills: { lore: 2, influence: 2, observation: 2, strength: 2, will: 2 }, startingAssetIds: [], startingClues: 0 } },
+  };
+
+  it("tests Strength and flips Stabbing Pain only after a failed test", () => {
+    const before = state();
+    before.phase = "mythos";
+    Object.assign(before.players[0]!, { investigatorId: "akachi_onyele", conditionIds: ["condition_leg_injury_02"], clues: 0 });
+    const failed = resolveConditionReckoning(before, "investigator", "condition_leg_injury_02", testContent,
+      createDeterministicEngineContext({ dice: [2, 3], ids: ["test-fail"] }));
+    expect(failed).toMatchObject({ ok: true, events: [{ type: "TEST_ROLLED", skill: "strength", successes: 0 }, { type: "TEST_RESOLVED", continuation: "condition_reckoning" }, { type: "CONDITION_BACK_RESOLVED", effect: "become_delayed_then_flip_front" }, { type: "INVESTIGATOR_DELAYED" }] });
+    if (!failed.ok) return;
+    expect(failed.state.players[0]).toMatchObject({ delayed: true, conditionIds: ["condition_leg_injury_02"] });
+    expect(failed.state.activeTest).toBeUndefined();
+    expect(before.players[0]!.delayed).toBeUndefined();
+    const passed = resolveConditionReckoning(before, "investigator", "condition_leg_injury_02", testContent,
+      createDeterministicEngineContext({ dice: [5, 2], ids: ["test-pass"] }));
+    expect(passed).toMatchObject({ ok: true, events: [{ type: "TEST_ROLLED", skill: "strength", successes: 1 }, { type: "TEST_RESOLVED", continuation: "condition_reckoning" }] });
+    if (passed.ok) expect(passed.state.players[0]!.delayed).toBeUndefined();
+  });
+
+  it("offers a Clue reroll and resolves the Will test before Delusions discards clues", () => {
+    const before = state();
+    before.phase = "mythos";
+    Object.assign(before.players[0]!, { investigatorId: "akachi_onyele", conditionIds: ["condition_hallucinations_01"], clues: 2 });
+    const started = resolveConditionReckoning(before, "investigator", "condition_hallucinations_01", testContent,
+      createDeterministicEngineContext({ dice: [1, 2], ids: ["will-test", "reroll-1"] }));
+    expect(started).toMatchObject({ ok: true, state: { pendingDecision: { kind: "select_rerolls", playerId: "investigator" }, activeTest: { continuation: "condition_reckoning", skill: "will" } } });
+    if (!started.ok) return;
+    const rerolled = executeCommand(started.state, "investigator", { type: "RESOLVE_DECISION", decisionId: "reroll-1", selectedOptionIds: ["die-0"] }, testContent,
+      createDeterministicEngineContext({ dice: [1], ids: ["reroll-2"] }));
+    expect(rerolled).toMatchObject({ ok: true, state: { pendingDecision: { id: "reroll-2" }, players: [{ clues: 1 }] } });
+    if (!rerolled.ok) return;
+    const kept = executeCommand(rerolled.state, "investigator", { type: "RESOLVE_DECISION", decisionId: "reroll-2", selectedOptionIds: [] }, testContent,
+      createDeterministicEngineContext({}));
+    expect(kept).toMatchObject({ ok: true, events: [{ type: "DECISION_RESOLVED" }, { type: "TEST_RESOLVED", continuation: "condition_reckoning" }, { type: "CONDITION_BACK_RESOLVED", effect: "discard_all_clues_then_discard" }, { type: "CONDITION_DISCARDED", conditionId: "condition_hallucinations" }] });
+    if (!kept.ok) return;
+    expect(kept.state.players[0]!.clues).toBe(0);
+    expect(kept.state.players[0]!.conditionIds).toEqual([]);
+    expect(kept.state.privateState.tokenPoolById["condition:hallucinations"]).toEqual(["condition_hallucinations_01"]);
+    expect(JSON.stringify(projectPublicState(kept.state))).not.toContain("condition_hallucinations_01");
+  });
+
+  it("rejects unimplemented injury backs before consuming dice or changing state", () => {
+    const before = state();
+    before.phase = "mythos";
+    before.players[0]!.conditionIds = ["condition_leg_injury_01"];
+    const snapshot = structuredClone(before);
+    expect(resolveConditionReckoning(before, "investigator", "condition_leg_injury_01", testContent,
+      createDeterministicEngineContext({}))).toMatchObject({ ok: false, error: { code: "CONDITION_EFFECT_UNSUPPORTED" } });
+    expect(before).toEqual(snapshot);
+  });
+
   it.each([
     ["condition_blessed_01", 1, true], ["condition_blessed_01", 2, true],
     ["condition_blessed_01", 3, false], ["condition_cursed_01", 3, false],

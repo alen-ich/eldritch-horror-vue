@@ -192,7 +192,9 @@ export type AssetEngineEffect =
 export type ConditionBackEffect =
   | { type: "discard" }
   | { type: "recover_health_and_sanity_then_flip_front"; amount: 2 }
-  | { type: "gain_clues_then_flip_front"; amount: 2 };
+  | { type: "gain_clues_then_flip_front"; amount: 2 }
+  | { type: "become_delayed_then_flip_front" }
+  | { type: "discard_all_clues_then_discard" };
 
 export interface GameContent {
   conditions?: readonly { id: string; kind: string; backEffect?: ConditionBackEffect }[];
@@ -385,16 +387,25 @@ function resolveConditionFlip(state: GameState, playerId: string, cardId: string
   const owner = state.players.find(player => player.id === playerId && player.conditionIds?.includes(cardId));
   if (!owner) return failure("CONDITION_NOT_HELD", "That Condition is not held by this investigator.");
   const next = structuredClone(state);
-  const recipient = next.players.find(player => player.id === playerId)!;
+  return success(next, applyConditionBackEffect(next, playerId, cardId, content, effect));
+}
+
+function applyConditionBackEffect(state: GameState, playerId: string, cardId: string, content: GameContent, effect: ConditionBackEffect): GameEvent[] {
+  const recipient = state.players.find(player => player.id === playerId)!;
   const publicId = publicConditionId(cardId);
-  if (effect.type === "discard") returnConditionToPool(next, recipient, cardId, content);
+  if (effect.type === "discard" || effect.type === "discard_all_clues_then_discard") {
+    if (effect.type === "discard_all_clues_then_discard") recipient.clues = 0;
+    returnConditionToPool(state, recipient, cardId, content);
+  }
   else if (effect.type === "recover_health_and_sanity_then_flip_front") {
     recipient.health = recoverResource(recipient.health ?? 0, recipient.maxHealth ?? recipient.health ?? 0, effect.amount).value;
     recipient.sanity = recoverResource(recipient.sanity ?? 0, recipient.maxSanity ?? recipient.sanity ?? 0, effect.amount).value;
   } else if (effect.type === "gain_clues_then_flip_front") recipient.clues += effect.amount;
+  else if (effect.type === "become_delayed_then_flip_front") recipient.delayed = true;
   const events: GameEvent[] = [{ type: "CONDITION_BACK_RESOLVED", playerId, conditionId: publicId, effect: effect.type }];
-  if (effect.type === "discard") events.push({ type: "CONDITION_DISCARDED", playerId, conditionId: publicId });
-  return success(next, events);
+  if (effect.type === "become_delayed_then_flip_front") events.push({ type: "INVESTIGATOR_DELAYED", playerId });
+  if (effect.type === "discard" || effect.type === "discard_all_clues_then_discard") events.push({ type: "CONDITION_DISCARDED", playerId, conditionId: publicId });
+  return events;
 }
 
 /** Internal Mythos effect, never a client command. The caller must order Reckoning triggers. */
@@ -403,12 +414,22 @@ export function resolveConditionReckoning(
 ): CommandResult {
   if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
   if (state.phase !== "mythos") return failure("WRONG_PHASE", "Condition Reckoning resolves during Mythos.");
-  if (state.pendingDecision || state.activeTest) return failure("DECISION_PENDING", "Finish the current decision first.");
+  if (state.pendingDecision || state.activeTest || state.pendingDefeat) return failure("DECISION_PENDING", "Finish the current resolution first.");
   const player = state.players.find(candidate => candidate.id === playerId);
   if (!player) return failure("PLAYER_NOT_FOUND", "Investigator not found.");
+  if (player.defeated || player.eliminated) return failure("INVESTIGATOR_DEFEATED", "No active investigator can resolve Reckoning.");
   if (!player.conditionIds?.includes(cardId)) return failure("CONDITION_NOT_HELD", "That Condition is not held by this investigator.");
   const condition = content.conditions?.find(candidate => candidate.id === cardId);
   if (!condition) return failure("CONDITION_CONTENT_MISSING", "Condition content is missing.");
+  if (["leg_injury", "internal_injury", "back_injury", "amnesia", "paranoia", "hallucinations"].includes(condition.kind)) {
+    if (!condition.backEffect) return failure("CONDITION_EFFECT_UNSUPPORTED", "This Condition's reverse effect is not executable yet.");
+    if (!player.investigatorId || !content.investigators[player.investigatorId]) return failure("INVESTIGATOR_CONTENT_MISSING", "Investigator skills are missing.");
+    const next = structuredClone(state);
+    const owner = next.players.find(candidate => candidate.id === playerId)!;
+    const skill = ["leg_injury", "internal_injury", "back_injury"].includes(condition.kind) ? "strength" : "will";
+    const events = beginSkillTest(next, owner, { skill, modifier: 0, continuation: "condition_reckoning", sourceConditionId: cardId }, content, context);
+    return success(next, events);
+  }
   if (condition.kind !== "blessed" && condition.kind !== "cursed") {
     return failure("CONDITION_EFFECT_UNSUPPORTED", "This Condition's Reckoning and reverse are not executable yet.");
   }
@@ -756,6 +777,13 @@ function finishSkillTest(state: GameState, test: ActiveTest, content: GameConten
   const conditionId = test.sourceConditionId;
   const owner = conditionId ? state.players.find(player => player.conditionIds?.includes(conditionId)) : undefined;
   const events: GameEvent[] = [{ type: "TEST_RESOLVED", testId: test.id, playerId: test.playerId, successes: test.successes, continuation: test.continuation }];
+  if (test.continuation === "condition_reckoning") {
+    if (conditionId && owner && test.successes === 0) {
+      const effect = content.conditions?.find(card => card.id === conditionId)?.backEffect;
+      if (effect) events.push(...applyConditionBackEffect(state, owner.id, conditionId, content, effect));
+    }
+    return events;
+  }
   if (conditionId && owner && test.successes > 0) {
     if (returnConditionToPool(state, owner, conditionId, content)) {
       events.push({ type: "CONDITION_DISCARDED", playerId: owner.id, conditionId: publicConditionId(conditionId) });

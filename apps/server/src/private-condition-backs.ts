@@ -46,7 +46,9 @@ export const privateConditionBackById: Readonly<Record<string, { title: string; 
 
 /** Deliberately sparse: absent entries remain blocked until their whole reverse is executable. */
 export const privateConditionBackEffectById: Readonly<Record<string, ConditionBackEffect>> = {
+  condition_leg_injury_02: { type: "become_delayed_then_flip_front" },
   condition_cursed_02: { type: "discard" },
+  condition_hallucinations_01: { type: "discard_all_clues_then_discard" },
   condition_blessed_01: { type: "recover_health_and_sanity_then_flip_front", amount: 2 },
   condition_blessed_02: { type: "gain_clues_then_flip_front", amount: 2 },
 };
