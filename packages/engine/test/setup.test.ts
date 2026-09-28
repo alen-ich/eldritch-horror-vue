@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildGateStack, buildMythosDeck } from "../src/setup.js";
+import { buildGateStack, buildMonsterPool, buildMythosDeck } from "../src/setup.js";
 
 describe("staged Mythos setup", () => {
   const cards = ["green", "yellow", "blue"].flatMap(color => Array.from({ length: 4 }, (_, index) => ({ id: `${color}-${index}`, color: color as "green" | "yellow" | "blue" })));
@@ -31,5 +31,30 @@ describe("private Gate stack setup", () => {
   it("rejects empty and duplicate Gate catalogs", () => {
     expect(() => buildGateStack([], cards => [...cards])).toThrow(/unique/);
     expect(() => buildGateStack(["gate_arkham", "gate_arkham"], cards => [...cards])).toThrow(/unique/);
+  });
+});
+
+describe("finite Monster cup setup", () => {
+  const catalog = [
+    { id: "monster_ghoul", type: "normal" as const, count: 2 },
+    { id: "monster_deep_one", type: "normal" as const, count: 1 },
+    { id: "epic_monster_cthulhu", type: "epic" as const, count: 1 },
+  ];
+
+  it("excludes Epic tokens and moves Ancient One set-asides out of the normal cup", () => {
+    expect(buildMonsterPool(catalog, [{ monsterId: "monster_ghoul", quantity: 2 }])).toEqual({
+      cup: ["monster_deep_one"],
+      setAsideById: { monster_ghoul: ["monster_ghoul", "monster_ghoul"] },
+    });
+    expect(buildMonsterPool(catalog, [])).toEqual({
+      cup: ["monster_ghoul", "monster_ghoul", "monster_deep_one"], setAsideById: {},
+    });
+  });
+
+  it("rejects over-set-aside, Epic set-aside, duplicate IDs, and invalid counts", () => {
+    expect(() => buildMonsterPool(catalog, [{ monsterId: "monster_ghoul", quantity: 3 }])).toThrow(/Cannot set aside/);
+    expect(() => buildMonsterPool(catalog, [{ monsterId: "epic_monster_cthulhu", quantity: 1 }])).toThrow(/Cannot set aside/);
+    expect(() => buildMonsterPool([...catalog, catalog[0]!], [])).toThrow(/unique IDs/);
+    expect(() => buildMonsterPool([{ ...catalog[0]!, count: 0 }], [])).toThrow(/positive/);
   });
 });

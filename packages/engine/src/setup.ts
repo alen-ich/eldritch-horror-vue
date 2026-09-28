@@ -7,10 +7,31 @@ export function buildGateStack(gateIds: readonly string[], shuffle: <T>(items: r
   }
   return shuffle(gateIds);
 }
+
+export function buildMonsterPool(
+  monsters: readonly { id: string; type: "normal" | "epic"; count: number }[],
+  setAside: readonly { monsterId: string; quantity: number }[],
+): { cup: string[]; setAsideById: Record<string, string[]> } {
+  if (new Set(monsters.map(monster => monster.id)).size !== monsters.length || monsters.some(monster => !Number.isInteger(monster.count) || monster.count < 1)) {
+    throw new Error("Monster catalog requires unique IDs and positive token counts.");
+  }
+  const counts = new Map(monsters.filter(monster => monster.type === "normal").map(monster => [monster.id, monster.count]));
+  const setAsideById: Record<string, string[]> = {};
+  for (const instruction of setAside) {
+    const available = counts.get(instruction.monsterId);
+    if (available === undefined || !Number.isInteger(instruction.quantity) || instruction.quantity < 1 || instruction.quantity > available) {
+      throw new Error(`Cannot set aside ${instruction.quantity} copies of ${instruction.monsterId}.`);
+    }
+    counts.set(instruction.monsterId, available - instruction.quantity);
+    setAsideById[instruction.monsterId] = [...(setAsideById[instruction.monsterId] ?? []), ...Array(instruction.quantity).fill(instruction.monsterId)];
+  }
+  return { cup: [...counts].flatMap(([id, count]) => Array<string>(count).fill(id)), setAsideById };
+}
 export interface AncientSetup {
   startingDoom: number;
   mythosDeck: readonly Readonly<Record<MythosColor, number>>[];
   greenOmenTokens: number;
+  setAsideMonsters?: readonly { monsterId: string; quantity: number }[];
 }
 
 /** The first array element is the top of the deck: stage I, then II, then III. */

@@ -25,13 +25,14 @@ function randomShuffleIndexes(length: number): number[] {
 const baseGameContent: GameContent = {
   gates: baseGameGates.map(({ id, omenSymbol, locationId }) => ({ id, omenSymbol, locationId })),
   conditions: baseGameConditions.map(({ id, kind }) => ({ id, kind, backEffect: privateConditionBackEffectById[id] })),
-  monsters: baseGameMonsters.map(({ id, type, horrorCheck, damageCheck, toughness, specialEffect }) => ({
-    id, type, horrorCheck, damageCheck, toughness, specialEffect,
+  monsters: baseGameMonsters.map(({ id, type, count, horrorCheck, damageCheck, toughness, specialEffect }) => ({
+    id, type, count, horrorCheck, damageCheck, toughness, specialEffect,
   })),
   ancientOnes: Object.fromEntries(baseGameAncientOnes.map(ancient => [ancient.id, {
     startingDoom: ancient.startingDoom,
     mythosDeck: ancient.mythosDeck,
     greenOmenTokens: ancient.setup.reduce((sum, effect) => sum + (effect.type === "place_eldritch_token_on_omen" ? effect.quantity : 0), 0),
+    setAsideMonsters: ancient.setup.filter(effect => effect.type === "set_aside_monster").map(({ monsterId, quantity }) => ({ monsterId, quantity })),
   }])),
   mythosCards: baseGameMythosCards,
   map: baseGameMap,

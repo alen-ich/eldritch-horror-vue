@@ -15,7 +15,7 @@ import type {
 } from "@eldritch/protocol";
 import { calculateDicePool, countTestSuccesses } from "./skill-tests.js";
 import { loseResource, recoverResource } from "./resources.js";
-import { buildGateStack, buildMythosDeck, type AncientSetup, type MythosColor } from "./setup.js";
+import { buildGateStack, buildMonsterPool, buildMythosDeck, type AncientSetup, type MythosColor } from "./setup.js";
 import { resolveStandardCombat, type CombatCheck } from "./combat.js";
 import { conditionSuccessThreshold, publicConditionId, resolveBoonBaneGain } from "./conditions.js";
 export * from "./setup.js";
@@ -125,6 +125,7 @@ export interface MonsterInstance {
 export interface MonsterCombatDefinition {
   id: string;
   type: "normal" | "epic";
+  count?: number;
   horrorCheck: CombatCheck | null | "ancient_one";
   damageCheck: CombatCheck | null | "ancient_one";
   toughness: { base: number; perInvestigator: number } | "ancient_one";
@@ -1199,6 +1200,13 @@ export function executeCommand(
       next.privateState.deckOrderById.mythos = buildMythosDeck(content.mythosCards ?? [], ancient.mythosDeck, context.shuffle);
     }
     if (content.gates?.length) next.privateState.deckOrderById.gates = buildGateStack(content.gates.map(gate => gate.id), context.shuffle);
+    if (content.monsters?.some(monster => monster.count !== undefined)) {
+      if (!ancient) return failure("ANCIENT_ONE_REQUIRED", "Ancient One setup is required for the Monster cup.");
+      if (content.monsters.some(monster => monster.count === undefined)) return failure("MONSTER_CONTENT_MISSING", "Every Monster requires a token count to build the cup.");
+      const pool = buildMonsterPool(content.monsters.filter((monster): monster is typeof monster & { count: number } => monster.count !== undefined), ancient.setAsideMonsters ?? []);
+      next.privateState.tokenPoolById.monsters = pool.cup;
+      for (const [id, tokens] of Object.entries(pool.setAsideById)) next.privateState.tokenPoolById[`set_aside:${id}`] = tokens;
+    }
     const events: GameEvent[] = [
       { type: "GAME_STARTED", activePlayerId: actorPlayerId },
       { type: "MYSTERY_REVEALED", mysteryId: activeMysteryId },
