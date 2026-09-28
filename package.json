@@ -16,6 +16,8 @@
     "mythos:generate": "node scripts/generate-mythos-assets.mjs",
     "reference-cards:generate": "node scripts/generate-reference-card-assets.mjs",
     "encounters:generate": "node scripts/generate-location-encounter-assets.mjs",
+    "conditions:generate": "node scripts/generate-double-sided-card-assets.mjs conditions",
+    "spells:generate": "node scripts/generate-double-sided-card-assets.mjs spells",
     "gates:generate": "node scripts/generate-gate-assets.mjs",
     "assets:generate": "node scripts/generate-asset-card-assets.mjs",
     "assets:data": "node scripts/generate-asset-content.mjs"
