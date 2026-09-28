@@ -12,6 +12,7 @@ import type {
   TravelTicketType,
 } from "@eldritch/protocol";
 import { calculateDicePool, countTestSuccesses } from "./skill-tests.js";
+import { recoverResource } from "./resources.js";
 export * from "./skill-tests.js";
 export * from "./resources.js";
 
@@ -564,8 +565,10 @@ export function executeCommand(
         events.push({ type: "ASSET_GAINED", playerId: actorPlayerId, assetId, source: "reserve" });
         const asset = content.assets.find(({ id }) => id === assetId);
         if (asset?.engineEffects.some(({ type }) => type === "on_gain_recover_all_and_discard")) {
-          actor.health = actor.maxHealth;
-          actor.sanity = actor.maxSanity;
+          const maximumHealth = actor.maxHealth ?? actor.health ?? 0;
+          const maximumSanity = actor.maxSanity ?? actor.sanity ?? 0;
+          actor.health = recoverResource(actor.health ?? 0, maximumHealth, maximumHealth).value;
+          actor.sanity = recoverResource(actor.sanity ?? 0, maximumSanity, maximumSanity).value;
           next.assetDiscardIds.push(assetId);
           events.push({ type: "ASSET_DISCARDED", playerId: actorPlayerId, assetId, reason: "on_gain_effect" });
         } else {
@@ -733,8 +736,8 @@ export function executeCommand(
     if (actor.locationId && state.monsterLocationIds.includes(actor.locationId)) return failure("REST_BLOCKED_BY_MONSTER", "An investigator cannot rest on a space containing a Monster.");
     const additionalSanity = assetEffectsForPlayer(actor, content).reduce((total, effect) =>
       total + (effect.type === "rest_recover_additional_sanity" ? effect.amount : 0), 0);
-    actor.health = Math.min(actor.maxHealth ?? actor.health ?? 0, (actor.health ?? 0) + 1);
-    actor.sanity = Math.min(actor.maxSanity ?? actor.sanity ?? 0, (actor.sanity ?? 0) + 1 + additionalSanity);
+    actor.health = recoverResource(actor.health ?? 0, actor.maxHealth ?? actor.health ?? 0, 1).value;
+    actor.sanity = recoverResource(actor.sanity ?? 0, actor.maxSanity ?? actor.sanity ?? 0, 1 + additionalSanity).value;
     const events: GameEvent[] = [{ type: "INVESTIGATOR_RESTED", playerId: actorPlayerId, health: actor.health, sanity: actor.sanity }];
     completeAction(next, actorIndex, "rest", events);
     return success(next, events);
