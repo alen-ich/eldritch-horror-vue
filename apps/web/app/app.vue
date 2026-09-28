@@ -316,6 +316,7 @@ async function copyInvite() {
         </header>
         <div class="game-workspace">
         <div class="board-stage">
+          <div class="doom-display">Doom {{ game.doom.value }} · Omen {{ ['Green', 'Blue', 'Red', 'Blue'][game.omen.value] }}</div>
           <TradePanel />
           <section v-if="me?.delayed" class="travel-planner" aria-label="Delayed investigator">
             <strong>You are Delayed</strong><small>Your next action turn is spent standing up.</small>
@@ -479,6 +480,7 @@ input:focus { border-color: #d5aa63; box-shadow: 0 0 0 3px #d5aa6322; }
 .game-hud__brand, .game-hud__room, .game-hud__turn { display: flex; align-items: center; gap: 10px; }.game-hud__brand strong { font: 600 1rem Georgia, serif; }.sigil-small { color: #d5aa63; }.game-hud__turn { flex-direction: column; gap: 1px; text-align: center; }.game-hud__turn span { color: #91a7a8; font-size: .62rem; text-transform: uppercase; letter-spacing: .12em; }.game-hud__turn strong { color: #e9ce8b; font-size: .8rem; }.game-hud__room { justify-content: flex-end; }.game-hud__room code { color: #91a7a8; font-size: .68rem; }.hud-button { color: #e8e8dc; background: #29464e; border: 1px solid #47646c; border-radius: 7px; padding: 6px 10px; font-size: .7rem; font-weight: 800; }
 .game-workspace { position: relative; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 58px; }
 .board-stage { position: relative; min-width: 0; min-height: 0; display: grid; place-items: center; overflow: hidden; padding: 10px; background: radial-gradient(circle at 50% 45%, #18333a, #050f12 75%); }
+.doom-display { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 5; background: #07171cf2; padding: 8px; border-radius: 8px; color: #d5aa63; }
 .travel-planner { position: absolute; z-index: 7; top: 70px; left: 50%; transform: translateX(-50%); width: min(480px, calc(100% - 32px)); display: grid; gap: 9px; padding: 14px; background: #07171cf2; border: 1px solid #d5aa63; border-radius: 10px; box-shadow: 0 10px 30px #0009; }.travel-planner small { color: #c9d5d1; }.travel-planner div { display: flex; gap: 8px; }.travel-planner button { padding: 8px 12px; border: 1px solid #647e86; border-radius: 6px; color: #edf0df; background: #29464e; }.travel-planner button:last-child { background: #d5aa63; color: #142127; }
 .board-stage .board { display: block; width: 100%; height: 100%; max-height: 100%; border-radius: 12px; }
 .active-mystery { position: absolute; z-index: 5; top: 60px; right: 18px; min-width: 180px; padding: 10px 12px; color: #edf0df; background: #07171cee; border: 1px solid #6e5a36; border-radius: 10px; box-shadow: 0 8px 28px #0009; backdrop-filter: blur(10px); }.active-mystery div { display: grid; gap: 3px; }.active-mystery strong { font: 600 .78rem/1.15 Georgia, serif; }.active-mystery small { color: #91a7a8; font-size: .6rem; }

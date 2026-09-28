@@ -15,6 +15,8 @@ import type {
 } from "@eldritch/protocol";
 import { calculateDicePool, countTestSuccesses } from "./skill-tests.js";
 import { recoverResource } from "./resources.js";
+import { buildMythosDeck, type AncientSetup, type MythosColor } from "./setup.js";
+export * from "./setup.js";
 export * from "./skill-tests.js";
 export * from "./resources.js";
 
@@ -104,6 +106,9 @@ export interface PrivateGameState {
 }
 
 export interface GameState {
+  doom?: number;
+  omen?: number;
+  greenOmenTokens?: number;
   tradeOffer?: TradeOffer;
   stateVersion: number;
   phase: GamePhase;
@@ -153,6 +158,8 @@ export type AssetEngineEffect =
   | { type: "on_gain_recover_all_and_discard" };
 
 export interface GameContent {
+  ancientOnes?: Readonly<Partial<Record<AncientOneId, AncientSetup>>>;
+  mythosCards?: readonly { id: string; color: MythosColor }[];
   map: GameMap;
   investigators: Readonly<Partial<Record<InvestigatorId, InvestigatorSetup>>>;
   assets: readonly { id: string; value: number; engineEffects: readonly AssetEngineEffect[] }[];
@@ -754,6 +761,13 @@ export function executeCommand(
     next.reserveAssetIds = shuffledAssets.splice(0, 4);
     next.assetDiscardIds = [];
     next.privateState.deckOrderById.assets = shuffledAssets;
+    const ancient = content.ancientOnes?.[state.ancientOneId];
+    if (ancient) {
+      next.doom = ancient.startingDoom;
+      next.omen = 0;
+      next.greenOmenTokens = ancient.greenOmenTokens;
+      next.privateState.deckOrderById.mythos = buildMythosDeck(content.mythosCards ?? [], ancient.mythosDeck, context.shuffle);
+    }
     const events: GameEvent[] = [
       { type: "GAME_STARTED", activePlayerId: actorPlayerId },
       { type: "MYSTERY_REVEALED", mysteryId: activeMysteryId },

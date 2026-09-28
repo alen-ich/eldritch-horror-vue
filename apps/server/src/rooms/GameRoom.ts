@@ -1,6 +1,6 @@
 import { randomInt, randomUUID } from "node:crypto";
 import { Client, CloseCode, Room } from "colyseus";
-import { baseGameAssets, baseGameInvestigators, baseGameMap, baseGameMysteries } from "@eldritch/content";
+import { baseGameAncientOnes, baseGameMythosCards, baseGameAssets, baseGameInvestigators, baseGameMap, baseGameMysteries } from "@eldritch/content";
 import { createDeterministicEngineContext, executeCommand, type GameContent, type GameState, type PrivateGameState } from "@eldritch/engine";
 import {
   commandErrorMessageType,
@@ -22,6 +22,12 @@ function randomShuffleIndexes(length: number): number[] {
   return Array.from({ length: Math.max(0, length - 1) }, (_, offset) => randomInt(length - offset));
 }
 const baseGameContent: GameContent = {
+  ancientOnes: Object.fromEntries(baseGameAncientOnes.map(ancient => [ancient.id, {
+    startingDoom: ancient.startingDoom,
+    mythosDeck: ancient.mythosDeck,
+    greenOmenTokens: ancient.setup.reduce((sum, effect) => sum + (effect.type === "place_eldritch_token_on_omen" ? effect.quantity : 0), 0),
+  }])),
+  mythosCards: baseGameMythosCards,
   map: baseGameMap,
   investigators: Object.fromEntries(baseGameInvestigators.map((investigator) => [investigator.id, {
     startingLocationId: investigator.startingLocationId,
@@ -118,6 +124,8 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
               const investigator = baseGameInvestigators.find(({ id }) => id === player.investigatorId);
               return count + (investigator?.startingAssetIds.length ?? 0);
             }, 0)),
+            ...["green", "yellow", "blue"].flatMap(color => randomShuffleIndexes(baseGameMythosCards.filter(card => card.color === color).length)),
+            ...(baseGameAncientOnes.find(ancient => ancient.id === this.state.ancientOneId)?.mythosDeck ?? []).flatMap(stage => randomShuffleIndexes(stage.green + stage.yellow + stage.blue)),
           ],
         })
       : parsed.data.command.type === "ACQUIRE_ASSETS"
@@ -138,6 +146,9 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
 
   private toEngineState(): GameState {
     return {
+      doom: this.state.doom,
+      omen: this.state.omen,
+      greenOmenTokens: this.state.greenOmenTokens,
       tradeOffer: this.state.tradeOffer ? JSON.parse(this.state.tradeOffer) as GameState["tradeOffer"] : undefined,
       stateVersion: this.state.stateVersion,
       phase: this.state.phase as GameState["phase"],
@@ -185,6 +196,9 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
   }
 
   private applyEngineState(engineState: GameState): void {
+    this.state.doom = engineState.doom ?? 0;
+    this.state.omen = engineState.omen ?? 0;
+    this.state.greenOmenTokens = engineState.greenOmenTokens ?? 0;
     this.state.tradeOffer = engineState.tradeOffer ? JSON.stringify(engineState.tradeOffer) : "";
     this.privateState = engineState.privateState;
     this.pendingDecision = engineState.pendingDecision;

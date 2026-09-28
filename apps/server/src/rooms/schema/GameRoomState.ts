@@ -54,6 +54,9 @@ export const ActiveTestState = schema({
 export type ActiveTestState = SchemaType<typeof ActiveTestState>;
 
 export const GameRoomState = schema({
+  doom: t.uint8().default(0),
+  omen: t.uint8().default(0),
+  greenOmenTokens: t.uint8().default(0),
   tradeOffer: t.string().default(""),
   stateVersion: t.uint32().default(0),
   phase: t.string().default("lobby"),

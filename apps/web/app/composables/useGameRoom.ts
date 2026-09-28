@@ -37,6 +37,8 @@ interface ClientPlayerState {
 }
 
 interface ClientGameState {
+  doom?: number
+  omen?: number
   tradeOffer?: string
   stateVersion?: number
   phase?: string
@@ -89,6 +91,8 @@ const mysteryProgress = ref(0)
 const mysteryTarget = ref(0)
 const completedMysteryIds = ref<string[]>([])
 const gameResult = ref('')
+const doom = ref(0)
+const omen = ref(0)
 const activePlayerId = ref('')
 const turnNumber = ref(0)
 const actionsRemaining = ref(0)
@@ -118,6 +122,8 @@ export function useGameRoom() {
     mysteryTarget.value = state.mysteryTarget ?? 0
     completedMysteryIds.value = state.completedMysteryIds ? state.completedMysteryIds.split(',') : []
     gameResult.value = state.gameResult ?? ''
+    doom.value = state.doom ?? 0
+    omen.value = state.omen ?? 0
     activePlayerId.value = state.activePlayerId ?? ''
     turnNumber.value = state.turnNumber ?? 0
     actionsRemaining.value = state.actionsRemaining ?? 0
@@ -230,6 +236,7 @@ export function useGameRoom() {
   }
 
   return {
+    doom: readonly(doom), omen: readonly(omen),
     tradeOffer: readonly(tradeOffer),
     players: readonly(players), stateVersion: readonly(stateVersion), phase: readonly(phase), ancientOneId: readonly(ancientOneId), activeMysteryId: readonly(activeMysteryId), mysteryProgress: readonly(mysteryProgress), mysteryTarget: readonly(mysteryTarget), completedMysteryIds: readonly(completedMysteryIds), gameResult: readonly(gameResult), activePlayerId: readonly(activePlayerId),
     turnNumber: readonly(turnNumber), actionsRemaining: readonly(actionsRemaining), performedActions: readonly(performedActions), reserveAssetIds: readonly(reserveAssetIds), assetDiscardIds: readonly(assetDiscardIds), activeTest: readonly(activeTest), pendingDecision: readonly(pendingDecision), playerId: readonly(playerId), roomId: readonly(roomId),
