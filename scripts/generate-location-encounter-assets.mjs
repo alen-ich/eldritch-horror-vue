@@ -8,6 +8,8 @@ const sourceRoot = path.join(root, "source-assets");
 const outputRoot = path.join(root, "apps", "web", "public", "cards", "encounters");
 
 const sheets = [
+  { deck: "america", file: "photo_2026-09-28_21-17-55.jpg", columns: 5, rows: 1, numbers: [1, 2, 3, 4, 5] },
+  { deck: "america", file: "photo_2026-09-28_21-18-03.jpg", columns: 3, rows: 1, numbers: [6, 7, 8] },
   { deck: "general", file: "photo_2026-09-28_21-07-03.jpg", columns: 5, rows: 2, numbers: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] },
   { deck: "general", file: "photo_2026-09-28_21-07-15.jpg", columns: 2, rows: 1, numbers: [11, 12] },
   { deck: "europe", file: "photo_2026-09-28_21-08-11.jpg", columns: 5, rows: 1, numbers: [1, 2, 3, 4, 5] },
@@ -16,6 +18,7 @@ const sheets = [
   { deck: "asia_australia", sourceDirectory: "asia", file: "photo_2026-09-28_21-07-59.jpg", columns: 2, rows: 1, numbers: [4, 5] },
 ];
 const backs = [
+  { deck: "america", file: "photo_2026-09-28_21-18-08.jpg" },
   { deck: "general", file: "photo_2026-09-28_21-07-20.jpg" },
   { deck: "europe", file: "photo_2026-09-28_21-08-42.jpg" },
   { deck: "asia_australia", sourceDirectory: "asia", file: "photo_2026-09-28_21-08-03.jpg" },
@@ -51,4 +54,4 @@ for (const back of backs) {
     .toFile(path.join(outputRoot, back.deck, "back.webp"));
 }
 
-console.log("Generated 28 base-game General/Europe/Asia-Australia encounter fronts and 3 shared backs. America remains missing.");
+console.log("Generated 36 base-game location encounter fronts and 4 shared backs.");
