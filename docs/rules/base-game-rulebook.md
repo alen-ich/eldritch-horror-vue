@@ -16,12 +16,13 @@ The rulebook says the separate Reference Guide is definitive for exceptions and 
 - Skill tests use printed skill, improvements, modifiers, the highest applicable item bonus, other bonuses, and a minimum result of one die; 5-6 count as successes.
 - An investigator may spend Clues one at a time to reroll individual test dice. The active test and reroll choice survive reconnection.
 - Acquire Assets uses this authoritative Influence-test lifecycle, then resolves Reserve purchases and refill atomically.
+- Health and Sanity recovery is capped at the investigator's maximum; shared resource rules also cap loss at zero and report when a resource is newly depleted. Defeat handling remains a separate pending lifecycle.
 - Action choices and resources are synchronized through authoritative Colyseus room state.
 
 ## Remaining rules layers
 
 1. Complete Action phase: Trade, Bank Loan/Debt, and component/local actions.
-2. Tests and resources: generic Health/Sanity loss and recovery, plus Blessed/Cursed thresholds after Conditions are verified.
+2. Tests and resources: authoritative loss events and defeat interruption, plus Blessed/Cursed thresholds after Conditions are verified.
 3. Encounter phase: Monster ordering, combat, location decks, token encounters and complex encounters.
 4. Mythos phase: ordered icons, Omen/Doom, reckoning, Gates, surges, Monsters, Clues, Rumors and events.
 5. Setup: Ancient One selection, Mythos deck construction, randomized token pools, Reserve and starting possessions.

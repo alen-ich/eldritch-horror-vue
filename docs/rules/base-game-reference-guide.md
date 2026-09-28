@@ -24,7 +24,7 @@ This means component-specific behavior cannot be declared complete until the cor
 | Conditions, conflicts, defeat, delay, devouring | 4 | Not implemented |
 | Doom, Epic Monsters, expeditions | 5 | Not implemented |
 | Encounters, possessions, Gates | 6-7 | Not implemented |
-| Health, Sanity, hidden information, skill improvements | 7 | Maximums, state boundaries, skills, and improvements implemented; generic loss/recovery and defeat remain |
+| Health, Sanity, hidden information, skill improvements | 7 | Maximums, capped resource math, state boundaries, skills, and improvements implemented; authoritative loss events and defeat remain |
 | Lead Investigator, local actions, Monsters, surges, Mysteries, Mythos | 8 | Lead Investigator and turn order partially implemented; remaining systems absent |
 | Omen, paths, Prepare for Travel, random spaces, Reckoning | 9 | Path types and Prepare for Travel implemented; remaining systems absent |
 | Reference cards, Reserve, Research, Rumors | 10 | Not implemented; player-count Reference card data is still missing |
