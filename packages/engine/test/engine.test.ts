@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyMysteryProgress,
   delayInvestigator,
+  drawMythosCard,
   damageInvestigator,
   resolveCombatEncounter,
   openReplacementWindow,
@@ -851,6 +852,49 @@ describe("projectPublicState", () => {
       maxSelections: 1,
     });
     expect(projectPublicState(state).pendingDecision).not.toHaveProperty("optionIds");
+  });
+});
+
+describe("private Mythos draw", () => {
+  it("reveals only the top card, removes it from the private deck, and prevents a second draw", () => {
+    const before = startedGame();
+    before.phase = "mythos";
+    before.privateState.deckOrderById.mythos = ["mythos_green_01", "mythos_yellow_02"];
+    const content: GameContent = { ...testContent, mythosCards: [{ id: "mythos_green_01", color: "green" }, { id: "mythos_yellow_02", color: "yellow" }] };
+    const drawn = drawMythosCard(before, content);
+    expect(drawn).toMatchObject({ ok: true, events: [{ type: "MYTHOS_CARD_REVEALED", cardId: "mythos_green_01" }] });
+    if (!drawn.ok) return;
+    expect(drawn.state.currentMythosCardId).toBe("mythos_green_01");
+    expect(drawn.state.privateState.deckOrderById.mythos).toEqual(["mythos_yellow_02"]);
+    expect(before.privateState.deckOrderById.mythos).toHaveLength(2);
+    expect(JSON.stringify(projectPublicState(drawn.state))).not.toContain("mythos_yellow_02");
+    expect(projectPublicState(drawn.state).currentMythosCardId).toBe("mythos_green_01");
+    expect(drawMythosCard(drawn.state, content)).toMatchObject({ ok: false, error: { code: "MYTHOS_CARD_ACTIVE" } });
+    expect(openReplacementWindow(drawn.state)).toMatchObject({ ok: false, error: { code: "WRONG_PHASE" } });
+  });
+
+  it("loses when asked to draw from an exhausted deck, but not an uninitialized one", () => {
+    const before = startedGame();
+    before.phase = "mythos";
+    expect(drawMythosCard(before, testContent)).toMatchObject({ ok: false, error: { code: "MYTHOS_DECK_MISSING" } });
+    before.privateState.deckOrderById.mythos = [];
+    const lost = drawMythosCard(before, testContent);
+    expect(lost).toMatchObject({ ok: true, events: [{ type: "GAME_ENDED", result: "investigators_lose", reason: "mythos_deck_exhausted" }] });
+    if (!lost.ok) return;
+    expect(lost.state.gameResult).toBe("investigators_lose");
+    expect(before.gameResult).toBeUndefined();
+    expect(drawMythosCard(lost.state, testContent)).toMatchObject({ ok: false, error: { code: "GAME_ENDED" } });
+  });
+
+  it("rejects an unknown next card without consuming it or changing the version", () => {
+    const before = startedGame();
+    before.phase = "mythos";
+    before.privateState.deckOrderById.mythos = ["unknown"];
+    const snapshot = structuredClone(before);
+    expect(drawMythosCard(before, testContent)).toMatchObject({ ok: false, error: { code: "MYTHOS_CONTENT_MISSING" } });
+    expect(before).toEqual(snapshot);
+    before.phase = "encounter";
+    expect(drawMythosCard(before, testContent)).toMatchObject({ ok: false, error: { code: "WRONG_PHASE" } });
   });
 });
 

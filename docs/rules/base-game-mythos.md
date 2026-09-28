@@ -27,3 +27,5 @@ Validation requires exactly 18 green, 21 yellow, and 12 blue cards, unique IDs a
 The card roster, titles, colors, and visible card kinds are verified from the English scans. The detailed icon sequence and printed effect for each card have not yet been transcribed into executable content, so the `mythos_cards` readiness family remains `needs_review`.
 
 The engine must not execute OCR or display text. A later rules slice will model the shared Mythos resolution sequence first, then encode repeated effect patterns and Rumor state with deterministic tests.
+
+The pure engine now has an internal draw transition: it reveals the top card from the server-private staged deck, exposes only that card ID, prevents drawing again until the revealed card is resolved, and ends the game if a required draw finds the initialized deck empty. An uninitialized deck or unknown card ID fails without mutation. The revealed card is represented in room state, but no client command invokes this transition yet because card icon sequences and effects remain unimplemented. The end-of-Mythos replacement window cannot open while a revealed card is unresolved.

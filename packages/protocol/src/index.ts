@@ -131,6 +131,7 @@ export const gameCommandMessageSchema = z.object({
 export type GameCommandMessage = z.infer<typeof gameCommandMessageSchema>;
 
 export type GameEvent =
+  | { type: "MYTHOS_CARD_REVEALED"; cardId: string }
   | { type: "CONDITION_BACK_RESOLVED"; playerId: string; conditionId: string; effect: "discard" | "recover_health_and_sanity_then_flip_front" | "gain_clues_then_flip_front" | "become_delayed_then_flip_front" | "discard_all_clues_then_discard" }
   | { type: "CONDITION_RECKONING_ROLLED"; playerId: string; conditionId: string; die: number; discarded: boolean }
   | { type: "CONDITION_RECOVERY_ROLLED"; playerId: string; conditionId: string; die: number; discarded: boolean }
@@ -185,6 +186,7 @@ export interface PublicGameState {
   activePlayerId?: string;
   turnNumber: number;
   ancientOneId?: AncientOneId;
+  currentMythosCardId?: string;
   activeMysteryId?: string;
   mysteryProgress: number;
   mysteryTarget: number;

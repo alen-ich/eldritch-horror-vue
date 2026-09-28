@@ -145,6 +145,7 @@ export interface GameState {
   activePlayerId?: string;
   leadInvestigatorId?: string;
   ancientOneId?: AncientOneId;
+  currentMythosCardId?: string;
   activeMysteryId?: string;
   mysteryProgress: number;
   mysteryTarget: number;
@@ -209,6 +210,7 @@ export interface GameContent {
 }
 
 export type RuleErrorCode =
+  | "MYTHOS_CARD_ACTIVE" | "MYTHOS_DECK_MISSING" | "MYTHOS_CONTENT_MISSING"
   | "CONDITION_ACTION_INVALID" | "CONDITION_RESTRICTED"
   | "CONDITION_CONTENT_MISSING" | "CONDITION_UNAVAILABLE" | "CONDITION_NOT_HELD" | "CONDITION_EFFECT_UNSUPPORTED"
   | "INVALID_COMBAT" | "MONSTER_CONTENT_MISSING" | "MONSTER_EFFECT_UNSUPPORTED"
@@ -609,7 +611,7 @@ export function resolveCombatEncounter(state: GameState, playerId: string, monst
 
 /** Called only after all Mythos card effects finish; no client phase-skip command. */
 export function openReplacementWindow(state: GameState, content?: GameContent): CommandResult {
-  if (state.phase !== "mythos" || state.pendingDefeat || state.pendingDecision || state.gameResult) return failure("WRONG_PHASE", "Mythos effects must finish first.");
+  if (state.phase !== "mythos" || state.pendingDefeat || state.pendingDecision || state.currentMythosCardId || state.gameResult) return failure("WRONG_PHASE", "Mythos effects must finish first.");
   const next = structuredClone(state);
   next.replacementWindow = true;
   const used = new Set([...next.players.map(p => p.investigatorId), ...(next.defeatedInvestigators ?? []).map(p => p.investigatorId)]);
@@ -620,6 +622,27 @@ export function openReplacementWindow(state: GameState, content?: GameContent): 
     return success(next, [{ type: "GAME_ENDED", result: "investigators_lose", reason: "all_players_eliminated" }]);
   }
   return success(next, []);
+}
+
+/** Draws the top private card, revealing only that card. Its icons and text must be resolved separately. */
+export function drawMythosCard(state: GameState, content: GameContent): CommandResult {
+  if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
+  if (state.phase !== "mythos" || state.pendingDecision || state.activeTest || state.pendingDefeat || state.replacementWindow) {
+    return failure("WRONG_PHASE", "Finish the current resolution before drawing Mythos.");
+  }
+  if (state.currentMythosCardId) return failure("MYTHOS_CARD_ACTIVE", "Resolve the revealed Mythos card before drawing another.");
+  const deck = state.privateState.deckOrderById.mythos;
+  if (!deck) return failure("MYTHOS_DECK_MISSING", "The Mythos deck has not been initialized.");
+  if (deck.length === 0) {
+    const next = structuredClone(state);
+    next.gameResult = "investigators_lose";
+    return success(next, [{ type: "GAME_ENDED", result: "investigators_lose", reason: "mythos_deck_exhausted" }]);
+  }
+  const topId = deck[0]!;
+  if (!content.mythosCards?.some(card => card.id === topId)) return failure("MYTHOS_CONTENT_MISSING", "The next Mythos card is missing from content.");
+  const next = structuredClone(state);
+  next.currentMythosCardId = next.privateState.deckOrderById.mythos!.shift();
+  return success(next, [{ type: "MYTHOS_CARD_REVEALED", cardId: topId }]);
 }
 
 function routeBetween(map: GameMap, source: LocationId, target: LocationId) {
