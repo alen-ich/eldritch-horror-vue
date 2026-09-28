@@ -25,8 +25,12 @@ try {
       .webp({ quality: 90, effort: 5 })
       .toFile(path.join(outputRoot, `${match[1]}.webp`));
   }
+
+  await sharp(path.join(root, "source-assets", "assets", "back.jpg"))
+    .webp({ quality: 90, effort: 5 })
+    .toFile(path.join(outputRoot, "back.webp"));
 } finally {
   await rm(temporaryRoot, { recursive: true, force: true });
 }
 
-console.log("Generated 40 base-game Asset fronts. The shared back is still pending.");
+console.log("Generated 40 base-game Asset fronts and the shared back.");
