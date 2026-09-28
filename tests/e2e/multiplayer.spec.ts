@@ -1,0 +1,46 @@
+import { test, expect } from '@playwright/test'
+
+test('two browsers join, resolve an Asset test, and share Travel state', async ({ browser }) => {
+  const hostContext = await browser.newContext()
+  const guestContext = await browser.newContext()
+  const host = await hostContext.newPage()
+  const guest = await guestContext.newPage()
+  try {
+    await host.goto('/')
+    await host.waitForLoadState('networkidle')
+    await host.getByLabel('Display name').fill('Host')
+    await host.getByRole('button', { name: 'Create game' }).click()
+    await expect(host.getByText('Investigator roster')).toBeVisible()
+    const inviteUrl = host.url()
+
+    await guest.goto(inviteUrl)
+    await guest.waitForLoadState('networkidle')
+    await expect(guest.getByText('Investigator roster')).toBeVisible()
+    await host.getByRole('button', { name: /Akachi Onyele/i }).click()
+    await guest.getByRole('button', { name: /Trish Scarborough/i }).click()
+    await expect(host.locator('.roster article').filter({ hasText: 'Trish Scarborough' })).toBeVisible()
+    await host.getByRole('button', { name: /Cthulhu.*Doom 12/i }).click()
+    await expect(host.getByRole('button', { name: 'Start game' })).toBeEnabled()
+    await host.getByRole('button', { name: 'Start game' }).click()
+    await expect(host.getByRole('button', { name: 'Acquire Assets' })).toBeVisible()
+    await expect(guest.getByRole('button', { name: 'Acquire Assets' })).toBeVisible()
+
+    await host.getByRole('button', { name: 'Acquire Assets' }).click()
+    await expect(host.getByRole('dialog', { name: /influence test/i })).toBeVisible()
+    await host.getByRole('button', { name: 'Keep result' }).click()
+    await expect(host.getByRole('button', { name: 'Buy nothing' })).toBeVisible()
+    await host.getByRole('button', { name: 'Buy nothing' }).click()
+    await host.getByRole('button', { name: 'Keep all' }).click()
+    await expect(host.getByText('Your action · 1 remaining')).toBeVisible()
+
+    await host.getByRole('button', { name: 'Close investigator details' }).click()
+    await host.getByRole('button', { name: '10, wilderness, legal destination' }).click()
+    await expect(host.getByRole('region', { name: 'Planned travel' })).toContainText('15 → 10')
+    await host.getByRole('button', { name: 'Confirm travel' }).click()
+    await guest.getByRole('button', { name: 'Show Host' }).click()
+    await expect(guest.locator('.investigator-facts').getByText('10', { exact: true })).toBeVisible()
+  } finally {
+    await guestContext.close()
+    await hostContext.close()
+  }
+})

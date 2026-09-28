@@ -4,5 +4,7 @@ node_modules
 build
 dist
 coverage
+playwright-report
+test-results
 .turbo
 .DS_Store
