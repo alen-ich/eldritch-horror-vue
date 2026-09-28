@@ -43,7 +43,7 @@ export const pendingDecisionSchema = z.object({
   minSelections: z.number().int().nonnegative(),
   maxSelections: z.number().int().positive(),
   selectionBudget: z.number().int().nonnegative().optional(),
-  continuation: z.enum(["acquire_assets_purchase", "acquire_assets_discard"]).optional(),
+  continuation: z.enum(["test_reroll", "acquire_assets_purchase", "acquire_assets_discard"]).optional(),
 }).strict().superRefine((decision, context) => {
   if (new Set(decision.optionIds).size !== decision.optionIds.length) {
     context.addIssue({ code: "custom", message: "Decision option IDs must be unique.", path: ["optionIds"] });
@@ -57,6 +57,18 @@ export const pendingDecisionSchema = z.object({
 });
 
 export type PendingDecision = z.infer<typeof pendingDecisionSchema>;
+
+export interface ActiveTest {
+  id: string;
+  playerId: string;
+  skill: SkillId;
+  modifier: number;
+  dicePool: number;
+  dice: number[];
+  successes: number;
+  successThreshold: number;
+  continuation: "acquire_assets";
+}
 
 export interface PendingDecisionSummary {
   id: string;
@@ -102,7 +114,10 @@ export type GameEvent =
   | { type: "GAME_STARTED"; activePlayerId: string }
   | { type: "ASSET_GAINED"; playerId: string; assetId: string; source: "setup" | "reserve" }
   | { type: "ASSET_DISCARDED"; playerId: string; assetId: string; reason: "on_gain_effect" }
-  | { type: "ACQUIRE_ASSETS_TESTED"; playerId: string; dice: number[]; successes: number }
+  | { type: "TEST_ROLLED"; testId: string; playerId: string; skill: SkillId; modifier: number; dice: number[]; successes: number }
+  | { type: "CLUE_SPENT_FOR_REROLL"; testId: string; playerId: string; dieIndex: number }
+  | { type: "TEST_DIE_REROLLED"; testId: string; playerId: string; dieIndex: number; result: number; successes: number }
+  | { type: "TEST_RESOLVED"; testId: string; playerId: string; successes: number; continuation: ActiveTest["continuation"] }
   | { type: "RESERVE_ASSET_DISCARDED"; assetId: string }
   | { type: "RESERVE_REFILLED"; assetIds: string[] }
   | { type: "MYSTERY_REVEALED"; mysteryId: string }

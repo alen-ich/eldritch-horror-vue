@@ -2,6 +2,7 @@ import type {
   GameCommand,
   GameEvent,
   GamePhase,
+  ActiveTest,
   AncientOneId,
   InvestigatorId,
   LocationId,
@@ -10,6 +11,7 @@ import type {
   SkillId,
   TravelTicketType,
 } from "@eldritch/protocol";
+import { calculateDicePool, countTestSuccesses } from "./skill-tests.js";
 export * from "./skill-tests.js";
 
 export type ActionType = "travel" | "rest" | "prepare_travel" | "trade" | "acquire_assets" | "component";
@@ -115,6 +117,7 @@ export interface GameState {
   reserveAssetIds: string[];
   assetDiscardIds: string[];
   pendingDecision?: PendingDecision;
+  activeTest?: ActiveTest;
   privateState: PrivateGameState;
 }
 
@@ -242,6 +245,7 @@ export function projectStateForPlayer(state: GameState, viewerPlayerId?: string)
     reserveAssetIds: [...publicState.reserveAssetIds],
     assetDiscardIds: [...publicState.assetDiscardIds],
     completedMysteryIds: [...publicState.completedMysteryIds],
+    activeTest: publicState.activeTest ? { ...publicState.activeTest, dice: [...publicState.activeTest.dice] } : undefined,
     pendingDecision: pendingDecision
       ? pendingDecision.visibility === "public" || pendingDecision.playerId === viewerPlayerId
         ? cloneDecision(pendingDecision)
@@ -345,6 +349,99 @@ function assetEffectsForPlayer(player: EnginePlayer, content: GameContent): Asse
   return player.assetIds.flatMap((assetId) => content.assets.find(({ id }) => id === assetId)?.engineEffects ?? []);
 }
 
+function countActiveTestSuccesses(test: ActiveTest, player: EnginePlayer, content: GameContent): number {
+  const doubleSixes = test.continuation === "acquire_assets"
+    && assetEffectsForPlayer(player, content).some(({ type }) => type === "acquire_six_counts_as_two");
+  return doubleSixes
+    ? test.dice.reduce((total, die) => total + (die === 6 ? 2 : die >= test.successThreshold ? 1 : 0), 0)
+    : countTestSuccesses(test.dice, test.successThreshold);
+}
+
+function createTestRerollDecision(state: GameState, test: ActiveTest, context: EngineContext): void {
+  state.pendingDecision = {
+    id: context.createId(),
+    kind: "select_rerolls",
+    playerId: test.playerId,
+    visibility: "owner",
+    prompt: "Spend 1 Clue to reroll one die, or keep the current result.",
+    optionIds: test.dice.map((_, index) => `die-${index}`),
+    minSelections: 0,
+    maxSelections: 1,
+    continuation: "test_reroll",
+  };
+}
+
+function createAcquireAssetsDecision(state: GameState, test: ActiveTest, context: EngineContext): GameEvent[] {
+  state.activeTest = undefined;
+  state.pendingDecision = {
+    id: context.createId(),
+    kind: "select_acquired_cards",
+    playerId: test.playerId,
+    visibility: "owner",
+    prompt: `Choose Assets with a total value of ${test.successes} or less.`,
+    optionIds: [...state.reserveAssetIds],
+    minSelections: 0,
+    maxSelections: state.reserveAssetIds.length,
+    selectionBudget: test.successes,
+    continuation: "acquire_assets_purchase",
+  };
+  return [{
+    type: "TEST_RESOLVED",
+    testId: test.id,
+    playerId: test.playerId,
+    successes: test.successes,
+    continuation: test.continuation,
+  }];
+}
+
+function beginSkillTest(
+  state: GameState,
+  player: EnginePlayer,
+  request: { skill: SkillId; modifier: number; continuation: ActiveTest["continuation"]; itemBonuses?: readonly number[]; otherBonuses?: readonly number[] },
+  content: GameContent,
+  context: EngineContext,
+): GameEvent[] {
+  if (!player.investigatorId) throw new Error("Cannot begin a test without an investigator.");
+  const investigator = content.investigators[player.investigatorId];
+  if (!investigator) throw new Error("Cannot begin a test without investigator content.");
+  const assetBonuses = assetEffectsForPlayer(player, content)
+    .filter((effect) => effect.type === "skill_bonus" && effect.skill === request.skill)
+    .map((effect) => effect.amount);
+  const calculation = calculateDicePool({
+    skill: request.skill,
+    baseSkill: investigator.skills[request.skill],
+    improvement: player.skillImprovements[request.skill],
+    modifier: request.modifier,
+    itemBonuses: request.itemBonuses,
+    otherBonuses: [...(request.otherBonuses ?? []), ...assetBonuses],
+  });
+  const test: ActiveTest = {
+    id: context.createId(),
+    playerId: player.id,
+    skill: request.skill,
+    modifier: request.modifier,
+    dicePool: calculation.dicePool,
+    dice: Array.from({ length: calculation.dicePool }, () => context.rollDie()),
+    successes: 0,
+    successThreshold: 5,
+    continuation: request.continuation,
+  };
+  test.successes = countActiveTestSuccesses(test, player, content);
+  state.activeTest = test;
+  const events: GameEvent[] = [{
+    type: "TEST_ROLLED",
+    testId: test.id,
+    playerId: player.id,
+    skill: test.skill,
+    modifier: test.modifier,
+    dice: [...test.dice],
+    successes: test.successes,
+  }];
+  if (player.clues > 0) createTestRerollDecision(state, test, context);
+  else events.push(...createAcquireAssetsDecision(state, test, context));
+  return events;
+}
+
 export function executeCommand(
   state: GameState,
   actorPlayerId: string,
@@ -370,6 +467,7 @@ export function executeCommand(
     assetDiscardIds: [...state.assetDiscardIds],
     completedMysteryIds: [...state.completedMysteryIds],
     pendingDecision: state.pendingDecision ? cloneDecision(state.pendingDecision) : undefined,
+    activeTest: state.activeTest ? { ...state.activeTest, dice: [...state.activeTest.dice] } : undefined,
     privateState: {
       deckOrderById: Object.fromEntries(
         Object.entries(state.privateState.deckOrderById).map(([id, cards]) => [id, [...cards]]),
