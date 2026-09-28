@@ -13,6 +13,7 @@ import type {
 } from "@eldritch/protocol";
 import { calculateDicePool, countTestSuccesses } from "./skill-tests.js";
 export * from "./skill-tests.js";
+export * from "./resources.js";
 
 export type ActionType = "travel" | "rest" | "prepare_travel" | "trade" | "acquire_assets" | "component";
 
