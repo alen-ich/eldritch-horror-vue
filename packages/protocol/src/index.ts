@@ -16,6 +16,7 @@ export const investigatorIds = [
 ] as const;
 export const ancientOneIds = ["cthulhu", "shub_niggurath", "yog_sothoth", "azathoth"] as const;
 export const skillIds = ["lore", "influence", "observation", "strength", "will"] as const;
+export const conditionKindIds = ["debt", "amnesia", "dark_pact", "leg_injury", "internal_injury", "paranoia", "cursed", "hallucinations", "detained", "blessed", "back_injury"] as const;
 
 export type LocationId = (typeof locationIds)[number];
 export type InvestigatorId = (typeof investigatorIds)[number];
@@ -30,6 +31,7 @@ export const pendingDecisionKinds = [
   "spend_clues",
   "select_acquired_cards",
   "discard_reserve_card",
+  "recover_conditions",
 ] as const;
 export type PendingDecisionKind = (typeof pendingDecisionKinds)[number];
 
@@ -43,7 +45,7 @@ export const pendingDecisionSchema = z.object({
   minSelections: z.number().int().nonnegative(),
   maxSelections: z.number().int().positive(),
   selectionBudget: z.number().int().nonnegative().optional(),
-  continuation: z.enum(["test_reroll", "acquire_assets_purchase", "acquire_assets_discard"]).optional(),
+  continuation: z.enum(["test_reroll", "acquire_assets_purchase", "acquire_assets_discard", "condition_rest_recovery"]).optional(),
 }).strict().superRefine((decision, context) => {
   if (new Set(decision.optionIds).size !== decision.optionIds.length) {
     context.addIssue({ code: "custom", message: "Decision option IDs must be unique.", path: ["optionIds"] });
@@ -81,7 +83,8 @@ export interface ActiveTest {
   dice: number[];
   successes: number;
   successThreshold: number;
-  continuation: "acquire_assets";
+  continuation: "acquire_assets" | "condition_action";
+  sourceConditionId?: string;
 }
 
 export interface PendingDecisionSummary {
@@ -109,6 +112,7 @@ export const gameCommandSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("REST") }).strict(),
   z.object({ type: z.literal("PREPARE_TRAVEL"), ticketType: z.enum(["train", "ship"]) }).strict(),
   z.object({ type: z.literal("ACQUIRE_ASSETS") }).strict(),
+  z.object({ type: z.literal("USE_CONDITION_ACTION"), targetPlayerId: z.string().min(1), conditionKind: z.enum(conditionKindIds) }).strict(),
   z.object({ type: z.literal("END_ACTIONS") }).strict(),
   z.object({
     type: z.literal("RESOLVE_DECISION"),
@@ -127,6 +131,9 @@ export const gameCommandMessageSchema = z.object({
 export type GameCommandMessage = z.infer<typeof gameCommandMessageSchema>;
 
 export type GameEvent =
+  | { type: "CONDITION_RECOVERY_ROLLED"; playerId: string; conditionId: string; die: number; discarded: boolean }
+  | { type: "CONDITION_GAIN_PREVENTED"; playerId: string; kind: string }
+  | { type: "CONDITION_GAINED" | "CONDITION_DISCARDED"; playerId: string; conditionId: string }
   | { type: "COMBAT_RESOLVED"; playerId: string; monsterInstanceId: string; horrorDice: number[]; strengthDice: number[]; sanityLost: number; healthLost: number; monsterHealthLost: number }
   | { type: "MONSTER_DEFEATED"; monsterInstanceId: string; monsterId: string }
   | { type: "INVESTIGATOR_DAMAGED"; playerId: string; healthLost: number; sanityLost: number }
@@ -164,6 +171,7 @@ export interface PublicPlayerState {
   health?: number;
   sanity?: number;
   assetIds: string[];
+  conditionIds?: string[];
   clues: number;
   skillImprovements: Partial<Record<SkillId, number>>;
   isHost: boolean;

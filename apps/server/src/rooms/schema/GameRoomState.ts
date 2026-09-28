@@ -75,6 +75,7 @@ export const GameRoomState = schema({
   turnNumber: t.uint16().default(0),
   actionsRemaining: t.uint8().default(0),
   performedActions: t.string().default(""),
+  usedConditionActionIds: t.string().default(""),
   reserveAssetIds: t.string().default(""),
   assetDiscardIds: t.string().default(""),
   pendingDecision: t.ref(PendingDecisionState).optional(),

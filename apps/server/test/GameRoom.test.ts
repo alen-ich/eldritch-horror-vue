@@ -76,6 +76,41 @@ describe("authoritative game room", () => {
     });
   }
 
+  it("offers an owner-only Bank Loan and synchronizes only its Condition front", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+    sendCommand(room, host, { type: "SELECT_INVESTIGATOR", investigatorId: "akachi_onyele" });
+    await room.waitForMessage(commandMessageType);
+    sendCommand(room, guest, { type: "SELECT_INVESTIGATOR", investigatorId: "trish_scarborough" });
+    await room.waitForMessage(commandMessageType);
+    sendCommand(room, host, { type: "SELECT_ANCIENT_ONE", ancientOneId: "cthulhu" });
+    await room.waitForMessage(commandMessageType);
+    sendCommand(room, host, { type: "START_GAME" });
+    await room.waitForMessage(commandMessageType);
+    const privateDecision = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "ACQUIRE_ASSETS" });
+    await room.waitForMessage(commandMessageType);
+    const decision = await privateDecision as PendingDecision;
+    if (decision.kind === "select_rerolls") {
+      const purchaseDecision = host.waitForMessage(pendingDecisionMessageType);
+      sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: decision.id, selectedOptionIds: [] });
+      await room.waitForMessage(commandMessageType);
+      const purchase = await purchaseDecision as PendingDecision;
+      assert.ok(purchase.optionIds.includes("bank-loan"));
+      sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: purchase.id, selectedOptionIds: ["bank-loan"] });
+    } else {
+      assert.ok(decision.optionIds.includes("bank-loan"));
+      sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: decision.id, selectedOptionIds: ["bank-loan"] });
+    }
+    await room.waitForMessage(commandMessageType);
+    const hostSeat = [...room.state.players.values()].find(player => player.isHost)!;
+    assert.equal(hostSeat.conditionIds, "condition_debt");
+    assert.doesNotMatch(JSON.stringify(room.state), /condition_debt_\d{2}/);
+    assert.equal(JSON.stringify(room.state).includes("Unwilling Servant"), false);
+    assert.equal(JSON.stringify(room.state).includes("Debt Collector"), false);
+  });
+
   it("reclaims a disconnected seat by private token without exposing it in room state", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });

@@ -86,6 +86,106 @@ function startedGame(): GameState {
   };
 }
 
+describe("Condition recovery during Rest", () => {
+  const conditionContent: GameContent = { ...testContent, conditions: [
+    { id: "condition_leg_injury_01", kind: "leg_injury" },
+    { id: "condition_paranoia_01", kind: "paranoia" },
+    { id: "condition_debt_01", kind: "debt" },
+  ] };
+
+  it("offers optional rolls and returns successful copies to their supplies", () => {
+    const before = startedGame();
+    before.players[0]!.conditionIds = ["condition_leg_injury_01", "condition_paranoia_01", "condition_debt_01"];
+    before.privateState.tokenPoolById["condition:leg_injury"] = [];
+    before.privateState.tokenPoolById["condition:paranoia"] = [];
+    const rested = executeCommand(before, "host", { type: "REST" }, conditionContent,
+      createDeterministicEngineContext({ ids: ["recover"] }));
+    expect(rested.ok).toBe(true);
+    if (!rested.ok) return;
+    expect(rested.state.pendingDecision?.optionIds).toEqual(["condition_leg_injury", "condition_paranoia"]);
+    expect(rested.state.actionsRemaining).toBe(2);
+    const recovered = executeCommand(rested.state, "host", { type: "RESOLVE_DECISION", decisionId: "recover", selectedOptionIds: ["condition_leg_injury", "condition_paranoia"] }, conditionContent,
+      createDeterministicEngineContext({ dice: [5, 4] }));
+    expect(recovered.ok).toBe(true);
+    if (!recovered.ok) return;
+    expect(recovered.state.players[0]!.conditionIds).toEqual(["condition_paranoia_01", "condition_debt_01"]);
+    expect(recovered.state.privateState.tokenPoolById["condition:leg_injury"]).toEqual(["condition_leg_injury_01"]);
+    expect(recovered.state.actionsRemaining).toBe(1);
+  });
+
+  it("allows skipping recovery and rejects an unoffered card", () => {
+    const before = startedGame();
+    before.players[0]!.conditionIds = ["condition_leg_injury_01", "condition_debt_01"];
+    const rested = executeCommand(before, "host", { type: "REST" }, conditionContent,
+      createDeterministicEngineContext({ ids: ["recover"] }));
+    if (!rested.ok) throw new Error("Rest setup failed");
+    const snapshot = structuredClone(rested.state);
+    expect(executeCommand(rested.state, "host", { type: "RESOLVE_DECISION", decisionId: "recover", selectedOptionIds: ["condition_debt"] }, conditionContent))
+      .toMatchObject({ ok: false, error: { code: "INVALID_DECISION_SELECTION" } });
+    expect(rested.state).toEqual(snapshot);
+    const skipped = executeCommand(rested.state, "host", { type: "RESOLVE_DECISION", decisionId: "recover", selectedOptionIds: [] }, conditionContent);
+    expect(skipped).toMatchObject({ ok: true, state: { actionsRemaining: 1 } });
+  });
+});
+
+describe("Condition local actions", () => {
+  const conditionContent: GameContent = { ...testContent, conditions: [
+    { id: "condition_debt_01", kind: "debt" },
+    { id: "condition_detained_01", kind: "detained" },
+  ] };
+
+  it("lets an investigator on the same space clear Debt with a passing Influence test", () => {
+    const before = startedGame();
+    before.players[0]!.clues = 0;
+    before.players[1]!.conditionIds = ["condition_debt_01"];
+    const result = executeCommand(before, "host", { type: "USE_CONDITION_ACTION", targetPlayerId: "guest", conditionKind: "debt" }, conditionContent,
+      createDeterministicEngineContext({ dice: [5, 1], ids: ["test"] }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.players[1]!.conditionIds).toEqual([]);
+    expect(result.state.privateState.tokenPoolById["condition:debt"]).toEqual(["condition_debt_01"]);
+    expect(result.state.usedConditionActionIds).toEqual(["condition_action:guest:condition_debt"]);
+    expect(result.state.actionsRemaining).toBe(1);
+    expect(executeCommand(result.state, "host", { type: "USE_CONDITION_ACTION", targetPlayerId: "guest", conditionKind: "debt" }, conditionContent))
+      .toMatchObject({ ok: false, error: { code: "CONDITION_ACTION_INVALID" } });
+  });
+
+  it("keeps a failed Condition and supports a Clue reroll before completion", () => {
+    const before = startedGame();
+    before.players[0]!.conditionIds = ["condition_debt_01"];
+    const initiated = executeCommand(before, "host", { type: "USE_CONDITION_ACTION", targetPlayerId: "host", conditionKind: "debt" }, conditionContent,
+      createDeterministicEngineContext({ dice: [1, 2], ids: ["test", "reroll"] }));
+    expect(initiated.ok).toBe(true);
+    if (!initiated.ok) return;
+    expect(initiated.state.pendingDecision?.kind).toBe("select_rerolls");
+    const resolved = executeCommand(initiated.state, "host", { type: "RESOLVE_DECISION", decisionId: "reroll", selectedOptionIds: ["die-0"] }, conditionContent,
+      createDeterministicEngineContext({ dice: [5] }));
+    expect(resolved.ok).toBe(true);
+    if (!resolved.ok) return;
+    expect(resolved.state.players[0]!.conditionIds).toEqual([]);
+    expect(resolved.state.actionsRemaining).toBe(1);
+  });
+
+  it("restricts a Detained investigator to the action on their own card", () => {
+    const before = startedGame();
+    before.players[0]!.conditionIds = ["condition_detained_01"];
+    before.players[1]!.conditionIds = ["condition_debt_01"];
+    expect(executeCommand(before, "host", { type: "REST" }, conditionContent))
+      .toMatchObject({ ok: false, error: { code: "CONDITION_RESTRICTED" } });
+    expect(executeCommand(before, "host", { type: "TRAVEL", destinationIds: ["space_1"] }, conditionContent))
+      .toMatchObject({ ok: false, error: { code: "CONDITION_RESTRICTED" } });
+    expect(executeCommand(before, "host", { type: "USE_CONDITION_ACTION", targetPlayerId: "guest", conditionKind: "debt" }, conditionContent))
+      .toMatchObject({ ok: false, error: { code: "CONDITION_RESTRICTED" } });
+    before.players[0]!.clues = 0;
+    const resolved = executeCommand(before, "host", { type: "USE_CONDITION_ACTION", targetPlayerId: "host", conditionKind: "detained" }, conditionContent,
+      createDeterministicEngineContext({ dice: [5, 1], ids: ["test"] }));
+    expect(resolved.ok).toBe(true);
+    if (!resolved.ok) return;
+    expect(resolved.state.players[0]!.conditionIds).toEqual([]);
+    expect(before.players[0]!.conditionIds).toEqual(["condition_detained_01"]);
+  });
+});
+
 describe("combat encounter integration", () => {
   function combatState(): GameState {
     const state = startedGame();
@@ -440,6 +540,33 @@ describe("Acquire Assets", () => {
     state.privateState.deckOrderById.assets = ["asset_arcane_tome"];
     return state;
   }
+
+  it("offers a Bank Loan only without Debt and atomically grants Debt plus two buying successes", () => {
+    const conditionContent: GameContent = { ...testContent, conditions: [{ id: "condition_debt_01", kind: "debt" }] };
+    const before = marketState();
+    before.players[0]!.conditionIds = [];
+    before.privateState.tokenPoolById["condition:debt"] = ["condition_debt_01"];
+    const initiated = executeCommand(before, "host", { type: "ACQUIRE_ASSETS" }, conditionContent,
+      createDeterministicEngineContext({ dice: [1, 2], ids: ["test", "buy"] }));
+    expect(initiated.ok).toBe(true);
+    if (!initiated.ok) return;
+    expect(initiated.state.pendingDecision?.optionIds).toContain("bank-loan");
+    const purchased = executeCommand(initiated.state, "host", { type: "RESOLVE_DECISION", decisionId: "buy", selectedOptionIds: ["bank-loan", "asset_bandages"] }, conditionContent,
+      createDeterministicEngineContext({ tokenIndexes: [0] }));
+    expect(purchased.ok).toBe(true);
+    if (!purchased.ok) return;
+    expect(purchased.state.players[0]!.conditionIds).toEqual(["condition_debt_01"]);
+    expect(purchased.state.players[0]!.assetIds).toContain("asset_bandages");
+    expect(purchased.state.privateState.tokenPoolById["condition:debt"]).toEqual([]);
+    expect(initiated.state.players[0]!.conditionIds).toEqual([]);
+    expect(purchased.events).toContainEqual({ type: "CONDITION_GAINED", playerId: "host", conditionId: "condition_debt" });
+    const nextTurn = marketState();
+    nextTurn.players[0]!.conditionIds = ["condition_debt_01"];
+    nextTurn.privateState.tokenPoolById["condition:debt"] = [];
+    const blocked = executeCommand(nextTurn, "host", { type: "ACQUIRE_ASSETS" }, conditionContent,
+      createDeterministicEngineContext({ dice: [1, 2], ids: ["test", "buy"] }));
+    expect(blocked.ok && blocked.state.pendingDecision?.optionIds).not.toContain("bank-loan");
+  });
 
   it.each([
     ["condition_blessed_01", 1, 4],

@@ -1,7 +1,7 @@
 import { randomInt, randomUUID } from "node:crypto";
 import { Client, CloseCode, Room } from "colyseus";
-import { baseGameAncientOnes, baseGameMythosCards, baseGameAssets, baseGameInvestigators, baseGameMap, baseGameMysteries, baseGameMonsters } from "@eldritch/content";
-import { createDeterministicEngineContext, executeCommand, type GameContent, type GameState, type PrivateGameState } from "@eldritch/engine";
+import { baseGameAncientOnes, baseGameMythosCards, baseGameAssets, baseGameConditions, baseGameInvestigators, baseGameMap, baseGameMysteries, baseGameMonsters } from "@eldritch/content";
+import { createDeterministicEngineContext, executeCommand, publicConditionId, type GameContent, type GameState, type PrivateGameState } from "@eldritch/engine";
 import {
   commandErrorMessageType,
   commandMessageType,
@@ -22,6 +22,7 @@ function randomShuffleIndexes(length: number): number[] {
   return Array.from({ length: Math.max(0, length - 1) }, (_, offset) => randomInt(length - offset));
 }
 const baseGameContent: GameContent = {
+  conditions: baseGameConditions.map(({ id, kind }) => ({ id, kind })),
   monsters: baseGameMonsters.map(({ id, type, horrorCheck, damageCheck, toughness, specialEffect }) => ({
     id, type, horrorCheck, damageCheck, toughness, specialEffect,
   })),
@@ -60,6 +61,8 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
   private readonly playerIdBySession = new Map<string, string>();
   private readonly seatTokens = new Map<string, string>();
   private privateState: PrivateGameState = { deckOrderById: {}, tokenPoolById: {} };
+  /** Physical copy identities must never be synchronized through PlayerState. */
+  private readonly conditionIdsByPlayer = new Map<string, string[]>();
   private pendingDecision?: PendingDecision;
   private activeTest?: ActiveTest;
 
@@ -155,13 +158,15 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
             ...(baseGameAncientOnes.find(ancient => ancient.id === this.state.ancientOneId)?.mythosDeck ?? []).flatMap(stage => randomShuffleIndexes(stage.green + stage.yellow + stage.blue)),
           ],
         })
-      : parsed.data.command.type === "ACQUIRE_ASSETS"
+        : parsed.data.command.type === "ACQUIRE_ASSETS" || parsed.data.command.type === "USE_CONDITION_ACTION"
         ? createDeterministicEngineContext({
-            dice: Array.from({ length: 5 }, () => randomInt(1, 7)),
+            dice: Array.from({ length: 12 }, () => randomInt(1, 7)),
             ids: [randomUUID(), randomUUID()],
           })
         : parsed.data.command.type === "RESOLVE_DECISION" || parsed.data.command.type === "OFFER_TRADE"
-          ? createDeterministicEngineContext({ dice: [randomInt(1, 7)], ids: [randomUUID(), randomUUID()] })
+          ? createDeterministicEngineContext({ dice: Array.from({ length: 12 }, () => randomInt(1, 7)), ids: [randomUUID(), randomUUID()], tokenIndexes: [randomInt(Math.max(1, this.privateState.tokenPoolById["condition:debt"]?.length ?? 0))] })
+          : parsed.data.command.type === "REST"
+            ? createDeterministicEngineContext({ ids: [randomUUID()] })
           : undefined;
     const result = executeCommand(this.toEngineState(), playerId, parsed.data.command, baseGameContent, context);
     if (result.ok === false) {
@@ -191,6 +196,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       turnNumber: this.state.turnNumber,
       actionsRemaining: this.state.actionsRemaining,
       performedActions: this.state.performedActions ? this.state.performedActions.split(",") as GameState["performedActions"] : [],
+      usedConditionActionIds: this.state.usedConditionActionIds ? this.state.usedConditionActionIds.split(",") : [],
       monsterLocationIds: [],
       reserveAssetIds: this.state.reserveAssetIds ? this.state.reserveAssetIds.split(",") : [],
       assetDiscardIds: this.state.assetDiscardIds ? this.state.assetDiscardIds.split(",") : [],
@@ -213,7 +219,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
           ...Array.from({ length: player.shipTickets }, () => "ship" as const),
         ],
         assetIds: player.assetIds ? player.assetIds.split(",") : [],
-        conditionIds: player.conditionIds ? player.conditionIds.split(",") : [],
+        conditionIds: [...(this.conditionIdsByPlayer.get(player.id) ?? [])],
         clues: player.clues,
         skillImprovements: {
           lore: player.loreImprovement,
@@ -251,6 +257,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     this.state.turnNumber = engineState.turnNumber;
     this.state.actionsRemaining = engineState.actionsRemaining;
     this.state.performedActions = engineState.performedActions.join(",");
+    this.state.usedConditionActionIds = (engineState.usedConditionActionIds ?? []).join(",");
     this.state.reserveAssetIds = engineState.reserveAssetIds.join(",");
     this.state.assetDiscardIds = engineState.assetDiscardIds.join(",");
     for (const enginePlayer of engineState.players) {
@@ -265,7 +272,8 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       player.trainTickets = enginePlayer.travelTickets?.filter((ticket) => ticket === "train").length ?? 0;
       player.shipTickets = enginePlayer.travelTickets?.filter((ticket) => ticket === "ship").length ?? 0;
       player.assetIds = enginePlayer.assetIds.join(",");
-      player.conditionIds = (enginePlayer.conditionIds ?? []).join(",");
+      this.conditionIdsByPlayer.set(enginePlayer.id, [...(enginePlayer.conditionIds ?? [])]);
+      player.conditionIds = (enginePlayer.conditionIds ?? []).map(publicConditionId).join(",");
       player.clues = enginePlayer.clues;
       player.delayed = enginePlayer.delayed ?? false;
       player.defeated = enginePlayer.defeated ?? false;

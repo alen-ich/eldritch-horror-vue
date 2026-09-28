@@ -29,6 +29,7 @@ interface ClientPlayerState {
   trainTickets: number
   shipTickets: number
   assetIds: string
+  conditionIds: string
   clues: number
   loreImprovement: number
   influenceImprovement: number
@@ -55,6 +56,7 @@ interface ClientGameState {
   turnNumber?: number
   actionsRemaining?: number
   performedActions?: string
+  usedConditionActionIds?: string
   reserveAssetIds?: string
   assetDiscardIds?: string
   activeTest?: {
@@ -100,6 +102,7 @@ const activePlayerId = ref('')
 const turnNumber = ref(0)
 const actionsRemaining = ref(0)
 const performedActions = ref<string[]>([])
+const usedConditionActionIds = ref<string[]>([])
 const reserveAssetIds = ref<string[]>([])
 const assetDiscardIds = ref<string[]>([])
 const activeTest = ref<ActiveTest>()
@@ -133,6 +136,7 @@ export function useGameRoom() {
     turnNumber.value = state.turnNumber ?? 0
     actionsRemaining.value = state.actionsRemaining ?? 0
     performedActions.value = state.performedActions ? state.performedActions.split(',') : []
+    usedConditionActionIds.value = state.usedConditionActionIds ? state.usedConditionActionIds.split(',') : []
     reserveAssetIds.value = state.reserveAssetIds ? state.reserveAssetIds.split(',') : []
     assetDiscardIds.value = state.assetDiscardIds ? state.assetDiscardIds.split(',') : []
     activeTest.value = state.activeTest ? {
@@ -168,6 +172,7 @@ export function useGameRoom() {
       trainTickets: player.trainTickets,
       shipTickets: player.shipTickets,
       assetIds: player.assetIds,
+      conditionIds: player.conditionIds,
       clues: player.clues,
       loreImprovement: player.loreImprovement,
       influenceImprovement: player.influenceImprovement,
@@ -252,7 +257,7 @@ export function useGameRoom() {
     doom: readonly(doom), omen: readonly(omen),
     tradeOffer: readonly(tradeOffer),
     players: readonly(players), stateVersion: readonly(stateVersion), phase: readonly(phase), ancientOneId: readonly(ancientOneId), activeMysteryId: readonly(activeMysteryId), mysteryProgress: readonly(mysteryProgress), mysteryTarget: readonly(mysteryTarget), completedMysteryIds: readonly(completedMysteryIds), gameResult: readonly(gameResult), activePlayerId: readonly(activePlayerId),
-    turnNumber: readonly(turnNumber), actionsRemaining: readonly(actionsRemaining), performedActions: readonly(performedActions), reserveAssetIds: readonly(reserveAssetIds), assetDiscardIds: readonly(assetDiscardIds), activeTest: readonly(activeTest), pendingDecision: readonly(pendingDecision), playerId: readonly(playerId), roomId: readonly(roomId),
+    turnNumber: readonly(turnNumber), actionsRemaining: readonly(actionsRemaining), performedActions: readonly(performedActions), usedConditionActionIds: readonly(usedConditionActionIds), reserveAssetIds: readonly(reserveAssetIds), assetDiscardIds: readonly(assetDiscardIds), activeTest: readonly(activeTest), pendingDecision: readonly(pendingDecision), playerId: readonly(playerId), roomId: readonly(roomId),
     status: readonly(status), errorMessage: readonly(errorMessage), createGame, joinGame, reconnect, send
   }
 }

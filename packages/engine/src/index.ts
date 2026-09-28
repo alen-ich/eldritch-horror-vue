@@ -17,7 +17,7 @@ import { calculateDicePool, countTestSuccesses } from "./skill-tests.js";
 import { loseResource, recoverResource } from "./resources.js";
 import { buildMythosDeck, type AncientSetup, type MythosColor } from "./setup.js";
 import { resolveStandardCombat, type CombatCheck } from "./combat.js";
-import { conditionSuccessThreshold } from "./conditions.js";
+import { conditionSuccessThreshold, publicConditionId, resolveBoonBaneGain } from "./conditions.js";
 export * from "./setup.js";
 export * from "./skill-tests.js";
 export * from "./resources.js";
@@ -153,6 +153,7 @@ export interface GameState {
   turnNumber: number;
   actionsRemaining: number;
   performedActions: ActionType[];
+  usedConditionActionIds?: string[];
   monsterLocationIds: LocationId[];
   monsters?: MonsterInstance[];
   reserveAssetIds: string[];
@@ -188,6 +189,7 @@ export type AssetEngineEffect =
   | { type: "on_gain_recover_all_and_discard" };
 
 export interface GameContent {
+  conditions?: readonly { id: string; kind: string }[];
   monsters?: readonly MonsterCombatDefinition[];
   ancientOnes?: Readonly<Partial<Record<AncientOneId, AncientSetup>>>;
   mythosCards?: readonly { id: string; color: MythosColor }[];
@@ -199,6 +201,8 @@ export interface GameContent {
 }
 
 export type RuleErrorCode =
+  | "CONDITION_ACTION_INVALID" | "CONDITION_RESTRICTED"
+  | "CONDITION_CONTENT_MISSING" | "CONDITION_UNAVAILABLE" | "CONDITION_NOT_HELD" | "CONDITION_EFFECT_UNSUPPORTED"
   | "INVALID_COMBAT" | "MONSTER_CONTENT_MISSING" | "MONSTER_EFFECT_UNSUPPORTED"
   | "INVALID_DEFEAT" | "INVESTIGATOR_DEFEATED" | "INVALID_DAMAGE"
   | "INVALID_TRADE"
@@ -248,6 +252,7 @@ export function createLobby(playerIds: string[]): GameState {
     turnNumber: 0,
     actionsRemaining: 0,
     performedActions: [],
+    usedConditionActionIds: [],
     monsterLocationIds: [],
     reserveAssetIds: [],
     assetDiscardIds: [],
@@ -288,16 +293,17 @@ export function projectStateForPlayer(state: GameState, viewerPlayerId?: string)
       ...player,
       travelTickets: player.travelTickets ? [...player.travelTickets] : undefined,
       assetIds: [...player.assetIds],
-      ...(player.conditionIds ? { conditionIds: [...player.conditionIds] } : {}),
+      ...(player.conditionIds ? { conditionIds: player.conditionIds.map(publicConditionId) } : {}),
       skillImprovements: { ...player.skillImprovements },
     })),
     performedActions: [...publicState.performedActions],
+    usedConditionActionIds: [...(publicState.usedConditionActionIds ?? [])],
     monsterLocationIds: [...publicState.monsterLocationIds],
     monsters: publicState.monsters?.map(monster => ({ ...monster })),
     reserveAssetIds: [...publicState.reserveAssetIds],
     assetDiscardIds: [...publicState.assetDiscardIds],
     completedMysteryIds: [...publicState.completedMysteryIds],
-    activeTest: publicState.activeTest ? { ...publicState.activeTest, dice: [...publicState.activeTest.dice] } : undefined,
+    activeTest: publicState.activeTest ? { ...publicState.activeTest, sourceConditionId: undefined, dice: [...publicState.activeTest.dice] } : undefined,
     pendingDecision: pendingDecision
       ? pendingDecision.visibility === "public" || pendingDecision.playerId === viewerPlayerId
         ? cloneDecision(pendingDecision)
@@ -308,6 +314,61 @@ export function projectStateForPlayer(state: GameState, viewerPlayerId?: string)
 
 export function projectPublicState(state: GameState): PublicEngineGameState {
   return projectStateForPlayer(state);
+}
+
+function conditionPoolKey(kind: string): string {
+  return `condition:${kind}`;
+}
+
+const restRecoverableKinds = new Set(["amnesia", "leg_injury", "internal_injury", "paranoia", "hallucinations", "back_injury"]);
+
+function recoverableConditionIds(player: EnginePlayer, content: GameContent): string[] {
+  return (player.conditionIds ?? []).filter(id => restRecoverableKinds.has(content.conditions?.find(card => card.id === id)?.kind ?? "")).map(publicConditionId);
+}
+
+function returnConditionToPool(state: GameState, player: EnginePlayer, cardId: string, content: GameContent): boolean {
+  const condition = content.conditions?.find(card => card.id === cardId);
+  if (!condition || !player.conditionIds?.includes(cardId)) return false;
+  player.conditionIds = player.conditionIds.filter(id => id !== cardId);
+  const key = conditionPoolKey(condition.kind);
+  state.privateState.tokenPoolById[key] = [...(state.privateState.tokenPoolById[key] ?? []), cardId];
+  return true;
+}
+
+/** Internal rule effect. The client cannot grant itself a Condition. */
+export function gainCondition(state: GameState, playerId: string, kind: string, content: GameContent, context: EngineContext): CommandResult {
+  if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
+  if (state.phase === "lobby") return failure("WRONG_PHASE", "Conditions cannot be gained before setup.");
+  const player = state.players.find(candidate => candidate.id === playerId);
+  if (!player) return failure("PLAYER_NOT_FOUND", "Investigator not found.");
+  if (player.defeated || player.eliminated) return failure("INVESTIGATOR_DEFEATED", "No active investigator can gain a Condition.");
+  if (!content.conditions?.some(card => card.kind === kind)) return failure("CONDITION_CONTENT_MISSING", "Condition kind is missing from content.");
+  const owned = player.conditionIds ?? [];
+  if (kind === "blessed" || kind === "cursed") {
+    const replacement = resolveBoonBaneGain(owned, kind);
+    if (replacement.type === "discard_opposite") return discardCondition(state, playerId, replacement.cardId, content);
+    if (replacement.type === "flip_existing") return failure("CONDITION_EFFECT_UNSUPPORTED", "The existing Condition's reverse effect is not executable yet.");
+  } else if (owned.some(id => content.conditions?.find(card => card.id === id)?.kind === kind)) {
+    return success(structuredClone(state), [{ type: "CONDITION_GAIN_PREVENTED", playerId, kind }]);
+  }
+  const key = conditionPoolKey(kind);
+  const pool = state.privateState.tokenPoolById[key];
+  if (!pool?.length) return failure("CONDITION_UNAVAILABLE", "No copy of that Condition remains available.");
+  const { token, remaining } = context.drawToken(pool);
+  const next = structuredClone(state);
+  next.privateState.tokenPoolById[key] = remaining;
+  const recipient = next.players.find(candidate => candidate.id === playerId)!;
+  recipient.conditionIds = [...(recipient.conditionIds ?? []), token];
+  return success(next, [{ type: "CONDITION_GAINED", playerId, conditionId: publicConditionId(token) }]);
+}
+
+/** Internal effect and cleanup path; returns the physical card to its matching supply. */
+export function discardCondition(state: GameState, playerId: string, cardId: string, content: GameContent): CommandResult {
+  const next = structuredClone(state);
+  const player = next.players.find(candidate => candidate.id === playerId);
+  if (!player) return failure("PLAYER_NOT_FOUND", "Investigator not found.");
+  if (!returnConditionToPool(next, player, cardId, content)) return failure("CONDITION_NOT_HELD", "That Condition is not held by this investigator.");
+  return success(next, [{ type: "CONDITION_DISCARDED", playerId, conditionId: publicConditionId(cardId) }]);
 }
 
 function failure(code: RuleErrorCode, message: string): CommandResult {
@@ -610,17 +671,20 @@ function createTestRerollDecision(state: GameState, test: ActiveTest, context: E
   };
 }
 
-function createAcquireAssetsDecision(state: GameState, test: ActiveTest, context: EngineContext): GameEvent[] {
+function createAcquireAssetsDecision(state: GameState, test: ActiveTest, content: GameContent, context: EngineContext): GameEvent[] {
   state.activeTest = undefined;
+  const player = state.players.find(candidate => candidate.id === test.playerId);
+  const hasDebt = player?.conditionIds?.some(id => content.conditions?.find(card => card.id === id)?.kind === "debt") ?? false;
+  const bankLoanAvailable = !hasDebt && (state.privateState.tokenPoolById[conditionPoolKey("debt")]?.length ?? 0) > 0;
   state.pendingDecision = {
     id: context.createId(),
     kind: "select_acquired_cards",
     playerId: test.playerId,
     visibility: "owner",
-    prompt: `Choose Assets with a total value of ${test.successes} or less.`,
-    optionIds: [...state.reserveAssetIds],
+    prompt: `Choose Assets with a total value of ${test.successes} or less.${bankLoanAvailable ? " You may take a Bank Loan (gain Debt) for 2 extra successes." : ""}`,
+    optionIds: [...state.reserveAssetIds, ...(bankLoanAvailable ? ["bank-loan"] : [])],
     minSelections: 0,
-    maxSelections: state.reserveAssetIds.length,
+    maxSelections: state.reserveAssetIds.length + (bankLoanAvailable ? 1 : 0),
     selectionBudget: test.successes,
     continuation: "acquire_assets_purchase",
   };
@@ -633,10 +697,27 @@ function createAcquireAssetsDecision(state: GameState, test: ActiveTest, context
   }];
 }
 
+function finishSkillTest(state: GameState, test: ActiveTest, content: GameContent, context: EngineContext): GameEvent[] {
+  if (test.continuation === "acquire_assets") return createAcquireAssetsDecision(state, test, content, context);
+  state.activeTest = undefined;
+  const conditionId = test.sourceConditionId;
+  const owner = conditionId ? state.players.find(player => player.conditionIds?.includes(conditionId)) : undefined;
+  const events: GameEvent[] = [{ type: "TEST_RESOLVED", testId: test.id, playerId: test.playerId, successes: test.successes, continuation: test.continuation }];
+  if (conditionId && owner && test.successes > 0) {
+    if (returnConditionToPool(state, owner, conditionId, content)) {
+      events.push({ type: "CONDITION_DISCARDED", playerId: owner.id, conditionId: publicConditionId(conditionId) });
+    }
+  }
+  if (conditionId && owner) state.usedConditionActionIds = [...(state.usedConditionActionIds ?? []), `condition_action:${owner.id}:${publicConditionId(conditionId)}`];
+  const actorIndex = state.players.findIndex(player => player.id === test.playerId);
+  completeAction(state, actorIndex, "component", events);
+  return events;
+}
+
 function beginSkillTest(
   state: GameState,
   player: EnginePlayer,
-  request: { skill: SkillId; modifier: number; continuation: ActiveTest["continuation"]; itemBonuses?: readonly number[]; otherBonuses?: readonly number[] },
+  request: { skill: SkillId; modifier: number; continuation: ActiveTest["continuation"]; sourceConditionId?: string; itemBonuses?: readonly number[]; otherBonuses?: readonly number[] },
   content: GameContent,
   context: EngineContext,
 ): GameEvent[] {
@@ -663,6 +744,7 @@ function beginSkillTest(
     successes: 0,
     successThreshold: conditionSuccessThreshold(player.conditionIds ?? []),
     continuation: request.continuation,
+    sourceConditionId: request.sourceConditionId,
   };
   test.successes = countActiveTestSuccesses(test, player, content);
   state.activeTest = test;
@@ -676,7 +758,7 @@ function beginSkillTest(
     successes: test.successes,
   }];
   if (player.clues > 0) createTestRerollDecision(state, test, context);
-  else events.push(...createAcquireAssetsDecision(state, test, context));
+  else events.push(...finishSkillTest(state, test, content, context));
   return events;
 }
 
@@ -701,6 +783,7 @@ export function executeCommand(
       skillImprovements: { ...player.skillImprovements },
     })),
     performedActions: [...state.performedActions],
+    usedConditionActionIds: [...(state.usedConditionActionIds ?? [])],
     monsterLocationIds: [...state.monsterLocationIds],
     reserveAssetIds: [...state.reserveAssetIds],
     assetDiscardIds: [...state.assetDiscardIds],
@@ -725,6 +808,7 @@ export function executeCommand(
     if (state.leadInvestigatorId === actorPlayerId && survivors.length && !survivors.some(player => player.id === command.leadPlayerId)) return failure("INVALID_DEFEAT", "Choose a surviving lead investigator.");
     next.defeatedInvestigators = [...(state.defeatedInvestigators ?? []), { investigatorId: actor.investigatorId!, locationId: command.cityId, cause: command.cause, assetIds: [...actor.assetIds], clues: actor.clues, travelTickets: [...(actor.travelTickets ?? [])] }];
     actor.assetIds = [];
+    for (const id of [...(actor.conditionIds ?? [])]) returnConditionToPool(next, actor, id, content);
     actor.clues = 0;
     actor.travelTickets = [];
     actor.skillImprovements = {};
@@ -754,6 +838,7 @@ export function executeCommand(
     actor.skillImprovements = {};
     actor.travelTickets = [];
     actor.assetIds = [];
+    actor.conditionIds = [];
     for (const id of setup.startingAssetIds) {
       const piles = [next.privateState.deckOrderById.assets ?? [], next.assetDiscardIds, next.reserveAssetIds];
       const pile = piles.find(cards => cards.includes(id));
@@ -822,16 +907,48 @@ export function executeCommand(
         );
       }
       if (selectedDie && actor.clues > 0) createTestRerollDecision(next, activeTest, context);
-      else events.push(...createAcquireAssetsDecision(next, activeTest, context));
+      else events.push(...finishSkillTest(next, activeTest, content, context));
+      return success(next, events);
+    }
+    if (decision.continuation === "condition_rest_recovery") {
+      if (!context && selections.length) return failure("RANDOM_INPUT_REQUIRED", "Condition recovery requires deterministic dice input.");
+      next.pendingDecision = undefined;
+      const events: GameEvent[] = [{ type: "DECISION_RESOLVED", decisionId: decision.id, playerId: actorPlayerId, selectedOptionIds: [...selections] }];
+      for (const conditionId of selections) {
+        const physicalId = actor.conditionIds?.find(id => publicConditionId(id) === conditionId);
+        if (!physicalId) return failure("CONDITION_NOT_HELD", "That Condition is no longer held.");
+        const die = context!.rollDie();
+        const discarded = die >= 5;
+        if (discarded) returnConditionToPool(next, actor, physicalId, content);
+        events.push({ type: "CONDITION_RECOVERY_ROLLED", playerId: actorPlayerId, conditionId, die, discarded });
+        if (discarded) events.push({ type: "CONDITION_DISCARDED", playerId: actorPlayerId, conditionId });
+      }
+      completeAction(next, actorIndex, "rest", events);
       return success(next, events);
     }
     if (decision.continuation === "acquire_assets_purchase") {
+      const takesLoan = selections.includes("bank-loan");
+      const assetSelections = selections.filter(id => id !== "bank-loan");
       const totalValue = selections.reduce((total, assetId) =>
-        total + (content.assets.find(({ id }) => id === assetId)?.value ?? Number.POSITIVE_INFINITY), 0);
-      if (totalValue > (decision.selectionBudget ?? 0)) {
+        total + (assetId === "bank-loan" ? 0 : content.assets.find(({ id }) => id === assetId)?.value ?? Number.POSITIVE_INFINITY), 0);
+      if (totalValue > (decision.selectionBudget ?? 0) + (takesLoan ? 2 : 0)) {
         return failure("ASSET_PURCHASE_OVER_BUDGET", "The selected Assets cost more than the Influence test successes.");
       }
-      if (selections.length === 0) {
+      if (takesLoan && !context) return failure("RANDOM_INPUT_REQUIRED", "Taking a Bank Loan requires a deterministic Condition draw.");
+      const events: GameEvent[] = [{
+        type: "DECISION_RESOLVED", decisionId: decision.id, playerId: actorPlayerId, selectedOptionIds: [...selections],
+      }];
+      if (takesLoan) {
+        const pool = next.privateState.tokenPoolById[conditionPoolKey("debt")];
+        if (!pool?.length || actor.conditionIds?.some(id => content.conditions?.find(card => card.id === id)?.kind === "debt")) {
+          return failure("CONDITION_UNAVAILABLE", "A Bank Loan cannot be taken while holding Debt or without a Debt card.");
+        }
+        const { token, remaining } = context!.drawToken(pool);
+        next.privateState.tokenPoolById[conditionPoolKey("debt")] = remaining;
+        actor.conditionIds = [...(actor.conditionIds ?? []), token];
+        events.push({ type: "CONDITION_GAINED", playerId: actorPlayerId, conditionId: publicConditionId(token) });
+      }
+      if (assetSelections.length === 0) {
         if (!context) return failure("RANDOM_INPUT_REQUIRED", "Continuing the Acquire Assets action requires deterministic ID input.");
         next.pendingDecision = {
           id: context.createId(),
@@ -844,23 +961,12 @@ export function executeCommand(
           maxSelections: 1,
           continuation: "acquire_assets_discard",
         };
-        return success(next, [{
-          type: "DECISION_RESOLVED",
-          decisionId: decision.id,
-          playerId: actorPlayerId,
-          selectedOptionIds: [],
-        }]);
+        return success(next, events);
       }
       next.pendingDecision = undefined;
-      next.reserveAssetIds = next.reserveAssetIds.filter((assetId) => !selections.includes(assetId));
+      next.reserveAssetIds = next.reserveAssetIds.filter((assetId) => !assetSelections.includes(assetId));
       refillReserve(next);
-      const events: GameEvent[] = [{
-        type: "DECISION_RESOLVED",
-        decisionId: decision.id,
-        playerId: actorPlayerId,
-        selectedOptionIds: [...selections],
-      }];
-      for (const assetId of selections) {
+      for (const assetId of assetSelections) {
         events.push({ type: "ASSET_GAINED", playerId: actorPlayerId, assetId, source: "reserve" });
         const asset = content.assets.find(({ id }) => id === assetId);
         if (asset?.engineEffects.some(({ type }) => type === "on_gain_recover_all_and_discard")) {
@@ -965,6 +1071,7 @@ export function executeCommand(
     next.turnNumber = 1;
     next.actionsRemaining = 2;
     next.performedActions = [];
+    next.usedConditionActionIds = [];
     next.activeMysteryId = activeMysteryId;
     next.mysteryProgress = 0;
     next.mysteryTarget = mysteryTarget;
@@ -974,6 +1081,10 @@ export function executeCommand(
     next.reserveAssetIds = shuffledAssets.splice(0, 4);
     next.assetDiscardIds = [];
     next.privateState.deckOrderById.assets = shuffledAssets;
+    for (const condition of content.conditions ?? []) {
+      const key = conditionPoolKey(condition.kind);
+      (next.privateState.tokenPoolById[key] ??= []).push(condition.id);
+    }
     const ancient = content.ancientOnes?.[state.ancientOneId];
     if (ancient) {
       next.doom = ancient.startingDoom;
@@ -995,6 +1106,7 @@ export function executeCommand(
       player.maxSanity = setup.sanity;
       player.travelTickets = [];
       player.assetIds = [...setup.startingAssetIds];
+      player.conditionIds = [];
       player.clues = setup.startingClues;
       player.skillImprovements = {};
       events.push(...player.assetIds.map((assetId) => ({
@@ -1017,7 +1129,26 @@ export function executeCommand(
     advanceActionInvestigator(next, actorIndex, events);
     return success(next, events);
   }
+  if (actor.conditionIds?.some(id => content.conditions?.find(card => card.id === id)?.kind === "detained")
+    && command.type !== "USE_CONDITION_ACTION" && command.type !== "END_ACTIONS") {
+    return failure("CONDITION_RESTRICTED", "A Detained investigator cannot perform other actions.");
+  }
   if (state.actionsRemaining < 1 && command.type !== "END_ACTIONS") return failure("NO_ACTIONS_REMAINING", "This investigator has no actions remaining.");
+
+  if (command.type === "USE_CONDITION_ACTION") {
+    const owner = next.players.find(player => player.id === command.targetPlayerId);
+    const conditionId = owner?.conditionIds?.find(id => content.conditions?.find(card => card.id === id)?.kind === command.conditionKind);
+    const kind = command.conditionKind;
+    if (!owner || !conditionId || !owner.locationId || owner.locationId !== actor.locationId || (kind !== "debt" && kind !== "detained")
+      || next.usedConditionActionIds?.includes(`condition_action:${owner.id}:condition_${kind}`)) {
+      return failure("CONDITION_ACTION_INVALID", "The local Condition action is not available on this space or was already used this round.");
+    }
+    if (actor.conditionIds?.some(id => content.conditions?.find(card => card.id === id)?.kind === "detained") && (kind !== "detained" || owner.id !== actor.id)) {
+      return failure("CONDITION_RESTRICTED", "A Detained investigator can use only the action on Detained.");
+    }
+    if (!context) return failure("RANDOM_INPUT_REQUIRED", "The Condition action requires deterministic dice and ID input.");
+    return success(next, beginSkillTest(next, actor, { skill: "influence", modifier: 0, continuation: "condition_action", sourceConditionId: conditionId }, content, context));
+  }
 
   if (command.type === "OFFER_TRADE") {
     if (state.performedActions.includes("trade")) return failure("ACTION_ALREADY_PERFORMED", "Trade can be performed only once per round.");
@@ -1062,6 +1193,17 @@ export function executeCommand(
     actor.health = recoverResource(actor.health ?? 0, actor.maxHealth ?? actor.health ?? 0, 1).value;
     actor.sanity = recoverResource(actor.sanity ?? 0, actor.maxSanity ?? actor.sanity ?? 0, 1 + additionalSanity).value;
     const events: GameEvent[] = [{ type: "INVESTIGATOR_RESTED", playerId: actorPlayerId, health: actor.health, sanity: actor.sanity }];
+    const recoverable = recoverableConditionIds(actor, content);
+    if (recoverable.length) {
+      if (!context) return failure("RANDOM_INPUT_REQUIRED", "Resting with Conditions requires a decision ID.");
+      next.pendingDecision = {
+        id: context.createId(), kind: "recover_conditions", playerId: actorPlayerId, visibility: "owner",
+        prompt: "Choose which Injury or Madness Conditions to roll to discard (5 or 6).",
+        optionIds: recoverable, minSelections: 0, maxSelections: recoverable.length,
+        continuation: "condition_rest_recovery",
+      };
+      return success(next, events);
+    }
     completeAction(next, actorIndex, "rest", events);
     return success(next, events);
   }

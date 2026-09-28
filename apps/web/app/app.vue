@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { baseGameAncientOnes, baseGameAssets, baseGameBoardDimensions, baseGameInvestigators, baseGameLocations, baseGameMap, baseGameMysteries, baseGameRoutes, skillNames } from '@eldritch/content'
-import type { AssetCardData } from '@eldritch/content'
+import { baseGameAncientOnes, baseGameAssets, baseGameBoardDimensions, baseGameConditions, baseGameInvestigators, baseGameLocations, baseGameMap, baseGameMysteries, baseGameRoutes, skillNames } from '@eldritch/content'
+import type { AssetCardData, ConditionCard } from '@eldritch/content'
 import type { AncientOneId, InvestigatorId, LocationId } from '@eldritch/protocol'
 
 const displayName = ref('')
@@ -16,6 +16,7 @@ const activeTrayTab = ref('assets')
 const selectedReserveAssetIds = ref<string[]>([])
 const travelRoute = ref<LocationId[]>([])
 const selectedRerollOptionId = ref<string>()
+const selectedConditionRecoveryIds = ref<string[]>([])
 const trayTabs = [
   { id: 'assets', label: 'Assets', icon: '◆' },
   { id: 'spells', label: 'Spells', icon: '✦' },
@@ -28,6 +29,7 @@ const game = useGameRoom()
 const locationById = Object.fromEntries(baseGameLocations.map((location) => [location.id, location])) as Record<LocationId, typeof baseGameLocations[number]>
 const investigatorById = Object.fromEntries(baseGameInvestigators.map((investigator) => [investigator.id, investigator]))
 const assetById = Object.fromEntries(baseGameAssets.map((asset) => [asset.id, asset]))
+const conditionById = Object.fromEntries(baseGameConditions.flatMap((card) => [[card.id, card], [`condition_${card.kind}`, card]]))
 const me = computed(() => game.players.value.find((player) => player.id === game.playerId.value))
 const displayedPlayer = computed(() => game.players.value.find((player) => player.id === selectedPlayerId.value) ?? me.value ?? game.players.value[0])
 const displayedInvestigator = computed(() => displayedPlayer.value?.investigatorId ? investigatorById[displayedPlayer.value.investigatorId] : undefined)
@@ -36,6 +38,13 @@ const selectedByInvestigator = computed(() => new Map(game.players.value
   .filter((player) => player.investigatorId)
   .map((player) => [player.investigatorId, player])))
 const isMyTurn = computed(() => game.phase.value === 'action' && game.activePlayerId.value === game.playerId.value && !game.pendingDecision.value && !game.gameResult.value)
+const isDetained = computed(() => (me.value?.conditionIds?.split(',') ?? []).some(id => conditionById[id]?.kind === 'detained'))
+const canUseNormalActions = computed(() => isMyTurn.value && !isDetained.value)
+const localConditionActions = computed(() => game.players.value.flatMap(player => (player.conditionIds ? player.conditionIds.split(',') : [])
+  .filter(id => player.locationId === me.value?.locationId && ['debt', 'detained'].includes(conditionById[id]?.kind ?? '')
+    && !game.usedConditionActionIds.value.includes(`condition_action:${player.id}:${id}`)
+    && (!isDetained.value || (player.id === me.value?.id && conditionById[id]?.kind === 'detained')))
+  .map(id => ({ id, kind: conditionById[id]!.kind, ownerId: player.id, name: conditionById[id]?.name ?? 'Condition', owner: player.displayName }))))
 const travelOrigin = computed(() => travelRoute.value.at(-1) ?? me.value?.locationId as LocationId | undefined)
 const travelTicketsUsed = computed(() => {
   const used = { train: 0, ship: 0 }
@@ -48,7 +57,7 @@ const travelTicketsUsed = computed(() => {
   return used
 })
 const legalDestinations = computed(() => new Set(
-  !isMyTurn.value || game.performedActions.value.includes('travel') || travelRoute.value.length >= 3 || !travelOrigin.value
+  !canUseNormalActions.value || game.performedActions.value.includes('travel') || travelRoute.value.length >= 3 || !travelOrigin.value
     ? []
     : (baseGameMap.adjacentLocationIds[travelOrigin.value] ?? []).filter(destination => {
       if (!travelRoute.value.length) return true
@@ -62,6 +71,8 @@ const legalDestinations = computed(() => new Set(
 const inspectedLocation = computed(() => inspectedLocationId.value ? locationById[inspectedLocationId.value] : undefined)
 const myAssetIds = computed(() => me.value?.assetIds ? me.value.assetIds.split(',') : [])
 const ownedAssets = computed(() => myAssetIds.value.map((id) => assetById[id]).filter((asset): asset is AssetCardData => Boolean(asset)))
+const ownedConditions = computed(() => (me.value?.conditionIds ? me.value.conditionIds.split(',') : [])
+  .map(id => conditionById[id]).filter((card): card is ConditionCard => Boolean(card)))
 const privateAssetDecision = computed(() => {
   const decision = game.pendingDecision.value
   return decision && decision.playerId === game.playerId.value && 'optionIds' in decision
@@ -71,6 +82,11 @@ const privateRerollDecision = computed(() => {
   const decision = game.pendingDecision.value
   return decision && decision.playerId === game.playerId.value && 'optionIds' in decision
     && decision.kind === 'select_rerolls' ? decision : undefined
+})
+const privateConditionRecoveryDecision = computed(() => {
+  const decision = game.pendingDecision.value
+  return decision && decision.playerId === game.playerId.value && 'optionIds' in decision
+    && decision.kind === 'recover_conditions' ? decision : undefined
 })
 const selectedReserveValue = computed(() => selectedReserveAssetIds.value.reduce((total, id) => total + (assetById[id]?.value ?? 0), 0))
 const inspectedRoutes = computed(() => inspectedLocationId.value
@@ -105,6 +121,7 @@ watch(() => privateAssetDecision.value?.id, () => { selectedReserveAssetIds.valu
 watch(() => game.stateVersion.value, () => { travelRoute.value = [] })
 watch(() => game.roomId.value, () => { travelRoute.value = [] })
 watch(() => privateRerollDecision.value?.id, () => { selectedRerollOptionId.value = undefined })
+watch(() => privateConditionRecoveryDecision.value?.id, () => { selectedConditionRecoveryIds.value = [] })
 
 async function createGame() {
   await game.createGame(displayName.value.trim() || 'Host')
@@ -133,7 +150,7 @@ function move(destinationId: LocationId) {
 }
 
 function confirmTravel() {
-  if (!isMyTurn.value || !travelRoute.value.length) return
+  if (!canUseNormalActions.value || !travelRoute.value.length) return
   game.send({ type: 'TRAVEL', destinationIds: [...travelRoute.value] })
 }
 
@@ -182,6 +199,7 @@ function toggleReserveAsset(assetId: string) {
   const decision = privateAssetDecision.value
   if (!decision || !decision.optionIds.includes(assetId)) return
   if (selectedReserveAssetIds.value.includes(assetId)) {
+    if (assetId === 'bank-loan' && selectedReserveValue.value > (decision.selectionBudget ?? 0)) return
     selectedReserveAssetIds.value = selectedReserveAssetIds.value.filter((id) => id !== assetId)
     return
   }
@@ -190,7 +208,7 @@ function toggleReserveAsset(assetId: string) {
     return
   }
   const nextValue = selectedReserveValue.value + (assetById[assetId]?.value ?? 0)
-  if (nextValue <= (decision.selectionBudget ?? 0)) selectedReserveAssetIds.value = [...selectedReserveAssetIds.value, assetId]
+  if (nextValue <= (decision.selectionBudget ?? 0) + (selectedReserveAssetIds.value.includes('bank-loan') ? 2 : 0)) selectedReserveAssetIds.value = [...selectedReserveAssetIds.value, assetId]
 }
 
 function resolveAssetDecision() {
@@ -207,6 +225,18 @@ function resolveRerollDecision() {
     decisionId: decision.id,
     selectedOptionIds: selectedRerollOptionId.value ? [selectedRerollOptionId.value] : []
   })
+}
+
+function toggleConditionRecovery(conditionId: string) {
+  if (!privateConditionRecoveryDecision.value?.optionIds.includes(conditionId)) return
+  selectedConditionRecoveryIds.value = selectedConditionRecoveryIds.value.includes(conditionId)
+    ? selectedConditionRecoveryIds.value.filter(id => id !== conditionId)
+    : [...selectedConditionRecoveryIds.value, conditionId]
+}
+
+function resolveConditionRecovery() {
+  const decision = privateConditionRecoveryDecision.value
+  if (decision) game.send({ type: 'RESOLVE_DECISION', decisionId: decision.id, selectedOptionIds: selectedConditionRecoveryIds.value })
 }
 
 async function copyInvite() {
@@ -344,6 +374,18 @@ async function copyInvite() {
             <strong>{{ game.activeTest.value.successes }} {{ game.activeTest.value.successes === 1 ? 'success' : 'successes' }}</strong>
             <button class="primary" @click="resolveRerollDecision">{{ selectedRerollOptionId ? 'Spend 1 Clue and reroll' : 'Keep result' }}</button>
           </section>
+          <section v-if="privateConditionRecoveryDecision" class="test-dialog" role="dialog" aria-modal="true" aria-labelledby="condition-recovery-title">
+            <p class="chapter">Rest recovery</p>
+            <h2 id="condition-recovery-title">Treat your Conditions</h2>
+            <p>{{ privateConditionRecoveryDecision.prompt }}</p>
+            <div class="test-dice" role="group" aria-label="Conditions to treat">
+              <button v-for="conditionId in privateConditionRecoveryDecision.optionIds" :key="conditionId"
+                :class="{ selected: selectedConditionRecoveryIds.includes(conditionId) }"
+                :aria-pressed="selectedConditionRecoveryIds.includes(conditionId)"
+                @click="toggleConditionRecovery(conditionId)">{{ conditionById[conditionId]?.name }}</button>
+            </div>
+            <button class="primary" @click="resolveConditionRecovery">{{ selectedConditionRecoveryIds.length ? 'Roll selected Conditions' : 'Skip recovery rolls' }}</button>
+          </section>
           <div v-if="game.gameResult.value" class="game-result" role="status">
             <span class="chapter">Game complete</span>
             <strong>{{ game.gameResult.value === 'investigators_win' ? 'Investigators win' : 'Investigators lose' }}</strong>
@@ -360,8 +402,8 @@ async function copyInvite() {
                 </button>
                 <div v-for="slot in Math.max(0, 4 - game.reserveAssetIds.value.length)" :key="`empty-${slot}`" class="reserve-slot"><span>{{ slot }}</span><small>Empty</small></div>
               </div>
-              <div v-if="privateAssetDecision" class="reserve-decision"><small>{{ privateAssetDecision.prompt }}</small><b v-if="privateAssetDecision.kind === 'select_acquired_cards'">{{ selectedReserveValue }}/{{ privateAssetDecision.selectionBudget ?? 0 }} value</b><button @click="resolveAssetDecision">{{ privateAssetDecision.kind === 'select_acquired_cards' ? (selectedReserveAssetIds.length ? 'Buy selected' : 'Buy nothing') : (selectedReserveAssetIds.length ? 'Discard selected' : 'Keep all') }}</button></div>
-              <button class="bank-loan" disabled><span>Bank loan</span><small>Not available in game state</small></button>
+              <div v-if="privateAssetDecision" class="reserve-decision"><small>{{ privateAssetDecision.prompt }}</small><b v-if="privateAssetDecision.kind === 'select_acquired_cards'">{{ selectedReserveValue }}/{{ (privateAssetDecision.selectionBudget ?? 0) + (selectedReserveAssetIds.includes('bank-loan') ? 2 : 0) }} value</b><button @click="resolveAssetDecision">{{ privateAssetDecision.kind === 'select_acquired_cards' ? (selectedReserveAssetIds.some(id => id !== 'bank-loan') ? 'Buy selected' : 'Buy nothing') : (selectedReserveAssetIds.length ? 'Discard selected' : 'Keep all') }}</button></div>
+              <button class="bank-loan" :disabled="!privateAssetDecision?.optionIds.includes('bank-loan')" :aria-pressed="selectedReserveAssetIds.includes('bank-loan')" @click="toggleReserveAsset('bank-loan')"><span>Bank loan</span><small>{{ selectedReserveAssetIds.includes('bank-loan') ? 'Debt selected · +2 successes' : 'Gain Debt for +2 successes' }}</small></button>
             </template>
           </aside>
           <div class="board-tools"><div class="route-legend" aria-label="Route legend"><span class="train">Train</span><span class="ship">Ship</span><span class="uncharted">Uncharted</span></div><div class="zoom-controls" aria-label="Map zoom controls"><button :disabled="boardZoom <= 1" aria-label="Zoom out" @click="changeZoom(-.5)">−</button><button @click="boardZoom = 1">{{ boardZoom }}×</button><button :disabled="boardZoom >= 2.5" aria-label="Zoom in" @click="changeZoom(.5)">+</button></div></div>
@@ -381,7 +423,7 @@ async function copyInvite() {
             <template v-if="inspectedLocation"><div><span class="chapter">{{ inspectedLocation.type }} space</span><strong>{{ inspectedLocation.name }}</strong></div><p>{{ inspectedRoutes.length }} connections · {{ [...new Set(inspectedRoutes.map(route => route.type))].join(', ') }}</p><button v-if="legalDestinations.has(inspectedLocation.id) && isMyTurn" class="move-here" @click="move(inspectedLocation.id)">Move here</button><button class="inspector-close" aria-label="Close location details" @click="inspectedLocationId = undefined">×</button></template>
             <p v-else>Focus or hover a location to inspect its connections.</p>
           </div>
-          <div class="action-controls"><button :disabled="!isMyTurn || game.performedActions.value.includes('rest')" @click="game.send({ type: 'REST' })">Rest</button><button :disabled="!isMyTurn || game.performedActions.value.includes('prepare_travel')" @click="game.send({ type: 'PREPARE_TRAVEL', ticketType: 'train' })">+ Train</button><button :disabled="!isMyTurn || game.performedActions.value.includes('prepare_travel')" @click="game.send({ type: 'PREPARE_TRAVEL', ticketType: 'ship' })">+ Ship</button><button :disabled="!isMyTurn || game.performedActions.value.includes('acquire_assets')" @click="game.send({ type: 'ACQUIRE_ASSETS' })">Acquire Assets</button><button class="end-turn" :disabled="!isMyTurn" @click="game.send({ type: 'END_ACTIONS' })">End actions</button></div>
+          <div class="action-controls"><button :disabled="!canUseNormalActions || game.performedActions.value.includes('rest')" @click="game.send({ type: 'REST' })">Rest</button><button :disabled="!canUseNormalActions || game.performedActions.value.includes('prepare_travel')" @click="game.send({ type: 'PREPARE_TRAVEL', ticketType: 'train' })">+ Train</button><button :disabled="!canUseNormalActions || game.performedActions.value.includes('prepare_travel')" @click="game.send({ type: 'PREPARE_TRAVEL', ticketType: 'ship' })">+ Ship</button><button :disabled="!canUseNormalActions || game.performedActions.value.includes('acquire_assets')" @click="game.send({ type: 'ACQUIRE_ASSETS' })">Acquire Assets</button><button v-for="localAction in localConditionActions" :key="`${localAction.ownerId}-${localAction.id}`" :disabled="!isMyTurn" @click="game.send({ type: 'USE_CONDITION_ACTION', targetPlayerId: localAction.ownerId, conditionKind: localAction.kind })">Resolve {{ localAction.name }} · {{ localAction.owner }}</button><button class="end-turn" :disabled="!isMyTurn" @click="game.send({ type: 'END_ACTIONS' })">End actions</button></div>
         </div>
         <aside class="investigator-dock" aria-label="Investigator information">
           <button class="dock-toggle" :aria-label="dockExpanded ? 'Close investigator details' : 'Open investigator details'" :aria-expanded="dockExpanded" @click="dockExpanded = !dockExpanded">{{ dockExpanded ? '×' : 'ℹ' }}</button>
@@ -402,11 +444,12 @@ async function copyInvite() {
         </div>
         <footer class="player-tray" :class="`tray-${trayState}`">
           <nav class="tray-tabs" aria-label="Player cards and game information">
-            <button v-for="tab in trayTabs" :key="tab.id" :class="{ active: activeTrayTab === tab.id && trayState !== 'collapsed' }" :aria-expanded="activeTrayTab === tab.id && trayState !== 'collapsed'" @click="selectTrayTab(tab.id)"><span>{{ tab.icon }}</span>{{ tab.label }}<small>{{ tab.id === 'assets' ? ownedAssets.length : 0 }}</small></button>
+            <button v-for="tab in trayTabs" :key="tab.id" :class="{ active: activeTrayTab === tab.id && trayState !== 'collapsed' }" :aria-expanded="activeTrayTab === tab.id && trayState !== 'collapsed'" @click="selectTrayTab(tab.id)"><span>{{ tab.icon }}</span>{{ tab.label }}<small>{{ tab.id === 'assets' ? ownedAssets.length : tab.id === 'conditions' ? ownedConditions.length : 0 }}</small></button>
             <button class="tray-resize" :aria-label="trayState === 'expanded' ? 'Collapse tray' : 'Expand tray'" @click="cycleTrayState">{{ trayState === 'collapsed' ? '⌃' : trayState === 'peek' ? '⌃' : '⌄' }}</button>
           </nav>
           <div v-if="trayState !== 'collapsed'" class="tray-content">
             <div v-if="activeTrayTab === 'assets' && ownedAssets.length" class="owned-assets"><article v-for="asset in ownedAssets" :key="asset.id"><img :src="asset.imageUrl" :alt="asset.name"><div><p class="chapter">Value {{ asset.value }} · {{ asset.traits.join(', ') }}</p><h3>{{ asset.name }}</h3><p>{{ asset.effectText }}</p></div></article></div>
+            <div v-else-if="activeTrayTab === 'conditions' && ownedConditions.length" class="owned-assets"><article v-for="condition in ownedConditions" :key="condition.id"><img :src="condition.frontImageUrl" :alt="condition.name"><div><p class="chapter">{{ condition.trait }}</p><h3>{{ condition.name }}</h3><p>{{ condition.frontText }}</p></div></article></div>
             <div v-else><p class="chapter">{{ trayTabs.find(tab => tab.id === activeTrayTab)?.label }}</p><h3>{{ activeTrayTab === 'log' ? 'No recorded events yet' : `No ${activeTrayTab} in your public game state` }}</h3><p>{{ activeTrayTab === 'log' ? 'Authoritative game events will appear here as the rules engine grows.' : 'This area shows only server-synchronized cards and tokens.' }}</p></div>
           </div>
         </footer>
