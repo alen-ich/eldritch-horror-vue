@@ -9,11 +9,12 @@ import {
   joinOptionsSchema,
   pendingDecisionMessageType,
   type AncientOneId,
+  type ActiveTest,
   type InvestigatorId,
   type LocationId,
   type PendingDecision,
 } from "@eldritch/protocol";
-import { GameRoomState, PendingDecisionState, PlayerState } from "./schema/GameRoomState.js";
+import { ActiveTestState, GameRoomState, PendingDecisionState, PlayerState } from "./schema/GameRoomState.js";
 
 const RECONNECTION_SECONDS = 30;
 
@@ -50,6 +51,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
   private readonly playerIdBySession = new Map<string, string>();
   private privateState: PrivateGameState = { deckOrderById: {}, tokenPoolById: {} };
   private pendingDecision?: PendingDecision;
+  private activeTest?: ActiveTest;
 
   messages = {
     [commandMessageType]: (client: Client, payload: unknown) => this.handleCommand(client, payload),
@@ -121,10 +123,10 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       : parsed.data.command.type === "ACQUIRE_ASSETS"
         ? createDeterministicEngineContext({
             dice: Array.from({ length: 5 }, () => randomInt(1, 7)),
-            ids: [randomUUID()],
+            ids: [randomUUID(), randomUUID()],
           })
         : parsed.data.command.type === "RESOLVE_DECISION"
-          ? createDeterministicEngineContext({ ids: [randomUUID()] })
+          ? createDeterministicEngineContext({ dice: [randomInt(1, 7)], ids: [randomUUID(), randomUUID()] })
           : undefined;
     const result = executeCommand(this.toEngineState(), playerId, parsed.data.command, baseGameContent, context);
     if (result.ok === false) {
@@ -153,6 +155,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       reserveAssetIds: this.state.reserveAssetIds ? this.state.reserveAssetIds.split(",") : [],
       assetDiscardIds: this.state.assetDiscardIds ? this.state.assetDiscardIds.split(",") : [],
       pendingDecision: this.pendingDecision,
+      activeTest: this.activeTest,
       privateState: this.privateState,
       players: [...this.state.players.values()].map((player) => ({
         id: player.id,
@@ -182,7 +185,9 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
   private applyEngineState(engineState: GameState): void {
     this.privateState = engineState.privateState;
     this.pendingDecision = engineState.pendingDecision;
+    this.activeTest = engineState.activeTest;
     this.syncPendingDecisionSummary();
+    this.syncActiveTest();
     this.state.stateVersion = engineState.stateVersion;
     this.state.phase = engineState.phase;
     this.state.activePlayerId = engineState.activePlayerId ?? "";
@@ -237,6 +242,24 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     summary.selectionBudget = this.pendingDecision.selectionBudget ?? 0;
     summary.continuation = this.pendingDecision.continuation ?? "";
     this.state.pendingDecision = summary;
+  }
+
+  private syncActiveTest(): void {
+    if (!this.activeTest) {
+      this.state.activeTest = undefined;
+      return;
+    }
+    const test = new ActiveTestState();
+    test.id = this.activeTest.id;
+    test.playerId = this.activeTest.playerId;
+    test.skill = this.activeTest.skill;
+    test.modifier = this.activeTest.modifier;
+    test.dicePool = this.activeTest.dicePool;
+    test.dice = this.activeTest.dice.join(",");
+    test.successes = this.activeTest.successes;
+    test.successThreshold = this.activeTest.successThreshold;
+    test.continuation = this.activeTest.continuation;
+    this.state.activeTest = test;
   }
 
   private sendPendingDecision(client: Client): void {

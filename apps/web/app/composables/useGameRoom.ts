@@ -4,6 +4,7 @@ import {
   commandMessageType,
   pendingDecisionMessageType,
   type CommandErrorMessage,
+  type ActiveTest,
   type GameCommand,
   type PendingDecision,
   type PendingDecisionKind,
@@ -48,6 +49,17 @@ interface ClientGameState {
   performedActions?: string
   reserveAssetIds?: string
   assetDiscardIds?: string
+  activeTest?: {
+    id: string
+    playerId: string
+    skill: string
+    modifier: number
+    dicePool: number
+    dice: string
+    successes: number
+    successThreshold: number
+    continuation: string
+  }
   pendingDecision?: {
     id: string
     kind: string
@@ -80,6 +92,7 @@ const actionsRemaining = ref(0)
 const performedActions = ref<string[]>([])
 const reserveAssetIds = ref<string[]>([])
 const assetDiscardIds = ref<string[]>([])
+const activeTest = ref<ActiveTest>()
 const pendingDecision = ref<PendingDecision | PendingDecisionSummary>()
 const playerId = ref('')
 const roomId = ref('')
@@ -106,6 +119,12 @@ export function useGameRoom() {
     performedActions.value = state.performedActions ? state.performedActions.split(',') : []
     reserveAssetIds.value = state.reserveAssetIds ? state.reserveAssetIds.split(',') : []
     assetDiscardIds.value = state.assetDiscardIds ? state.assetDiscardIds.split(',') : []
+    activeTest.value = state.activeTest ? {
+      ...state.activeTest,
+      skill: state.activeTest.skill as ActiveTest['skill'],
+      dice: state.activeTest.dice ? state.activeTest.dice.split(',').map(Number) : [],
+      continuation: state.activeTest.continuation as ActiveTest['continuation']
+    } : undefined
     if (!state.pendingDecision) {
       pendingDecision.value = undefined
     } else if (pendingDecision.value?.id !== state.pendingDecision.id || !('optionIds' in pendingDecision.value)) {
@@ -206,7 +225,7 @@ export function useGameRoom() {
 
   return {
     players: readonly(players), stateVersion: readonly(stateVersion), phase: readonly(phase), ancientOneId: readonly(ancientOneId), activeMysteryId: readonly(activeMysteryId), mysteryProgress: readonly(mysteryProgress), mysteryTarget: readonly(mysteryTarget), completedMysteryIds: readonly(completedMysteryIds), gameResult: readonly(gameResult), activePlayerId: readonly(activePlayerId),
-    turnNumber: readonly(turnNumber), actionsRemaining: readonly(actionsRemaining), performedActions: readonly(performedActions), reserveAssetIds: readonly(reserveAssetIds), assetDiscardIds: readonly(assetDiscardIds), pendingDecision: readonly(pendingDecision), playerId: readonly(playerId), roomId: readonly(roomId),
+    turnNumber: readonly(turnNumber), actionsRemaining: readonly(actionsRemaining), performedActions: readonly(performedActions), reserveAssetIds: readonly(reserveAssetIds), assetDiscardIds: readonly(assetDiscardIds), activeTest: readonly(activeTest), pendingDecision: readonly(pendingDecision), playerId: readonly(playerId), roomId: readonly(roomId),
     status: readonly(status), errorMessage: readonly(errorMessage), createGame, joinGame, reconnect, send
   }
 }

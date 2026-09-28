@@ -14,6 +14,7 @@ const selectedPlayerId = ref('')
 const trayState = ref<'collapsed' | 'peek' | 'expanded'>('collapsed')
 const activeTrayTab = ref('assets')
 const selectedReserveAssetIds = ref<string[]>([])
+const selectedRerollOptionId = ref<string>()
 const trayTabs = [
   { id: 'assets', label: 'Assets', icon: '◆' },
   { id: 'spells', label: 'Spells', icon: '✦' },
@@ -47,6 +48,11 @@ const privateAssetDecision = computed(() => {
   return decision && decision.playerId === game.playerId.value && 'optionIds' in decision
     && (decision.kind === 'select_acquired_cards' || decision.kind === 'discard_reserve_card') ? decision : undefined
 })
+const privateRerollDecision = computed(() => {
+  const decision = game.pendingDecision.value
+  return decision && decision.playerId === game.playerId.value && 'optionIds' in decision
+    && decision.kind === 'select_rerolls' ? decision : undefined
+})
 const selectedReserveValue = computed(() => selectedReserveAssetIds.value.reduce((total, id) => total + (assetById[id]?.value ?? 0), 0))
 const inspectedRoutes = computed(() => inspectedLocationId.value
   ? baseGameRoutes.filter((route) => route.source === inspectedLocationId.value || route.target === inspectedLocationId.value)
@@ -77,6 +83,7 @@ watch(() => game.roomId.value, (id) => {
 })
 
 watch(() => privateAssetDecision.value?.id, () => { selectedReserveAssetIds.value = [] })
+watch(() => privateRerollDecision.value?.id, () => { selectedRerollOptionId.value = undefined })
 
 async function createGame() {
   await game.createGame(displayName.value.trim() || 'Host')
@@ -164,6 +171,16 @@ function resolveAssetDecision() {
   const decision = privateAssetDecision.value
   if (!decision) return
   game.send({ type: 'RESOLVE_DECISION', decisionId: decision.id, selectedOptionIds: selectedReserveAssetIds.value })
+}
+
+function resolveRerollDecision() {
+  const decision = privateRerollDecision.value
+  if (!decision) return
+  game.send({
+    type: 'RESOLVE_DECISION',
+    decisionId: decision.id,
+    selectedOptionIds: selectedRerollOptionId.value ? [selectedRerollOptionId.value] : []
+  })
 }
 
 async function copyInvite() {
@@ -273,6 +290,22 @@ async function copyInvite() {
         </header>
         <div class="game-workspace">
         <div class="board-stage">
+          <section v-if="privateRerollDecision && game.activeTest.value" class="test-dialog" role="dialog" aria-modal="true" aria-labelledby="test-title">
+            <p class="chapter">Skill test</p>
+            <h2 id="test-title">{{ game.activeTest.value.skill }} test</h2>
+            <p>{{ privateRerollDecision.prompt }}</p>
+            <div class="test-dice" role="group" aria-label="Rolled dice">
+              <button
+                v-for="(die, index) in game.activeTest.value.dice"
+                :key="index"
+                :class="{ selected: selectedRerollOptionId === `die-${index}`, success: die >= game.activeTest.value.successThreshold }"
+                :aria-pressed="selectedRerollOptionId === `die-${index}`"
+                @click="selectedRerollOptionId = selectedRerollOptionId === `die-${index}` ? undefined : `die-${index}`"
+              >{{ die }}</button>
+            </div>
+            <strong>{{ game.activeTest.value.successes }} {{ game.activeTest.value.successes === 1 ? 'success' : 'successes' }}</strong>
+            <button class="primary" @click="resolveRerollDecision">{{ selectedRerollOptionId ? 'Spend 1 Clue and reroll' : 'Keep result' }}</button>
+          </section>
           <div v-if="game.gameResult.value" class="game-result" role="status">
             <span class="chapter">Game complete</span>
             <strong>{{ game.gameResult.value === 'investigators_win' ? 'Investigators win' : 'Investigators lose' }}</strong>
@@ -413,6 +446,7 @@ input:focus { border-color: #d5aa63; box-shadow: 0 0 0 3px #d5aa6322; }
 .board-stage .board { display: block; width: 100%; height: 100%; max-height: 100%; border-radius: 12px; }
 .active-mystery { position: absolute; z-index: 5; top: 60px; right: 18px; min-width: 180px; padding: 10px 12px; color: #edf0df; background: #07171cee; border: 1px solid #6e5a36; border-radius: 10px; box-shadow: 0 8px 28px #0009; backdrop-filter: blur(10px); }.active-mystery div { display: grid; gap: 3px; }.active-mystery strong { font: 600 .78rem/1.15 Georgia, serif; }.active-mystery small { color: #91a7a8; font-size: .6rem; }
 .game-result { position: absolute; z-index: 8; top: 18px; left: 50%; min-width: 220px; display: grid; gap: 3px; padding: 11px 22px; transform: translateX(-50%); color: #f7efd8; background: #1b1510ee; border: 1px solid #d5aa63; border-radius: 10px; box-shadow: 0 10px 35px #000b, 0 0 24px #d5aa6330; text-align: center; backdrop-filter: blur(10px); }.game-result strong { color: #e9ce8b; font: 600 1.1rem Georgia, serif; }
+.test-dialog { position: absolute; z-index: 10; left: 50%; top: 50%; width: min(430px, calc(100% - 32px)); display: grid; gap: 14px; padding: 24px; transform: translate(-50%, -50%); color: #edf0df; background: #07171cf2; border: 1px solid #d5aa63; border-radius: 14px; box-shadow: 0 24px 80px #000d, 0 0 30px #d5aa6328; backdrop-filter: blur(14px); }.test-dialog h2, .test-dialog p { margin: 0; }.test-dialog > strong { color: #d5aa63; text-align: center; }.test-dice { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }.test-dice button { width: 50px; height: 50px; color: #e5e9dc; background: #122a30; border: 1px solid #58727a; border-radius: 9px; font-size: 1.25rem; font-weight: 900; }.test-dice button.success { color: #d9f2c5; border-color: #7aa46c; }.test-dice button.selected { color: #142127; background: #d5aa63; border-color: #f5dda7; box-shadow: 0 0 0 3px #d5aa6340; }
 .board-stage .board-tools { position: absolute; z-index: 4; top: 18px; left: 18px; right: 18px; margin: 0; pointer-events: none; }.board-stage .board-tools > * { pointer-events: auto; }.board-stage .route-legend { padding: 7px 10px; border: 1px solid #45616a; border-radius: 8px; background: #07171cdd; backdrop-filter: blur(8px); }
 .board-stage .location-inspector { position: absolute; z-index: 4; left: 18px; bottom: 18px; width: min(520px, calc(100% - 150px)); margin: 0; background: #07171cee; box-shadow: 0 8px 28px #0009; backdrop-filter: blur(10px); }
 .reserve-shelf { position: absolute; z-index: 5; top: 66px; left: 18px; width: clamp(150px, 16vw, 220px); max-height: calc(100% - 155px); overflow: auto; padding: 12px; background: #07171ce8; border: 1px solid #49636a; border-radius: 12px; box-shadow: 0 12px 34px #000a; backdrop-filter: blur(10px); }.reserve-shelf header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }.reserve-shelf header > div { display: grid; gap: 2px; }.reserve-shelf header strong { font: 600 1rem Georgia, serif; }.reserve-shelf header button { width: 28px; height: 28px; color: #d5aa63; background: #17343b; border: 1px solid #48636a; border-radius: 7px; }.reserve-shelf.collapsed { width: 48px; padding: 8px; overflow: hidden; }.reserve-shelf.collapsed header > div { display: none; }.reserve-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 12px; }.reserve-slot { aspect-ratio: 3 / 4; display: grid; place-items: center; align-content: center; gap: 3px; color: #71898b; background: #0a2025; border: 1px dashed #50686d; border-radius: 7px; }.reserve-slot span { color: #d5aa63; font: 600 1rem Georgia, serif; }.reserve-slot small { font-size: .54rem; text-transform: uppercase; letter-spacing: .08em; }.bank-loan { width: 100%; display: grid; gap: 2px; margin-top: 8px; padding: 8px; text-align: left; color: #b7c4c1; background: #172a2c; border: 1px solid #5e6c65; border-radius: 7px; }.bank-loan span { color: #d5aa63; font-size: .68rem; font-weight: 800; text-transform: uppercase; }.bank-loan small { font-size: .55rem; }

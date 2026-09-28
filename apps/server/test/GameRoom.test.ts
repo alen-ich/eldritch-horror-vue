@@ -70,7 +70,18 @@ describe("authoritative game room", () => {
 
     sendCommand(room, host, { type: "ACQUIRE_ASSETS" });
     await room.waitForMessage(commandMessageType);
+    assert.equal(room.state.pendingDecision?.kind, "select_rerolls");
+    assert.equal(room.state.activeTest?.playerId, hostPlayer.id);
+    assert.equal(room.state.activeTest?.skill, "influence");
+    assert.equal(room.state.activeTest?.dice.split(",").length, room.state.activeTest?.dicePool);
+    sendCommand(room, host, {
+      type: "RESOLVE_DECISION",
+      decisionId: room.state.pendingDecision!.id,
+      selectedOptionIds: [],
+    });
+    await room.waitForMessage(commandMessageType);
     assert.equal(room.state.pendingDecision?.kind, "select_acquired_cards");
+    assert.equal(room.state.activeTest, undefined);
     sendCommand(room, host, {
       type: "RESOLVE_DECISION",
       decisionId: room.state.pendingDecision!.id,

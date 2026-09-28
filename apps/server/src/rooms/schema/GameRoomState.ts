@@ -39,6 +39,19 @@ export const PendingDecisionState = schema({
 });
 export type PendingDecisionState = SchemaType<typeof PendingDecisionState>;
 
+export const ActiveTestState = schema({
+  id: t.string(),
+  playerId: t.string(),
+  skill: t.string(),
+  modifier: t.int8(),
+  dicePool: t.uint8(),
+  dice: t.string(),
+  successes: t.uint8(),
+  successThreshold: t.uint8(),
+  continuation: t.string(),
+});
+export type ActiveTestState = SchemaType<typeof ActiveTestState>;
+
 export const GameRoomState = schema({
   stateVersion: t.uint32().default(0),
   phase: t.string().default("lobby"),
@@ -56,6 +69,7 @@ export const GameRoomState = schema({
   reserveAssetIds: t.string().default(""),
   assetDiscardIds: t.string().default(""),
   pendingDecision: t.ref(PendingDecisionState).optional(),
+  activeTest: t.ref(ActiveTestState).optional(),
   players: t.map(PlayerState),
 });
 export type GameRoomState = SchemaType<typeof GameRoomState>;
