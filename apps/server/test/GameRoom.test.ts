@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { ColyseusTestServer, boot } from "@colyseus/testing";
+import type { GameState } from "@eldritch/engine";
 import {
   commandErrorMessageType,
   commandMessageType,
@@ -17,6 +18,19 @@ describe("authoritative game room", () => {
   before(async () => { colyseus = await boot(appConfig); });
   after(async () => colyseus.shutdown());
   beforeEach(async () => colyseus.cleanup());
+
+  it("round-trips public Monster instances through room state while keeping the cup private", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.monsters = [{ id: "on-board-1", monsterId: "monster_ghoul", locationId: "arkham", damage: 1 }];
+    state.privateState.tokenPoolById.monsters = ["monster_deep_one"];
+    internal.applyEngineState(state);
+    assert.deepEqual(internal.toEngineState().monsters, state.monsters);
+    assert.deepEqual(internal.toEngineState().monsterLocationIds, ["arkham"]);
+    assert.ok(room.state.monsters.includes("monster_ghoul"));
+    assert.ok(!JSON.stringify(room.state).includes("monster_deep_one"));
+  });
 
   function sendCommand(
     room: { state: GameRoomState },

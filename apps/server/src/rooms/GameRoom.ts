@@ -181,6 +181,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
   }
 
   private toEngineState(): GameState {
+    const monsters = JSON.parse(this.state.monsters) as NonNullable<GameState["monsters"]>;
     return {
       ...JSON.parse(this.state.investigatorLifecycle) as Pick<GameState, "pendingDefeat" | "defeatedInvestigators" | "replacementWindow" | "awakened">,
       doom: this.state.doom,
@@ -202,7 +203,8 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       actionsRemaining: this.state.actionsRemaining,
       performedActions: this.state.performedActions ? this.state.performedActions.split(",") as GameState["performedActions"] : [],
       usedConditionActionIds: this.state.usedConditionActionIds ? this.state.usedConditionActionIds.split(",") : [],
-      monsterLocationIds: [],
+      monsterLocationIds: [...new Set(monsters.map(monster => monster.locationId))],
+      monsters,
       reserveAssetIds: this.state.reserveAssetIds ? this.state.reserveAssetIds.split(",") : [],
       assetDiscardIds: this.state.assetDiscardIds ? this.state.assetDiscardIds.split(",") : [],
       pendingDecision: this.pendingDecision,
@@ -264,6 +266,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     this.state.actionsRemaining = engineState.actionsRemaining;
     this.state.performedActions = engineState.performedActions.join(",");
     this.state.usedConditionActionIds = (engineState.usedConditionActionIds ?? []).join(",");
+    this.state.monsters = JSON.stringify(engineState.monsters ?? []);
     this.state.reserveAssetIds = engineState.reserveAssetIds.join(",");
     this.state.assetDiscardIds = engineState.assetDiscardIds.join(",");
     for (const enginePlayer of engineState.players) {
