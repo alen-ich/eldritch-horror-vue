@@ -179,6 +179,31 @@ describe("executeCommand", () => {
     expect(executeCommand(state, "host", { type: "TRAVEL", destinationIds: ["space_1", "space_4"] }, testContent)).toMatchObject({ ok: false, error: { code: "TRAVEL_TICKET_REQUIRED" } });
   });
 
+  it("spends two tickets for three steps while consuming only one action", () => {
+    const state = startedGame();
+    state.players[0]!.travelTickets = ["ship", "ship"];
+    const snapshot = structuredClone(state);
+    const result = executeCommand(state, "host", {
+      type: "TRAVEL", destinationIds: ["space_1", "san_francisco", "space_1"],
+    }, testContent);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.players[0]).toMatchObject({ locationId: "space_1", travelTickets: [] });
+    expect(result.state).toMatchObject({ actionsRemaining: 1, performedActions: ["travel"] });
+    expect(result.events[0]).toMatchObject({ spentTickets: ["ship", "ship"] });
+    expect(state).toEqual(snapshot);
+  });
+
+  it("rejects an unaffordable final step atomically", () => {
+    const state = startedGame();
+    state.players[0]!.travelTickets = ["ship", "train"];
+    const snapshot = structuredClone(state);
+    expect(executeCommand(state, "host", {
+      type: "TRAVEL", destinationIds: ["space_1", "san_francisco", "space_1"],
+    }, testContent)).toMatchObject({ ok: false, error: { code: "TRAVEL_TICKET_REQUIRED" } });
+    expect(state).toEqual(snapshot);
+  });
+
   it("rests once, respects maximums, and cannot rest with a Monster", () => {
     const rested = executeCommand(startedGame(), "host", { type: "REST" }, testContent);
     expect(rested.ok).toBe(true);
