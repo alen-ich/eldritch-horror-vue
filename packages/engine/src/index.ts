@@ -19,6 +19,7 @@ import { buildMythosDeck, type AncientSetup, type MythosColor } from "./setup.js
 export * from "./setup.js";
 export * from "./skill-tests.js";
 export * from "./resources.js";
+export * from "./combat.js";
 
 export type ActionType = "travel" | "rest" | "prepare_travel" | "trade" | "acquire_assets" | "component";
 
