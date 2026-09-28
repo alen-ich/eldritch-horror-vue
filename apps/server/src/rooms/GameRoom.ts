@@ -117,7 +117,14 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
             }, 0)),
           ],
         })
-      : undefined;
+      : parsed.data.command.type === "ACQUIRE_ASSETS"
+        ? createDeterministicEngineContext({
+            dice: Array.from({ length: 4 }, () => randomInt(1, 7)),
+            ids: [randomUUID()],
+          })
+        : parsed.data.command.type === "RESOLVE_DECISION"
+          ? createDeterministicEngineContext({ ids: [randomUUID()] })
+          : undefined;
     const result = executeCommand(this.toEngineState(), playerId, parsed.data.command, baseGameContent, context);
     if (result.ok === false) {
       client.send(commandErrorMessageType, result.error);
@@ -212,6 +219,8 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     summary.optionCount = this.pendingDecision.optionIds.length;
     summary.minSelections = this.pendingDecision.minSelections;
     summary.maxSelections = this.pendingDecision.maxSelections;
+    summary.selectionBudget = this.pendingDecision.selectionBudget ?? 0;
+    summary.continuation = this.pendingDecision.continuation ?? "";
     this.state.pendingDecision = summary;
   }
 

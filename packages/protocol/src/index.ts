@@ -27,6 +27,7 @@ export const pendingDecisionKinds = [
   "choose_monster_order",
   "spend_clues",
   "select_acquired_cards",
+  "discard_reserve_card",
 ] as const;
 export type PendingDecisionKind = (typeof pendingDecisionKinds)[number];
 
@@ -39,6 +40,8 @@ export const pendingDecisionSchema = z.object({
   optionIds: z.array(z.string().min(1)).min(1),
   minSelections: z.number().int().nonnegative(),
   maxSelections: z.number().int().positive(),
+  selectionBudget: z.number().int().nonnegative().optional(),
+  continuation: z.enum(["acquire_assets_purchase", "acquire_assets_discard"]).optional(),
 }).strict().superRefine((decision, context) => {
   if (new Set(decision.optionIds).size !== decision.optionIds.length) {
     context.addIssue({ code: "custom", message: "Decision option IDs must be unique.", path: ["optionIds"] });
@@ -62,6 +65,8 @@ export interface PendingDecisionSummary {
   optionCount: number;
   minSelections: number;
   maxSelections: number;
+  selectionBudget?: number;
+  continuation?: PendingDecision["continuation"];
 }
 
 export const gameCommandSchema = z.discriminatedUnion("type", [
@@ -71,6 +76,7 @@ export const gameCommandSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("TRAVEL"), destinationIds: z.array(z.enum(locationIds)).min(1).max(3) }).strict(),
   z.object({ type: z.literal("REST") }).strict(),
   z.object({ type: z.literal("PREPARE_TRAVEL"), ticketType: z.enum(["train", "ship"]) }).strict(),
+  z.object({ type: z.literal("ACQUIRE_ASSETS") }).strict(),
   z.object({ type: z.literal("END_ACTIONS") }).strict(),
   z.object({
     type: z.literal("RESOLVE_DECISION"),
@@ -93,6 +99,8 @@ export type GameEvent =
   | { type: "ANCIENT_ONE_SELECTED"; ancientOneId: AncientOneId }
   | { type: "GAME_STARTED"; activePlayerId: string }
   | { type: "ASSET_GAINED"; playerId: string; assetId: string; source: "setup" | "reserve" }
+  | { type: "ACQUIRE_ASSETS_TESTED"; playerId: string; dice: number[]; successes: number }
+  | { type: "RESERVE_ASSET_DISCARDED"; assetId: string }
   | { type: "RESERVE_REFILLED"; assetIds: string[] }
   | { type: "MYSTERY_REVEALED"; mysteryId: string }
   | { type: "MYSTERY_PROGRESS_ADDED"; mysteryId: string; amount: number; progress: number }

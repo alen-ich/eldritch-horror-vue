@@ -28,6 +28,8 @@ export const PendingDecisionState = schema({
   optionCount: t.uint8(),
   minSelections: t.uint8(),
   maxSelections: t.uint8(),
+  selectionBudget: t.uint8().default(0),
+  continuation: t.string().default(""),
 });
 export type PendingDecisionState = SchemaType<typeof PendingDecisionState>;
 

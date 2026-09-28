@@ -51,6 +51,8 @@ interface ClientGameState {
     optionCount: number
     minSelections: number
     maxSelections: number
+    selectionBudget: number
+    continuation: string
   }
   players?: Map<string, ClientPlayerState>
 }
@@ -104,7 +106,8 @@ export function useGameRoom() {
       pendingDecision.value = {
         ...state.pendingDecision,
         kind: state.pendingDecision.kind as PendingDecisionKind,
-        visibility: state.pendingDecision.visibility as PendingDecision['visibility']
+        visibility: state.pendingDecision.visibility as PendingDecision['visibility'],
+        continuation: (state.pendingDecision.continuation || undefined) as PendingDecision['continuation']
       }
     }
     players.value = [...state.players.values()].map((player) => ({

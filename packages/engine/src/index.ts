@@ -151,6 +151,8 @@ export type RuleErrorCode =
   | "ANCIENT_ONE_REQUIRED"
   | "MYSTERY_CONTENT_MISSING"
   | "ASSET_CONTENT_MISSING"
+  | "ASSET_ACTION_BLOCKED_BY_MONSTER"
+  | "ASSET_PURCHASE_OVER_BUDGET"
   | "RANDOM_INPUT_REQUIRED"
   | "MYSTERY_REQUIRED"
   | "INVALID_MYSTERY_PROGRESS"
@@ -205,6 +207,8 @@ function decisionSummary(decision: PendingDecision): PendingDecisionSummary {
     optionCount: decision.optionIds.length,
     minSelections: decision.minSelections,
     maxSelections: decision.maxSelections,
+    ...(decision.selectionBudget === undefined ? {} : { selectionBudget: decision.selectionBudget }),
+    ...(decision.continuation === undefined ? {} : { continuation: decision.continuation }),
   };
 }
 
@@ -314,6 +318,17 @@ function completeAction(state: GameState, actorIndex: number, action: ActionType
   if (state.actionsRemaining === 0) advanceActionInvestigator(state, actorIndex, events);
 }
 
+function refillReserve(state: GameState): string[] {
+  const drawn: string[] = [];
+  const deck = state.privateState.deckOrderById.assets ?? [];
+  while (state.reserveAssetIds.length < 4 && deck.length > 0) {
+    const assetId = deck.shift()!;
+    state.reserveAssetIds.push(assetId);
+    drawn.push(assetId);
+  }
+  return drawn;
+}
+
 export function executeCommand(
   state: GameState,
   actorPlayerId: string,
@@ -362,6 +377,66 @@ export function executeCommand(
       || selections.some((selection) => !decision.optionIds.includes(selection))
     ) {
       return failure("INVALID_DECISION_SELECTION", "The selected options are not legal for this decision.");
+    }
+    if (decision.continuation === "acquire_assets_purchase") {
+      const totalValue = selections.reduce((total, assetId) =>
+        total + (content.assets.find(({ id }) => id === assetId)?.value ?? Number.POSITIVE_INFINITY), 0);
+      if (totalValue > (decision.selectionBudget ?? 0)) {
+        return failure("ASSET_PURCHASE_OVER_BUDGET", "The selected Assets cost more than the Influence test successes.");
+      }
+      if (selections.length === 0) {
+        if (!context) return failure("RANDOM_INPUT_REQUIRED", "Continuing the Acquire Assets action requires deterministic ID input.");
+        next.pendingDecision = {
+          id: context.createId(),
+          kind: "discard_reserve_card",
+          playerId: actorPlayerId,
+          visibility: "owner",
+          prompt: "You bought nothing. You may discard one Asset from the Reserve.",
+          optionIds: [...next.reserveAssetIds],
+          minSelections: 0,
+          maxSelections: 1,
+          continuation: "acquire_assets_discard",
+        };
+        return success(next, [{
+          type: "DECISION_RESOLVED",
+          decisionId: decision.id,
+          playerId: actorPlayerId,
+          selectedOptionIds: [],
+        }]);
+      }
+      next.pendingDecision = undefined;
+      actor.assetIds.push(...selections);
+      next.reserveAssetIds = next.reserveAssetIds.filter((assetId) => !selections.includes(assetId));
+      refillReserve(next);
+      const events: GameEvent[] = [{
+        type: "DECISION_RESOLVED",
+        decisionId: decision.id,
+        playerId: actorPlayerId,
+        selectedOptionIds: [...selections],
+      }];
+      events.push(...selections.map((assetId) => ({ type: "ASSET_GAINED" as const, playerId: actorPlayerId, assetId, source: "reserve" as const })));
+      events.push({ type: "RESERVE_REFILLED", assetIds: [...next.reserveAssetIds] });
+      completeAction(next, actorIndex, "acquire_assets", events);
+      return success(next, events);
+    }
+    if (decision.continuation === "acquire_assets_discard") {
+      next.pendingDecision = undefined;
+      const events: GameEvent[] = [{
+        type: "DECISION_RESOLVED",
+        decisionId: decision.id,
+        playerId: actorPlayerId,
+        selectedOptionIds: [...selections],
+      }];
+      const discardedAssetId = selections[0];
+      if (discardedAssetId) {
+        next.reserveAssetIds = next.reserveAssetIds.filter((assetId) => assetId !== discardedAssetId);
+        next.assetDiscardIds.push(discardedAssetId);
+        events.push({ type: "RESERVE_ASSET_DISCARDED", assetId: discardedAssetId });
+      }
+      refillReserve(next);
+      events.push({ type: "RESERVE_REFILLED", assetIds: [...next.reserveAssetIds] });
+      completeAction(next, actorIndex, "acquire_assets", events);
+      return success(next, events);
     }
     next.pendingDecision = undefined;
     return success(next, [{
@@ -515,6 +590,31 @@ export function executeCommand(
     const events: GameEvent[] = [{ type: "TRAVEL_TICKET_GAINED", playerId: actorPlayerId, ticketType: command.ticketType }];
     completeAction(next, actorIndex, "prepare_travel", events);
     return success(next, events);
+  }
+
+  if (command.type === "ACQUIRE_ASSETS") {
+    if (state.performedActions.includes("acquire_assets")) return failure("ACTION_ALREADY_PERFORMED", "Acquire Assets can be performed only once per round.");
+    if (!actor.locationId || content.map.locationTypes[actor.locationId] !== "city") return failure("CITY_REQUIRED", "Acquire Assets requires a City space.");
+    if (state.monsterLocationIds.includes(actor.locationId)) return failure("ASSET_ACTION_BLOCKED_BY_MONSTER", "An investigator cannot acquire Assets on a space containing a Monster.");
+    if (!actor.investigatorId) return failure("INVESTIGATOR_REQUIRED", "The player has no investigator.");
+    const investigator = content.investigators[actor.investigatorId];
+    if (!investigator) return failure("INVESTIGATOR_CONTENT_MISSING", "The selected investigator has no setup data.");
+    if (!context) return failure("RANDOM_INPUT_REQUIRED", "Acquire Assets requires deterministic dice and ID input.");
+    const dice = Array.from({ length: investigator.influence }, () => context.rollDie());
+    const successes = dice.filter((die) => die >= 5).length;
+    next.pendingDecision = {
+      id: context.createId(),
+      kind: "select_acquired_cards",
+      playerId: actorPlayerId,
+      visibility: "owner",
+      prompt: `Choose Assets with a total value of ${successes} or less.`,
+      optionIds: [...next.reserveAssetIds],
+      minSelections: 0,
+      maxSelections: next.reserveAssetIds.length,
+      selectionBudget: successes,
+      continuation: "acquire_assets_purchase",
+    };
+    return success(next, [{ type: "ACQUIRE_ASSETS_TESTED", playerId: actorPlayerId, dice, successes }]);
   }
 
   const events: GameEvent[] = [{ type: "ACTIONS_ENDED", playerId: actorPlayerId }];

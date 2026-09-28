@@ -9,6 +9,7 @@ describe("gameCommandSchema", () => {
     });
     expect(gameCommandSchema.parse({ type: "REST" })).toEqual({ type: "REST" });
     expect(gameCommandSchema.parse({ type: "PREPARE_TRAVEL", ticketType: "ship" })).toEqual({ type: "PREPARE_TRAVEL", ticketType: "ship" });
+    expect(gameCommandSchema.parse({ type: "ACQUIRE_ASSETS" })).toEqual({ type: "ACQUIRE_ASSETS" });
     expect(gameCommandSchema.parse({ type: "END_ACTIONS" })).toEqual({ type: "END_ACTIONS" });
     expect(gameCommandSchema.parse({ type: "SELECT_ANCIENT_ONE", ancientOneId: "cthulhu" })).toEqual({
       type: "SELECT_ANCIENT_ONE",

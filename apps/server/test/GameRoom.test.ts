@@ -67,10 +67,30 @@ describe("authoritative game room", () => {
     assert.equal(privateAssets?.length, 35);
     assert.ok(!JSON.stringify(room.state).includes(privateAssets![0]!));
 
+    sendCommand(room, host, { type: "ACQUIRE_ASSETS" });
+    await room.waitForMessage(commandMessageType);
+    assert.equal(room.state.pendingDecision?.kind, "select_acquired_cards");
+    sendCommand(room, host, {
+      type: "RESOLVE_DECISION",
+      decisionId: room.state.pendingDecision!.id,
+      selectedOptionIds: [],
+    });
+    await room.waitForMessage(commandMessageType);
+    assert.equal(room.state.pendingDecision?.kind, "discard_reserve_card");
+    sendCommand(room, host, {
+      type: "RESOLVE_DECISION",
+      decisionId: room.state.pendingDecision!.id,
+      selectedOptionIds: [],
+    });
+    await room.waitForMessage(commandMessageType);
+    assert.equal(room.state.pendingDecision, undefined);
+    assert.equal(room.state.actionsRemaining, 1);
+
     sendCommand(room, host, { type: "TRAVEL", destinationIds: ["space_10"] });
     await room.waitForMessage(commandMessageType);
     assert.equal(hostPlayer.locationId, "space_10");
-    assert.equal(room.state.actionsRemaining, 1);
+    assert.equal(room.state.activePlayerId, guestPlayer.id);
+    assert.equal(room.state.actionsRemaining, 2);
   });
 
   it("rejects forged player identity and isolates rooms", async () => {

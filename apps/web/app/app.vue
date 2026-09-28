@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { baseGameAncientOnes, baseGameBoardDimensions, baseGameInvestigators, baseGameLocations, baseGameMap, baseGameMysteries, baseGameRoutes, skillNames } from '@eldritch/content'
+import { baseGameAncientOnes, baseGameAssets, baseGameBoardDimensions, baseGameInvestigators, baseGameLocations, baseGameMap, baseGameMysteries, baseGameRoutes, skillNames } from '@eldritch/content'
+import type { AssetCardData } from '@eldritch/content'
 import type { AncientOneId, InvestigatorId, LocationId } from '@eldritch/protocol'
 
 const displayName = ref('')
@@ -12,6 +13,7 @@ const reserveExpanded = ref(true)
 const selectedPlayerId = ref('')
 const trayState = ref<'collapsed' | 'peek' | 'expanded'>('collapsed')
 const activeTrayTab = ref('assets')
+const selectedReserveAssetIds = ref<string[]>([])
 const trayTabs = [
   { id: 'assets', label: 'Assets', icon: '◆' },
   { id: 'spells', label: 'Spells', icon: '✦' },
@@ -23,6 +25,7 @@ const game = useGameRoom()
 
 const locationById = Object.fromEntries(baseGameLocations.map((location) => [location.id, location])) as Record<LocationId, typeof baseGameLocations[number]>
 const investigatorById = Object.fromEntries(baseGameInvestigators.map((investigator) => [investigator.id, investigator]))
+const assetById = Object.fromEntries(baseGameAssets.map((asset) => [asset.id, asset]))
 const me = computed(() => game.players.value.find((player) => player.id === game.playerId.value))
 const displayedPlayer = computed(() => game.players.value.find((player) => player.id === selectedPlayerId.value) ?? me.value ?? game.players.value[0])
 const displayedInvestigator = computed(() => displayedPlayer.value?.investigatorId ? investigatorById[displayedPlayer.value.investigatorId] : undefined)
@@ -37,6 +40,14 @@ const legalDestinations = computed(() => new Set(
     : []
 ))
 const inspectedLocation = computed(() => inspectedLocationId.value ? locationById[inspectedLocationId.value] : undefined)
+const myAssetIds = computed(() => me.value?.assetIds ? me.value.assetIds.split(',') : [])
+const ownedAssets = computed(() => myAssetIds.value.map((id) => assetById[id]).filter((asset): asset is AssetCardData => Boolean(asset)))
+const privateAssetDecision = computed(() => {
+  const decision = game.pendingDecision.value
+  return decision && decision.playerId === game.playerId.value && 'optionIds' in decision
+    && (decision.kind === 'select_acquired_cards' || decision.kind === 'discard_reserve_card') ? decision : undefined
+})
+const selectedReserveValue = computed(() => selectedReserveAssetIds.value.reduce((total, id) => total + (assetById[id]?.value ?? 0), 0))
 const inspectedRoutes = computed(() => inspectedLocationId.value
   ? baseGameRoutes.filter((route) => route.source === inspectedLocationId.value || route.target === inspectedLocationId.value)
   : [])
@@ -64,6 +75,8 @@ onMounted(async () => {
 watch(() => game.roomId.value, (id) => {
   if (id) history.replaceState(null, '', `?room=${encodeURIComponent(id)}`)
 })
+
+watch(() => privateAssetDecision.value?.id, () => { selectedReserveAssetIds.value = [] })
 
 async function createGame() {
   await game.createGame(displayName.value.trim() || 'Host')
@@ -116,6 +129,27 @@ function selectTrayTab(tabId: string) {
 
 function cycleTrayState() {
   trayState.value = trayState.value === 'collapsed' ? 'peek' : trayState.value === 'peek' ? 'expanded' : 'collapsed'
+}
+
+function toggleReserveAsset(assetId: string) {
+  const decision = privateAssetDecision.value
+  if (!decision || !decision.optionIds.includes(assetId)) return
+  if (selectedReserveAssetIds.value.includes(assetId)) {
+    selectedReserveAssetIds.value = selectedReserveAssetIds.value.filter((id) => id !== assetId)
+    return
+  }
+  if (decision.kind === 'discard_reserve_card') {
+    selectedReserveAssetIds.value = [assetId]
+    return
+  }
+  const nextValue = selectedReserveValue.value + (assetById[assetId]?.value ?? 0)
+  if (nextValue <= (decision.selectionBudget ?? 0)) selectedReserveAssetIds.value = [...selectedReserveAssetIds.value, assetId]
+}
+
+function resolveAssetDecision() {
+  const decision = privateAssetDecision.value
+  if (!decision) return
+  game.send({ type: 'RESOLVE_DECISION', decisionId: decision.id, selectedOptionIds: selectedReserveAssetIds.value })
 }
 
 async function copyInvite() {
@@ -236,8 +270,12 @@ async function copyInvite() {
             <header><div><span class="chapter">Market</span><strong>Reserve</strong></div><button :aria-label="reserveExpanded ? 'Collapse reserve' : 'Expand reserve'" :aria-expanded="reserveExpanded" @click="reserveExpanded = !reserveExpanded">{{ reserveExpanded ? '‹' : '›' }}</button></header>
             <template v-if="reserveExpanded">
               <div class="reserve-grid">
-                <button v-for="slot in 4" :key="slot" class="reserve-slot" disabled><span>{{ slot }}</span><small>Empty</small></button>
+                <button v-for="assetId in game.reserveAssetIds.value" :key="assetId" class="reserve-card" :class="{ selected: selectedReserveAssetIds.includes(assetId) }" :disabled="!privateAssetDecision" @click="toggleReserveAsset(assetId)">
+                  <img :src="assetById[assetId]?.imageUrl" :alt="assetById[assetId]?.name"><span>{{ assetById[assetId]?.value }}</span>
+                </button>
+                <div v-for="slot in Math.max(0, 4 - game.reserveAssetIds.value.length)" :key="`empty-${slot}`" class="reserve-slot"><span>{{ slot }}</span><small>Empty</small></div>
               </div>
+              <div v-if="privateAssetDecision" class="reserve-decision"><small>{{ privateAssetDecision.prompt }}</small><b v-if="privateAssetDecision.kind === 'select_acquired_cards'">{{ selectedReserveValue }}/{{ privateAssetDecision.selectionBudget ?? 0 }} value</b><button @click="resolveAssetDecision">{{ privateAssetDecision.kind === 'select_acquired_cards' ? (selectedReserveAssetIds.length ? 'Buy selected' : 'Buy nothing') : (selectedReserveAssetIds.length ? 'Discard selected' : 'Keep all') }}</button></div>
               <button class="bank-loan" disabled><span>Bank loan</span><small>Not available in game state</small></button>
             </template>
           </aside>
@@ -258,7 +296,7 @@ async function copyInvite() {
             <template v-if="inspectedLocation"><div><span class="chapter">{{ inspectedLocation.type }} space</span><strong>{{ inspectedLocation.name }}</strong></div><p>{{ inspectedRoutes.length }} connections · {{ [...new Set(inspectedRoutes.map(route => route.type))].join(', ') }}</p><button v-if="legalDestinations.has(inspectedLocation.id) && isMyTurn" class="move-here" @click="move(inspectedLocation.id)">Move here</button><button class="inspector-close" aria-label="Close location details" @click="inspectedLocationId = undefined">×</button></template>
             <p v-else>Focus or hover a location to inspect its connections.</p>
           </div>
-          <div class="action-controls"><button :disabled="!isMyTurn || game.performedActions.value.includes('rest')" @click="game.send({ type: 'REST' })">Rest</button><button :disabled="!isMyTurn || game.performedActions.value.includes('prepare_travel')" @click="game.send({ type: 'PREPARE_TRAVEL', ticketType: 'train' })">+ Train</button><button :disabled="!isMyTurn || game.performedActions.value.includes('prepare_travel')" @click="game.send({ type: 'PREPARE_TRAVEL', ticketType: 'ship' })">+ Ship</button><button class="end-turn" :disabled="!isMyTurn" @click="game.send({ type: 'END_ACTIONS' })">End actions</button></div>
+          <div class="action-controls"><button :disabled="!isMyTurn || game.performedActions.value.includes('rest')" @click="game.send({ type: 'REST' })">Rest</button><button :disabled="!isMyTurn || game.performedActions.value.includes('prepare_travel')" @click="game.send({ type: 'PREPARE_TRAVEL', ticketType: 'train' })">+ Train</button><button :disabled="!isMyTurn || game.performedActions.value.includes('prepare_travel')" @click="game.send({ type: 'PREPARE_TRAVEL', ticketType: 'ship' })">+ Ship</button><button :disabled="!isMyTurn || game.performedActions.value.includes('acquire_assets')" @click="game.send({ type: 'ACQUIRE_ASSETS' })">Acquire Assets</button><button class="end-turn" :disabled="!isMyTurn" @click="game.send({ type: 'END_ACTIONS' })">End actions</button></div>
         </div>
         <aside class="investigator-dock" aria-label="Investigator information">
           <button class="dock-toggle" :aria-label="dockExpanded ? 'Close investigator details' : 'Open investigator details'" :aria-expanded="dockExpanded" @click="dockExpanded = !dockExpanded">{{ dockExpanded ? '×' : 'ℹ' }}</button>
@@ -279,11 +317,12 @@ async function copyInvite() {
         </div>
         <footer class="player-tray" :class="`tray-${trayState}`">
           <nav class="tray-tabs" aria-label="Player cards and game information">
-            <button v-for="tab in trayTabs" :key="tab.id" :class="{ active: activeTrayTab === tab.id && trayState !== 'collapsed' }" :aria-expanded="activeTrayTab === tab.id && trayState !== 'collapsed'" @click="selectTrayTab(tab.id)"><span>{{ tab.icon }}</span>{{ tab.label }}<small>0</small></button>
+            <button v-for="tab in trayTabs" :key="tab.id" :class="{ active: activeTrayTab === tab.id && trayState !== 'collapsed' }" :aria-expanded="activeTrayTab === tab.id && trayState !== 'collapsed'" @click="selectTrayTab(tab.id)"><span>{{ tab.icon }}</span>{{ tab.label }}<small>{{ tab.id === 'assets' ? ownedAssets.length : 0 }}</small></button>
             <button class="tray-resize" :aria-label="trayState === 'expanded' ? 'Collapse tray' : 'Expand tray'" @click="cycleTrayState">{{ trayState === 'collapsed' ? '⌃' : trayState === 'peek' ? '⌃' : '⌄' }}</button>
           </nav>
           <div v-if="trayState !== 'collapsed'" class="tray-content">
-            <div><p class="chapter">{{ trayTabs.find(tab => tab.id === activeTrayTab)?.label }}</p><h3>{{ activeTrayTab === 'log' ? 'No recorded events yet' : `No ${activeTrayTab} in your public game state` }}</h3><p>{{ activeTrayTab === 'log' ? 'Authoritative game events will appear here as the rules engine grows.' : 'This area is ready for server-synchronized cards and tokens. It will not invent inventory on the client.' }}</p></div>
+            <div v-if="activeTrayTab === 'assets' && ownedAssets.length" class="owned-assets"><article v-for="asset in ownedAssets" :key="asset.id"><img :src="asset.imageUrl" :alt="asset.name"><div><p class="chapter">Value {{ asset.value }} · {{ asset.traits.join(', ') }}</p><h3>{{ asset.name }}</h3><p>{{ asset.effectText }}</p></div></article></div>
+            <div v-else><p class="chapter">{{ trayTabs.find(tab => tab.id === activeTrayTab)?.label }}</p><h3>{{ activeTrayTab === 'log' ? 'No recorded events yet' : `No ${activeTrayTab} in your public game state` }}</h3><p>{{ activeTrayTab === 'log' ? 'Authoritative game events will appear here as the rules engine grows.' : 'This area shows only server-synchronized cards and tokens.' }}</p></div>
           </div>
         </footer>
       </section>
@@ -363,11 +402,13 @@ input:focus { border-color: #d5aa63; box-shadow: 0 0 0 3px #d5aa6322; }
 .board-stage .board-tools { position: absolute; z-index: 4; top: 18px; left: 18px; right: 18px; margin: 0; pointer-events: none; }.board-stage .board-tools > * { pointer-events: auto; }.board-stage .route-legend { padding: 7px 10px; border: 1px solid #45616a; border-radius: 8px; background: #07171cdd; backdrop-filter: blur(8px); }
 .board-stage .location-inspector { position: absolute; z-index: 4; left: 18px; bottom: 18px; width: min(520px, calc(100% - 150px)); margin: 0; background: #07171cee; box-shadow: 0 8px 28px #0009; backdrop-filter: blur(10px); }
 .reserve-shelf { position: absolute; z-index: 5; top: 66px; left: 18px; width: clamp(150px, 16vw, 220px); max-height: calc(100% - 155px); overflow: auto; padding: 12px; background: #07171ce8; border: 1px solid #49636a; border-radius: 12px; box-shadow: 0 12px 34px #000a; backdrop-filter: blur(10px); }.reserve-shelf header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }.reserve-shelf header > div { display: grid; gap: 2px; }.reserve-shelf header strong { font: 600 1rem Georgia, serif; }.reserve-shelf header button { width: 28px; height: 28px; color: #d5aa63; background: #17343b; border: 1px solid #48636a; border-radius: 7px; }.reserve-shelf.collapsed { width: 48px; padding: 8px; overflow: hidden; }.reserve-shelf.collapsed header > div { display: none; }.reserve-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 12px; }.reserve-slot { aspect-ratio: 3 / 4; display: grid; place-items: center; align-content: center; gap: 3px; color: #71898b; background: #0a2025; border: 1px dashed #50686d; border-radius: 7px; }.reserve-slot span { color: #d5aa63; font: 600 1rem Georgia, serif; }.reserve-slot small { font-size: .54rem; text-transform: uppercase; letter-spacing: .08em; }.bank-loan { width: 100%; display: grid; gap: 2px; margin-top: 8px; padding: 8px; text-align: left; color: #b7c4c1; background: #172a2c; border: 1px solid #5e6c65; border-radius: 7px; }.bank-loan span { color: #d5aa63; font-size: .68rem; font-weight: 800; text-transform: uppercase; }.bank-loan small { font-size: .55rem; }
+.reserve-card { position: relative; aspect-ratio: 3 / 4; overflow: hidden; padding: 0; background: #0a2025; border: 2px solid transparent; border-radius: 7px; }.reserve-card img { width: 100%; height: 100%; object-fit: cover; display: block; }.reserve-card > span { position: absolute; right: 4px; bottom: 4px; display: grid; place-items: center; width: 20px; height: 20px; color: #142127; background: #d5aa63; border-radius: 50%; font-size: .7rem; font-weight: 900; }.reserve-card.selected { border-color: #f3c870; box-shadow: 0 0 0 2px #f3c87055; }.reserve-decision { display: grid; gap: 6px; margin-top: 9px; padding: 8px; color: #c9d5d1; background: #122a30; border: 1px solid #49636a; border-radius: 7px; font-size: .62rem; line-height: 1.35; }.reserve-decision b { color: #d5aa63; }.reserve-decision button { padding: 7px; color: #142127; background: #d5aa63; border: 0; border-radius: 5px; font-size: .62rem; font-weight: 900; }
 .inspector-close { align-self: flex-start; color: #91a7a8; background: transparent; border: 0; padding: 0 2px; font-size: 1.2rem; }
 .action-controls { position: absolute; z-index: 5; right: 18px; bottom: 18px; display: flex; gap: 6px; padding: 5px; background: #07171ce8; border: 1px solid #45616a; border-radius: 11px; box-shadow: 0 8px 24px #0008; backdrop-filter: blur(8px); }.action-controls button { color: #d7dfda; background: #29464e; border: 0; border-radius: 7px; padding: 9px 11px; font-size: .68rem; font-weight: 800; }.action-controls .end-turn { color: #142127; background: #d5aa63; }
 .investigator-dock { position: relative; min-width: 0; display: grid; grid-template-columns: 52px minmax(0, 1fr); overflow: hidden; background: linear-gradient(145deg, #142e35, #091a1f); border-left: 1px solid #3a565e; transition: width .2s; }.investigator-dock.collapsed { grid-template-columns: 1fr; }.dock-toggle { position: absolute; z-index: 2; top: 8px; left: -1px; width: 25px; height: 30px; color: #d5aa63; background: #17343b; border: 1px solid #48636a; border-left: 0; border-radius: 0 7px 7px 0; font-size: 1.2rem; }.party-tabs { display: flex; flex-direction: column; align-items: center; gap: 9px; padding: 48px 7px 10px; background: #07191e; border-right: 1px solid #29464e; }.party-tabs button { position: relative; width: 38px; height: 38px; padding: 0; color: #dce4df; background: #1b3941; border: 1px solid #49636a; border-radius: 50%; font-weight: 900; }.party-tabs button.active { color: #18272c; background: #d5aa63; border-color: #f3d797; box-shadow: 0 0 0 3px #d5aa6325; }.party-tabs .presence { position: absolute; right: -1px; bottom: 0; border: 2px solid #07191e; }.investigator-dock.collapsed .party-tabs { border-right: 0; }.investigator-sheet { min-width: 0; overflow-y: auto; padding: 28px 16px 20px; }.investigator-sheet h2 { margin: 5px 0 2px; font-size: 1.35rem; }.investigator-role { min-height: 35px; margin: 0; color: #8da1a3; font-size: .68rem; line-height: 1.4; }.dock-vitals { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0; }.dock-vitals div { display: grid; gap: 3px; padding: 10px; background: #07191e; border: 1px solid #29464e; border-radius: 8px; }.dock-vitals small, .investigator-facts dt { color: #82999b; font-size: .58rem; text-transform: uppercase; letter-spacing: .08em; }.dock-vitals strong { font-size: 1rem; }.dock-vitals .health { color: #e9a292; }.dock-vitals .sanity { color: #8fd1de; }.investigator-facts { display: grid; gap: 8px; margin: 0 0 14px; }.investigator-facts div { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid #29464e; padding-bottom: 7px; }.investigator-facts dd { margin: 0; color: #d8ded8; font-size: .68rem; text-align: right; }.dock-skills { display: grid; grid-template-columns: repeat(5, 1fr); margin: 12px 0; }.dock-skills span { display: grid; place-items: center; gap: 3px; border-right: 1px solid #29464e; }.dock-skills span:last-child { border: 0; }.dock-skills small { color: #82999b; font-size: .52rem; text-transform: uppercase; }.dock-skills b { font-size: .75rem; }.dock-ability { margin: 8px 0 0; color: #9eb0ad; font-size: .63rem; line-height: 1.45; }.dock-ability b { display: block; color: #d5aa63; font-size: .55rem; text-transform: uppercase; letter-spacing: .08em; }
 .player-tray { z-index: 6; min-height: 0; overflow: hidden; background: linear-gradient(180deg, #10282f, #07171c); border-top: 1px solid #3d5960; box-shadow: 0 -8px 24px #0007; }.tray-tabs { height: 47px; display: flex; align-items: stretch; overflow-x: auto; padding-left: 8px; }.tray-tabs button { flex: none; display: flex; align-items: center; gap: 7px; color: #9db0af; background: transparent; border: 0; border-bottom: 2px solid transparent; padding: 0 12px; font-size: .7rem; font-weight: 800; }.tray-tabs button > span { color: #d5aa63; }.tray-tabs button small { min-width: 17px; color: #819697; background: #07171c; border-radius: 999px; padding: 2px 5px; font-size: .52rem; }.tray-tabs button.active { color: #f0eddb; background: #17343b; border-bottom-color: #d5aa63; }.tray-tabs .tray-resize { width: 44px; margin-left: auto; justify-content: center; color: #d5aa63; border-left: 1px solid #29464e; font-size: 1rem; }.tray-content { height: calc(100% - 47px); overflow: auto; padding: 18px 24px; border-top: 1px solid #213c43; }.tray-content h3 { margin: 5px 0; font: 600 1.05rem Georgia, serif; }.tray-content p:last-child { max-width: 620px; margin: 0; color: #8fa3a4; font-size: .72rem; line-height: 1.5; }
 .investigator-dock { position: relative; z-index: 10; display: block; overflow: visible; min-width: 58px; background: #07191e; border-left: 1px solid #3a565e; }.investigator-dock .party-tabs { position: relative; z-index: 2; height: 100%; border-right: 0; }.investigator-dock .dock-toggle { position: absolute; z-index: 3; top: 8px; left: 50%; width: 38px; height: 32px; transform: translateX(-50%); border: 1px solid #48636a; border-radius: 8px; font-size: .9rem; }.investigator-dock .investigator-sheet { position: absolute; z-index: 1; top: 0; right: 57px; bottom: 0; width: 286px; overflow-y: auto; padding: 28px 18px 20px; background: linear-gradient(145deg, #142e35, #091a1f); border-left: 1px solid #3a565e; box-shadow: -14px 0 34px #000b; animation: investigator-drawer-in .18s ease-out; }.investigator-dock .party-tabs button.active { box-shadow: 0 0 0 3px #d5aa6325, 0 0 16px #d5aa6344; }
+.owned-assets { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 8px; }.owned-assets article { flex: 0 0 min(360px, 80vw); display: grid; grid-template-columns: 90px 1fr; gap: 12px; padding: 10px; background: #10272d; border: 1px solid #36535b; border-radius: 10px; }.owned-assets img { width: 90px; border-radius: 5px; }.owned-assets h3 { margin: 4px 0 7px; }.owned-assets p:last-child { color: #b7c4c1; }
 @keyframes investigator-drawer-in { from { opacity: 0; transform: translateX(18px); } }
 @media (max-width: 1000px) {
   .game-workspace { grid-template-columns: minmax(0, 1fr); }

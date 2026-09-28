@@ -259,6 +259,106 @@ describe("Mystery lifecycle", () => {
   });
 });
 
+describe("Acquire Assets", () => {
+  function marketState(): GameState {
+    const state = startedGame();
+    state.reserveAssetIds = ["asset_bandages", "asset_whiskey", "asset_axe", "asset_holy_water"];
+    state.privateState.deckOrderById.assets = ["asset_arcane_tome"];
+    return state;
+  }
+
+  it("rolls Influence, buys within the success budget, and refills the Reserve", () => {
+    const initiated = executeCommand(
+      marketState(),
+      "host",
+      { type: "ACQUIRE_ASSETS" },
+      testContent,
+      createDeterministicEngineContext({ dice: [6, 5], ids: ["buy-assets"] }),
+    );
+    expect(initiated.ok).toBe(true);
+    if (!initiated.ok) return;
+    expect(initiated.events).toEqual([{ type: "ACQUIRE_ASSETS_TESTED", playerId: "host", dice: [6, 5], successes: 2 }]);
+    expect(initiated.state.pendingDecision).toMatchObject({
+      id: "buy-assets",
+      kind: "select_acquired_cards",
+      optionIds: ["asset_bandages", "asset_whiskey", "asset_axe", "asset_holy_water"],
+      selectionBudget: 2,
+      continuation: "acquire_assets_purchase",
+    });
+
+    const purchased = executeCommand(initiated.state, "host", {
+      type: "RESOLVE_DECISION",
+      decisionId: "buy-assets",
+      selectedOptionIds: ["asset_bandages", "asset_whiskey"],
+    }, testContent);
+    expect(purchased.ok).toBe(true);
+    if (!purchased.ok) return;
+    expect(purchased.state.players[0]?.assetIds).toEqual(["asset_bandages", "asset_whiskey"]);
+    expect(purchased.state.reserveAssetIds).toEqual(["asset_axe", "asset_holy_water", "asset_arcane_tome"]);
+    expect(purchased.state.privateState.deckOrderById.assets).toEqual([]);
+    expect(purchased.state).toMatchObject({ actionsRemaining: 1, performedActions: ["acquire_assets"] });
+  });
+
+  it("rejects purchases over budget without mutation", () => {
+    const initiated = executeCommand(
+      marketState(),
+      "host",
+      { type: "ACQUIRE_ASSETS" },
+      testContent,
+      createDeterministicEngineContext({ dice: [6, 1], ids: ["buy-assets"] }),
+    );
+    if (!initiated.ok) throw new Error("Acquire Assets setup failed.");
+    const snapshot = structuredClone(initiated.state);
+    expect(executeCommand(initiated.state, "host", {
+      type: "RESOLVE_DECISION",
+      decisionId: "buy-assets",
+      selectedOptionIds: ["asset_axe"],
+    }, testContent)).toMatchObject({ ok: false, error: { code: "ASSET_PURCHASE_OVER_BUDGET" } });
+    expect(initiated.state).toEqual(snapshot);
+  });
+
+  it("allows one Reserve discard after buying nothing, then completes the action", () => {
+    const initiated = executeCommand(
+      marketState(),
+      "host",
+      { type: "ACQUIRE_ASSETS" },
+      testContent,
+      createDeterministicEngineContext({ dice: [1, 2], ids: ["buy-assets"] }),
+    );
+    if (!initiated.ok) throw new Error("Acquire Assets setup failed.");
+    const declined = executeCommand(initiated.state, "host", {
+      type: "RESOLVE_DECISION",
+      decisionId: "buy-assets",
+      selectedOptionIds: [],
+    }, testContent, createDeterministicEngineContext({ ids: ["discard-asset"] }));
+    expect(declined.ok).toBe(true);
+    if (!declined.ok) return;
+    expect(declined.state.pendingDecision).toMatchObject({ id: "discard-asset", kind: "discard_reserve_card", minSelections: 0, maxSelections: 1 });
+    expect(declined.state.actionsRemaining).toBe(2);
+
+    const discarded = executeCommand(declined.state, "host", {
+      type: "RESOLVE_DECISION",
+      decisionId: "discard-asset",
+      selectedOptionIds: ["asset_axe"],
+    }, testContent);
+    expect(discarded.ok).toBe(true);
+    if (!discarded.ok) return;
+    expect(discarded.state.assetDiscardIds).toEqual(["asset_axe"]);
+    expect(discarded.state.reserveAssetIds).toEqual(["asset_bandages", "asset_whiskey", "asset_holy_water", "asset_arcane_tome"]);
+    expect(discarded.state).toMatchObject({ actionsRemaining: 1, performedActions: ["acquire_assets"] });
+  });
+
+  it("requires a City without Monsters and explicit random input", () => {
+    const state = marketState();
+    expect(executeCommand(state, "host", { type: "ACQUIRE_ASSETS" }, testContent)).toMatchObject({ ok: false, error: { code: "RANDOM_INPUT_REQUIRED" } });
+    state.monsterLocationIds = ["san_francisco"];
+    expect(executeCommand(state, "host", { type: "ACQUIRE_ASSETS" }, testContent)).toMatchObject({ ok: false, error: { code: "ASSET_ACTION_BLOCKED_BY_MONSTER" } });
+    state.monsterLocationIds = [];
+    state.players[0]!.locationId = "space_4";
+    expect(executeCommand(state, "host", { type: "ACQUIRE_ASSETS" }, testContent)).toMatchObject({ ok: false, error: { code: "CITY_REQUIRED" } });
+  });
+});
+
 describe("projectPublicState", () => {
   it("removes hidden deck and token order from the synchronized projection", () => {
     const state = startedGame();
