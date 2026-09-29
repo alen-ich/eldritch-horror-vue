@@ -18,7 +18,7 @@ import { loseResource, recoverResource } from "./resources.js";
 import { buildGateStack, buildMonsterPool, buildMythosDeck, type AncientSetup, type MythosColor } from "./setup.js";
 import { resolveStandardCombat, type CombatCheck } from "./combat.js";
 import { conditionSuccessThreshold, publicConditionId, resolveBoonBaneGain } from "./conditions.js";
-import { advanceOmenTrack } from "./omen.js";
+import { advanceOmenTrack, omenTrack } from "./omen.js";
 export * from "./setup.js";
 export * from "./skill-tests.js";
 export * from "./resources.js";
@@ -217,7 +217,7 @@ export interface GameContent {
   monsters?: readonly MonsterCombatDefinition[];
   ancientOnes?: Readonly<Partial<Record<AncientOneId, AncientSetup>>>;
   mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[] }[];
-  referenceCards?: readonly { playerCount: number; spawnClues: number }[];
+  referenceCards?: readonly { playerCount: number; spawnClues: number; monsterSurge?: number }[];
   map: GameMap;
   investigators: Readonly<Partial<Record<InvestigatorId, InvestigatorSetup>>>;
   assets: readonly { id: string; value: number; engineEffects: readonly AssetEngineEffect[] }[];
@@ -694,6 +694,45 @@ export function spawnMythosClues(state: GameState, content: GameContent, context
   }
   next.resolvedMythosClueCardId = state.currentMythosCardId;
   next.currentMythosIconIndex = (state.currentMythosIconIndex ?? 0) + 1;
+  next.stateVersion = state.stateVersion;
+  return success(next, events);
+}
+
+/** Internal second green Mythos icon: each matching Gate surges, or one Gate opens. */
+export function resolveMythosMonsterSurge(state: GameState, content: GameContent, context: EngineContext): CommandResult {
+  if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
+  if (state.phase !== "mythos" || !state.currentMythosCardId || state.pendingDecision || state.activeTest || state.pendingDefeat) {
+    return failure("WRONG_PHASE", "A revealed Mythos card is required for Monster Surge.");
+  }
+  const card = content.mythosCards?.find(candidate => candidate.id === state.currentMythosCardId);
+  if (card?.icons?.[1]?.type !== "monster_surge") return failure("MYTHOS_CONTENT_MISSING", "The revealed card has no verified Monster Surge icon at this position.");
+  if (state.currentMythosIconIndex !== 1) return failure("MYTHOS_CARD_ACTIVE", "Resolve preceding Mythos icons first.");
+  const omen = state.omen === undefined ? undefined : omenTrack[state.omen];
+  if (!omen) return failure("OMEN_CONTENT_MISSING", "The current Omen is unavailable.");
+  const activeGates = (state.activeGateIds ?? []).map(id => content.gates?.find(gate => gate.id === id));
+  if (activeGates.some(gate => !gate)) return failure("GATE_CONTENT_MISSING", "An active Gate is missing from content.");
+  const matchingGates = activeGates.filter(gate => gate?.omenSymbol === omen);
+  let next = structuredClone(state);
+  const events: GameEvent[] = [];
+  if (!matchingGates.length) {
+    const opened = openGateFromStack(next, content, context);
+    if (!opened.ok) return opened;
+    next = opened.state;
+    events.push(...opened.events);
+  } else {
+    const count = content.referenceCards?.find(reference => reference.playerCount === state.players.length)?.monsterSurge;
+    if (!count || !Number.isSafeInteger(count)) return failure("MYTHOS_CONTENT_MISSING", "The Monster Surge count is missing from the reference card.");
+    for (const gate of matchingGates) {
+      for (let index = 0; index < count; index += 1) {
+        if (!next.privateState.tokenPoolById.monsters?.length) break;
+        const spawned = spawnMonsterFromCup(next, gate!.locationId, content, context);
+        if (!spawned.ok) return spawned;
+        next = spawned.state;
+        events.push(...spawned.events);
+      }
+    }
+  }
+  next.currentMythosIconIndex = 2;
   next.stateVersion = state.stateVersion;
   return success(next, events);
 }
