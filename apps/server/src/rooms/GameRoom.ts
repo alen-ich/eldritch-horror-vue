@@ -28,8 +28,8 @@ const baseGameContent: GameContent = {
   gates: baseGameGates.map(({ id, omenSymbol, locationId }) => ({ id, omenSymbol, locationId })),
   clues: baseGameClues.map(({ id, locationId }) => ({ id, locationId })),
   conditions: baseGameConditions.map(({ id, kind }) => ({ id, kind, backEffect: privateConditionBackEffectById[id] })),
-  monsters: baseGameMonsters.map(({ id, type, count, horrorCheck, damageCheck, toughness, specialEffect, spawnEffect }) => ({
-    id, type, count, horrorCheck, damageCheck, toughness, specialEffect,
+  monsters: baseGameMonsters.map(({ id, type, count, horrorCheck, damageCheck, toughness, specialEffect, spawnEffect, reckoningEffect }) => ({
+    id, type, count, horrorCheck, damageCheck, toughness, specialEffect, reckoningEffect,
     spawnEffect: typedMonsterSpawnEffect(id, Boolean(spawnEffect)),
   })),
   ancientOnes: Object.fromEntries(baseGameAncientOnes.map(ancient => [ancient.id, {
@@ -37,6 +37,7 @@ const baseGameContent: GameContent = {
     mythosDeck: ancient.mythosDeck,
     greenOmenTokens: ancient.setup.reduce((sum, effect) => sum + (effect.type === "place_eldritch_token_on_omen" ? effect.quantity : 0), 0),
     setAsideMonsters: ancient.setup.filter(effect => effect.type === "set_aside_monster").map(({ monsterId, quantity }) => ({ monsterId, quantity })),
+    reckoningEffectIds: ancient.frontEffectIds.filter(id => id.includes("reckoning")),
   }])),
   mythosCards: baseGameMythosCards,
   referenceCards: baseGameReferenceCards,

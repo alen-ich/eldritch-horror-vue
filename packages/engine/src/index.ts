@@ -137,6 +137,7 @@ export interface MonsterCombatDefinition {
   damageCheck: CombatCheck | null | "ancient_one";
   toughness: { base: number; perInvestigator: number } | "ancient_one";
   specialEffect?: string;
+  reckoningEffect?: string;
 }
 
 export interface GameState {
@@ -229,6 +230,7 @@ export type RuleErrorCode =
   | "MYTHOS_CARD_ACTIVE" | "MYTHOS_DECK_MISSING" | "MYTHOS_CONTENT_MISSING"
   | "CONDITION_ACTION_INVALID" | "CONDITION_RESTRICTED"
   | "CONDITION_CONTENT_MISSING" | "CONDITION_UNAVAILABLE" | "CONDITION_NOT_HELD" | "CONDITION_EFFECT_UNSUPPORTED"
+  | "RECKONING_UNSUPPORTED"
   | "INVALID_COMBAT" | "MONSTER_CONTENT_MISSING" | "MONSTER_EFFECT_UNSUPPORTED" | "MONSTER_UNAVAILABLE"
   | "GATE_UNAVAILABLE" | "GATE_CONTENT_MISSING"
   | "CLUE_CONTENT_MISSING" | "CLUE_UNAVAILABLE"
@@ -759,6 +761,55 @@ export function resolveMythosSpawnGates(state: GameState, content: GameContent, 
     events.push(...opened.events);
   }
   next.currentMythosIconIndex = 3;
+  next.stateVersion = state.stateVersion;
+  return success(next, events);
+}
+
+/** Internal yellow Reckoning slice; refuses every effect category not yet executable. */
+export function resolveMythosReckoning(state: GameState, content: GameContent, context: EngineContext): CommandResult {
+  if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
+  if (state.phase !== "mythos" || !state.currentMythosCardId || state.pendingDecision || state.activeTest || state.pendingDefeat) {
+    return failure("WRONG_PHASE", "A revealed Mythos card is required for Reckoning.");
+  }
+  const card = content.mythosCards?.find(candidate => candidate.id === state.currentMythosCardId);
+  if (card?.icons?.[1]?.type !== "resolve_reckoning") return failure("MYTHOS_CONTENT_MISSING", "The revealed card has no verified Reckoning icon at this position.");
+  if (state.currentMythosIconIndex !== 1) return failure("MYTHOS_CARD_ACTIVE", "Resolve preceding Mythos icons first.");
+  const ancient = state.ancientOneId ? content.ancientOnes?.[state.ancientOneId] : undefined;
+  if (!ancient || !ancient.reckoningEffectIds || ancient.reckoningEffectIds.length || state.awakened) {
+    return failure("RECKONING_UNSUPPORTED", "The Ancient One's Reckoning is not executable yet.");
+  }
+  for (const instance of state.monsters ?? []) {
+    const monster = content.monsters?.find(candidate => candidate.id === instance.monsterId);
+    if (!monster) return failure("MONSTER_CONTENT_MISSING", "An on-board Monster is missing from content.");
+    if (monster.reckoningEffect) return failure("RECKONING_UNSUPPORTED", "An on-board Monster has an unsupported Reckoning effect.");
+  }
+  if (!state.leadInvestigatorId) return failure("PLAYER_NOT_FOUND", "The Lead Investigator is missing.");
+  const leadIndex = state.players.findIndex(player => player.id === state.leadInvestigatorId);
+  if (leadIndex < 0) return failure("PLAYER_NOT_FOUND", "The Lead Investigator is missing.");
+  const ordered = [...state.players.slice(leadIndex), ...state.players.slice(0, leadIndex)].filter(player => !player.defeated && !player.eliminated);
+  for (const player of ordered) {
+    if (player.assetIds.length) return failure("RECKONING_UNSUPPORTED", "Possession Reckoning effects are not executable yet.");
+    const held = player.conditionIds ?? [];
+    if (held.length > 1) return failure("RECKONING_UNSUPPORTED", "Multiple Conditions require investigator-selected Reckoning order.");
+    for (const id of held) {
+      const condition = content.conditions?.find(candidate => candidate.id === id);
+      if (!condition) return failure("CONDITION_CONTENT_MISSING", "A held Condition is missing from content.");
+      if (condition.kind !== "blessed" && condition.kind !== "cursed") {
+        return failure("RECKONING_UNSUPPORTED", "A held Condition's Reckoning is not executable yet.");
+      }
+    }
+  }
+  let next = structuredClone(state);
+  const events: GameEvent[] = [];
+  for (const player of ordered) {
+    const cardId = player.conditionIds?.[0];
+    if (!cardId) continue;
+    const resolved = resolveConditionReckoning(next, player.id, cardId, content, context);
+    if (!resolved.ok) return resolved;
+    next = resolved.state;
+    events.push(...resolved.events);
+  }
+  next.currentMythosIconIndex = 2;
   next.stateVersion = state.stateVersion;
   return success(next, events);
 }

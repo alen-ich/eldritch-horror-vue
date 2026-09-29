@@ -32,6 +32,7 @@ export interface AncientSetup {
   mythosDeck: readonly Readonly<Record<MythosColor, number>>[];
   greenOmenTokens: number;
   setAsideMonsters?: readonly { monsterId: string; quantity: number }[];
+  reckoningEffectIds?: readonly string[];
 }
 
 /** The first array element is the top of the deck: stage I, then II, then III. */
