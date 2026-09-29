@@ -40,6 +40,33 @@ describe("authoritative game room", () => {
     assert.ok(!JSON.stringify(room.state).includes("clue_arkham"));
   });
 
+  it("accepts only the active investigator's Monster fight and records its result", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "encounter";
+    state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
+    state.players[0]!.investigatorId = "akachi_onyele";
+    state.players[0]!.locationId = "arkham";
+    state.players[0]!.health = 5;
+    state.players[0]!.sanity = 7;
+    state.players[0]!.assetIds = [];
+    state.monsters = [{ id: "board-nightgaunt", monsterId: "monster_nightgaunt", locationId: "arkham", damage: 0 }];
+    state.monsterLocationIds = ["arkham"];
+    internal.applyEngineState(state);
+    const denied = guest.waitForMessage(commandErrorMessageType);
+    sendCommand(room, guest, { type: "FIGHT_MONSTER", monsterInstanceId: "board-nightgaunt" });
+    assert.equal((await denied as { code: string }).code, "INVALID_COMBAT");
+    sendCommand(room, host, { type: "FIGHT_MONSTER", monsterInstanceId: "board-nightgaunt" });
+    await room.waitForMessage(commandMessageType);
+    assert.equal(room.state.stateVersion, state.stateVersion + 1);
+    const after = internal.toEngineState();
+    assert.ok(after.monsters?.every(monster => monster.id !== "board-nightgaunt") || after.activePlayerId === state.players[1]!.id);
+    assert.equal(after.players[0]!.health <= 5, true);
+  });
+
   it("authorizes Mythos icon advancement and preserves the card on unsupported text", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });

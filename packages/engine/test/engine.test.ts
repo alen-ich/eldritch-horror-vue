@@ -269,6 +269,47 @@ describe("combat encounter integration", () => {
     expect(resolveCombatEncounter(state, "host", "token-1", testContent, context)).toMatchObject({ ok: false, error: { code: "MONSTER_EFFECT_UNSUPPORTED" } });
     expect(state.players[0]?.health).toBe(4);
   });
+
+  it("requires each Monster once before a location encounter and advances after an undefeated Monster survives", () => {
+    const state = combatState();
+    state.monsters!.push({ id: "token-2", monsterId: "monster_test", locationId: "san_francisco", damage: 0 });
+    const first = executeCommand(state, "host", { type: "FIGHT_MONSTER", monsterInstanceId: "token-1" }, testContent, createDeterministicEngineContext({ dice: [5, 5] }));
+    if (!first.ok) throw new Error(first.error.message);
+    expect(first.state.stateVersion).toBe(state.stateVersion + 1);
+    expect(first.state.activePlayerId).toBe("host");
+    expect(first.state.monsters?.map(monster => monster.id)).toEqual(["token-2"]);
+    expect(legalLocationEncounterDecks(first.state, "host", testContent)).toEqual([]);
+    expect(executeCommand(first.state, "host", { type: "FIGHT_MONSTER", monsterInstanceId: "token-1" }, testContent, createDeterministicEngineContext({ dice: [] }))).toMatchObject({ ok: false, error: { code: "INVALID_COMBAT" } });
+    const second = executeCommand(first.state, "host", { type: "FIGHT_MONSTER", monsterInstanceId: "token-2" }, testContent, createDeterministicEngineContext({ dice: [1, 1] }));
+    if (!second.ok) throw new Error(second.error.message);
+    expect(second.state.stateVersion).toBe(first.state.stateVersion + 1);
+    expect(second.state.monsters).toHaveLength(1);
+    expect(second.state.activePlayerId).toBe("guest");
+    expect(second.state.encounteredMonsterInstanceIds).toEqual([]);
+  });
+
+  it("allows a location encounter after defeating the last Monster", () => {
+    const state = combatState();
+    const result = executeCommand(state, "host", { type: "FIGHT_MONSTER", monsterInstanceId: "token-1" }, testContent, createDeterministicEngineContext({ dice: [5, 5] }));
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.state.activePlayerId).toBe("host");
+    expect(legalLocationEncounterDecks(result.state, "host", testContent)).toEqual(["general", "america"]);
+    expect(result.state.privateState.tokenPoolById.monsters).toEqual(["monster_test"]);
+  });
+
+  it("moves past the active investigator after combat defeat is resolved", () => {
+    const state = combatState();
+    state.players[0]!.health = 1;
+    const fought = executeCommand(state, "host", { type: "FIGHT_MONSTER", monsterInstanceId: "token-1" }, testContent, createDeterministicEngineContext({ dice: [1, 1] }));
+    if (!fought.ok) throw new Error(fought.error.message);
+    expect(fought.state.pendingDefeat?.playerId).toBe("host");
+    const defeated = executeCommand(fought.state, "host", { type: "RESOLVE_DEFEAT", cityId: "san_francisco", cause: "health", leadPlayerId: "guest" }, testContent);
+    if (!defeated.ok) throw new Error(defeated.error.message);
+    expect(defeated.state.phase).toBe("encounter");
+    expect(defeated.state.activePlayerId).toBe("guest");
+    expect(defeated.state.leadInvestigatorId).toBe("guest");
+    expect(defeated.state.encounteredMonsterInstanceIds).toEqual([]);
+  });
 });
 
 describe("executeCommand", () => {

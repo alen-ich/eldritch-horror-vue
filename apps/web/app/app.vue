@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { baseGameAncientOnes, baseGameAssets, baseGameBoardDimensions, baseGameConditions, baseGameInvestigators, baseGameLocations, baseGameMap, baseGameMysteries, baseGameRoutes, baseGameScannedLocationEncounters, skillNames } from '@eldritch/content'
+import { baseGameAncientOnes, baseGameAssets, baseGameBoardDimensions, baseGameConditions, baseGameInvestigators, baseGameLocations, baseGameMap, baseGameMonsters, baseGameMysteries, baseGameRoutes, baseGameScannedLocationEncounters, skillNames } from '@eldritch/content'
 import type { AssetCardData, ConditionCard } from '@eldritch/content'
 import type { AncientOneId, InvestigatorId, LocationId } from '@eldritch/protocol'
 
@@ -30,6 +30,7 @@ const locationById = Object.fromEntries(baseGameLocations.map((location) => [loc
 const investigatorById = Object.fromEntries(baseGameInvestigators.map((investigator) => [investigator.id, investigator]))
 const assetById = Object.fromEntries(baseGameAssets.map((asset) => [asset.id, asset]))
 const conditionById = Object.fromEntries(baseGameConditions.flatMap((card) => [[card.id, card], [`condition_${card.kind}`, card]]))
+const monsterById = Object.fromEntries(baseGameMonsters.map(monster => [monster.id, monster]))
 const me = computed(() => game.players.value.find((player) => player.id === game.playerId.value))
 const displayedPlayer = computed(() => game.players.value.find((player) => player.id === selectedPlayerId.value) ?? me.value ?? game.players.value[0])
 const displayedInvestigator = computed(() => displayedPlayer.value?.investigatorId ? investigatorById[displayedPlayer.value.investigatorId] : undefined)
@@ -39,6 +40,7 @@ const selectedByInvestigator = computed(() => new Map(game.players.value
   .map((player) => [player.investigatorId, player])))
 const isMyTurn = computed(() => game.phase.value === 'action' && game.activePlayerId.value === game.playerId.value && !game.pendingDecision.value && !game.gameResult.value)
 const isMyEncounter = computed(() => game.phase.value === 'encounter' && game.activePlayerId.value === game.playerId.value && !game.pendingDecision.value && !game.gameResult.value)
+const myEncounterMonsters = computed(() => game.monsters.value.filter(monster => monster.locationId === me.value?.locationId))
 const encounterDecks = computed(() => {
   const location = me.value?.locationId as LocationId | undefined
   if (!location || !locationById[location]) return [] as { id: 'general' | 'america' | 'europe' | 'asia_australia'; label: string }[]
@@ -363,8 +365,9 @@ async function copyInvite() {
           <TradePanel />
           <DefeatPanel />
           <section v-if="game.phase.value === 'encounter'" class="encounter-panel" aria-label="Location encounter">
-            <div><strong>Encounter phase</strong><small v-if="isMyEncounter">Choose a location deck. Monsters on your space must be resolved first; many card effects remain unsupported.</small><small v-else>Waiting for the active investigator.</small></div>
-            <template v-if="isMyEncounter"><button v-for="deck in encounterDecks" :key="deck.id" @click="game.send({ type: 'RESOLVE_LOCATION_ENCOUNTER', deck: deck.id })">{{ deck.label }}</button></template>
+            <div><strong>Encounter phase</strong><small v-if="isMyEncounter">{{ myEncounterMonsters.length ? 'Fight each Monster on your space before taking another encounter.' : 'Choose a location deck. Many card effects remain unsupported.' }}</small><small v-else>Waiting for the active investigator.</small></div>
+            <template v-if="isMyEncounter && myEncounterMonsters.length"><button v-for="monster in myEncounterMonsters" :key="monster.id" :disabled="game.encounteredMonsterInstanceIds.value.includes(monster.id)" @click="game.send({ type: 'FIGHT_MONSTER', monsterInstanceId: monster.id })">{{ monsterById[monster.monsterId]?.name ?? monster.monsterId }} · {{ monster.damage }} damage{{ game.encounteredMonsterInstanceIds.value.includes(monster.id) ? ' · fought' : '' }}</button></template>
+            <template v-if="isMyEncounter && !myEncounterMonsters.length"><button v-for="deck in encounterDecks" :key="deck.id" @click="game.send({ type: 'RESOLVE_LOCATION_ENCOUNTER', deck: deck.id })">{{ deck.label }}</button></template>
             <img v-if="latestEncounterCard" :src="latestEncounterCard.imageUrl" :alt="`${game.currentLocationEncounterCardId.value ? 'Active' : 'Last resolved'} encounter: ${latestEncounterCard.id}`" />
           </section>
           <section v-if="game.phase.value === 'mythos' && game.activePlayerId.value === game.playerId.value" class="encounter-panel" aria-label="Mythos resolution"><strong>Mythos phase</strong><button @click="game.send({ type: 'ADVANCE_MYTHOS' })">Resolve next printed icon</button><small>Unimplemented card text will stop resolution safely.</small></section>

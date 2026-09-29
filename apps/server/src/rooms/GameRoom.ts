@@ -176,7 +176,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       });
       return;
     }
-    const context = parsed.data.command.type === "ADVANCE_MYTHOS" || parsed.data.command.type === "RESOLVE_LOCATION_ENCOUNTER"
+    const context = parsed.data.command.type === "ADVANCE_MYTHOS" || parsed.data.command.type === "RESOLVE_LOCATION_ENCOUNTER" || parsed.data.command.type === "FIGHT_MONSTER"
       || (parsed.data.command.type === "RESOLVE_DECISION" && this.activeTest?.continuation === "location_encounter")
       ? serverMythosContext()
       : parsed.data.command.type === "START_GAME"
@@ -243,6 +243,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       usedConditionActionIds: this.state.usedConditionActionIds ? this.state.usedConditionActionIds.split(",") : [],
       monsterLocationIds: [...new Set(monsters.map(monster => monster.locationId))],
       monsters,
+      encounteredMonsterInstanceIds: this.state.encounteredMonsterInstanceIds ? this.state.encounteredMonsterInstanceIds.split(",") : [],
       activeGateIds: this.state.activeGateIds ? this.state.activeGateIds.split(",") : [],
       boardClues: JSON.parse(this.state.boardClues) as GameState["boardClues"],
       reserveAssetIds: this.state.reserveAssetIds ? this.state.reserveAssetIds.split(",") : [],
@@ -311,6 +312,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     this.state.performedActions = engineState.performedActions.join(",");
     this.state.usedConditionActionIds = (engineState.usedConditionActionIds ?? []).join(",");
     this.state.monsters = JSON.stringify(engineState.monsters ?? []);
+    this.state.encounteredMonsterInstanceIds = (engineState.encounteredMonsterInstanceIds ?? []).join(",");
     this.state.activeGateIds = (engineState.activeGateIds ?? []).join(",");
     this.state.boardClues = JSON.stringify(engineState.boardClues ?? []);
     this.state.reserveAssetIds = engineState.reserveAssetIds.join(",");

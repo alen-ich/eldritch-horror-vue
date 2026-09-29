@@ -159,6 +159,7 @@ export interface GameState {
   currentMythosIconIndex?: number;
   lastLocationEncounterCardId?: string;
   currentLocationEncounterCardId?: string;
+  encounteredMonsterInstanceIds?: string[];
   resolvedMythosClueCardId?: string;
   activeMysteryId?: string;
   mysteryProgress: number;
@@ -893,7 +894,7 @@ export function advanceOmen(state: GameState, content: GameContent): CommandResu
 
 export function resolveCombatEncounter(state: GameState, playerId: string, monsterInstanceId: string, content: GameContent, context: EngineContext): CommandResult {
   if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
-  if (state.phase !== "encounter" || state.activePlayerId !== playerId || state.pendingDecision || state.pendingDefeat) {
+  if (state.phase !== "encounter" || state.activePlayerId !== playerId || state.pendingDecision || state.pendingDefeat || state.activeTest) {
     return failure("WRONG_PHASE", "Combat is unavailable during this resolution.");
   }
   const player = state.players.find(candidate => candidate.id === playerId);
@@ -1041,6 +1042,7 @@ function advanceActionInvestigator(state: GameState, actorIndex: number, events:
     return;
   }
   state.phase = "encounter";
+  state.encounteredMonsterInstanceIds = [];
   const leadIndex = state.players.findIndex(player => player.id === state.leadInvestigatorId);
   state.activePlayerId = [...state.players.slice(Math.max(0, leadIndex)), ...state.players.slice(0, Math.max(0, leadIndex))]
     .find(player => !player.defeated && !player.eliminated)?.id;
@@ -1081,6 +1083,7 @@ export function advanceEncounterInvestigator(state: GameState, playerId: string)
   const following = ordered.slice(activeIndex + 1).find(player => !player.defeated && !player.eliminated);
   if (following) next.activePlayerId = following.id;
   else { next.phase = "mythos"; next.activePlayerId = next.leadInvestigatorId; }
+  next.encounteredMonsterInstanceIds = [];
   return success(next, [{ type: "PHASE_ADVANCED", phase: next.phase, activePlayerId: next.activePlayerId }]);
 }
 
@@ -1426,6 +1429,27 @@ export function executeCommand(
   const actorIndex = state.players.findIndex((player) => player.id === actorPlayerId);
   if (actorIndex < 0) return failure("PLAYER_NOT_FOUND", "The acting player is not in this game.");
   if (state.gameResult) return failure("GAME_ENDED", "The game has already ended.");
+  if (command.type === "FIGHT_MONSTER") {
+    if (state.phase !== "encounter" || state.activePlayerId !== actorPlayerId || state.encounteredMonsterInstanceIds?.includes(command.monsterInstanceId)) {
+      return failure("INVALID_COMBAT", "This Monster cannot be encountered again by this investigator.");
+    }
+    if (!context) return failure("RANDOM_INPUT_REQUIRED", "Combat requires server dice.");
+    const fought = resolveCombatEncounter(state, actorPlayerId, command.monsterInstanceId, content, context);
+    if (!fought.ok) return fought;
+    const nextCombat = fought.state;
+    nextCombat.stateVersion = state.stateVersion + 1;
+    nextCombat.encounteredMonsterInstanceIds = [...(state.encounteredMonsterInstanceIds ?? []), command.monsterInstanceId];
+    if (nextCombat.pendingDefeat || nextCombat.gameResult) return fought;
+    const player = nextCombat.players.find(candidate => candidate.id === actorPlayerId);
+    const remaining = nextCombat.monsters?.filter(monster => monster.locationId === player?.locationId) ?? [];
+    if (remaining.length && remaining.every(monster => nextCombat.encounteredMonsterInstanceIds?.includes(monster.id))) {
+      const advanced = advanceEncounterInvestigator(nextCombat, actorPlayerId);
+      if (!advanced.ok) return advanced;
+      advanced.state.stateVersion = state.stateVersion;
+      return success(advanced.state, [...fought.events, ...advanced.events]);
+    }
+    return fought;
+  }
   if (command.type === "RESOLVE_LOCATION_ENCOUNTER") {
     if (!context) return failure("RANDOM_INPUT_REQUIRED", "Encounter resolution requires server randomness.");
     return resolveLocationEncounter(state, actorPlayerId, command.deck, content, context);
@@ -1486,10 +1510,20 @@ export function executeCommand(
     actor.sanity = 0;
     actor.locationId = command.cityId;
     next.pendingDefeat = undefined;
-    if (state.leadInvestigatorId === actorPlayerId) next.leadInvestigatorId = command.leadPlayerId ?? survivors[0]?.id;
+    const newLeadInvestigatorId = state.leadInvestigatorId === actorPlayerId ? command.leadPlayerId ?? survivors[0]?.id : next.leadInvestigatorId;
     const events: GameEvent[] = [];
-    if (state.phase === "action" && state.activePlayerId === actorPlayerId) advanceActionInvestigator(next, actorIndex, events);
-    else if (state.activePlayerId === actorPlayerId) next.activePlayerId = next.leadInvestigatorId;
+    if (state.phase === "encounter" && state.activePlayerId === actorPlayerId) {
+      const advanced = advanceEncounterInvestigator(next, actorPlayerId);
+      if (!advanced.ok) return advanced;
+      next.phase = advanced.state.phase;
+      next.activePlayerId = next.phase === "mythos" ? newLeadInvestigatorId : advanced.state.activePlayerId;
+      next.encounteredMonsterInstanceIds = [];
+      events.push({ type: "PHASE_ADVANCED", phase: next.phase, activePlayerId: next.activePlayerId });
+    } else if (state.phase === "action" && state.activePlayerId === actorPlayerId) {
+      next.leadInvestigatorId = newLeadInvestigatorId;
+      advanceActionInvestigator(next, actorIndex, events);
+    } else if (state.activePlayerId === actorPlayerId) next.activePlayerId = newLeadInvestigatorId;
+    next.leadInvestigatorId = newLeadInvestigatorId;
     return success(next, events);
   }
   if (state.pendingDefeat) return failure("INVALID_DEFEAT", "Resolve the pending defeat first.");
