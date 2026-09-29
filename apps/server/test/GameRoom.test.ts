@@ -25,13 +25,17 @@ describe("authoritative game room", () => {
     const state = internal.toEngineState();
     state.monsters = [{ id: "on-board-1", monsterId: "monster_ghoul", locationId: "arkham", damage: 1 }];
     state.activeGateIds = ["gate_arkham"];
+    state.boardClues = [{ id: "marker-1", locationId: "london" }];
     state.privateState.tokenPoolById.monsters = ["monster_deep_one"];
+    state.privateState.tokenPoolById["board_clue:marker-1"] = ["clue_arkham"];
     internal.applyEngineState(state);
     assert.deepEqual(internal.toEngineState().monsters, state.monsters);
     assert.deepEqual(internal.toEngineState().monsterLocationIds, ["arkham"]);
     assert.deepEqual(internal.toEngineState().activeGateIds, ["gate_arkham"]);
+    assert.deepEqual(internal.toEngineState().boardClues, [{ id: "marker-1", locationId: "london" }]);
     assert.ok(room.state.monsters.includes("monster_ghoul"));
     assert.ok(!JSON.stringify(room.state).includes("monster_deep_one"));
+    assert.ok(!JSON.stringify(room.state).includes("clue_arkham"));
   });
 
   function sendCommand(

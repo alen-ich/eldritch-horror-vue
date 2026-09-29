@@ -123,6 +123,11 @@ export interface MonsterInstance {
   setAside?: boolean;
 }
 
+export interface BoardClue {
+  id: string;
+  locationId: LocationId;
+}
+
 export interface MonsterCombatDefinition {
   id: string;
   type: "normal" | "epic";
@@ -162,6 +167,7 @@ export interface GameState {
   monsterLocationIds: LocationId[];
   monsters?: MonsterInstance[];
   activeGateIds?: string[];
+  boardClues?: BoardClue[];
   reserveAssetIds: string[];
   assetDiscardIds: string[];
   pendingDecision?: PendingDecision;
@@ -222,7 +228,7 @@ export type RuleErrorCode =
   | "CONDITION_CONTENT_MISSING" | "CONDITION_UNAVAILABLE" | "CONDITION_NOT_HELD" | "CONDITION_EFFECT_UNSUPPORTED"
   | "INVALID_COMBAT" | "MONSTER_CONTENT_MISSING" | "MONSTER_EFFECT_UNSUPPORTED" | "MONSTER_UNAVAILABLE"
   | "GATE_UNAVAILABLE" | "GATE_CONTENT_MISSING"
-  | "CLUE_CONTENT_MISSING"
+  | "CLUE_CONTENT_MISSING" | "CLUE_UNAVAILABLE"
   | "OMEN_CONTENT_MISSING" | "AWAKENING_UNSUPPORTED"
   | "INVALID_DEFEAT" | "INVESTIGATOR_DEFEATED" | "INVALID_DAMAGE"
   | "INVALID_TRADE"
@@ -275,6 +281,7 @@ export function createLobby(playerIds: string[]): GameState {
     usedConditionActionIds: [],
     monsterLocationIds: [],
     activeGateIds: [],
+    boardClues: [],
     reserveAssetIds: [],
     assetDiscardIds: [],
     mysteryProgress: 0,
@@ -322,6 +329,7 @@ export function projectStateForPlayer(state: GameState, viewerPlayerId?: string)
     monsterLocationIds: [...publicState.monsterLocationIds],
     monsters: publicState.monsters?.map(monster => ({ ...monster })),
     activeGateIds: [...(publicState.activeGateIds ?? [])],
+    boardClues: publicState.boardClues?.map(clue => ({ ...clue })),
     reserveAssetIds: [...publicState.reserveAssetIds],
     assetDiscardIds: [...publicState.assetDiscardIds],
     completedMysteryIds: [...publicState.completedMysteryIds],
@@ -618,6 +626,31 @@ export function openGateFromStack(state: GameState, content: GameContent, contex
   }
   next.activeGateIds = [...(next.activeGateIds ?? []), gateId];
   return success(next, events);
+}
+
+/** Internal Clue effect; a location override supports effects that ignore the token's printed space. */
+export function spawnClueFromPool(state: GameState, content: GameContent, context: EngineContext, atLocationId?: LocationId): CommandResult {
+  if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
+  if (state.phase === "lobby") return failure("WRONG_PHASE", "Clues cannot spawn before setup.");
+  if (atLocationId && !content.map.locationTypes[atLocationId]) return failure("CLUE_CONTENT_MISSING", "The specified Clue space is not on the board.");
+  const pool = state.privateState.tokenPoolById.clues;
+  const discard = state.privateState.tokenPoolById.clue_discard ?? [];
+  if (!pool) return failure("CLUE_CONTENT_MISSING", "The Clue pool is not initialized.");
+  if (!pool.length && !discard.length) return failure("CLUE_UNAVAILABLE", "No Clue token remains available.");
+  const available = pool.length ? pool : context.shuffle(discard);
+  const { token: clueId, remaining } = context.drawToken(available);
+  const token = content.clues?.find(clue => clue.id === clueId);
+  if (!token) return failure("CLUE_CONTENT_MISSING", "The drawn Clue is missing from the token catalog.");
+  const locationId = atLocationId ?? token.locationId;
+  if (!content.map.locationTypes[locationId]) return failure("CLUE_CONTENT_MISSING", "The Clue's printed space is not on the board.");
+  const id = context.createId();
+  if (state.boardClues?.some(clue => clue.id === id)) return failure("CLUE_CONTENT_MISSING", "The Clue marker ID is already in use.");
+  const next = structuredClone(state);
+  next.privateState.tokenPoolById.clues = remaining;
+  if (!pool.length) next.privateState.tokenPoolById.clue_discard = [];
+  next.privateState.tokenPoolById[`board_clue:${id}`] = [clueId];
+  next.boardClues = [...(next.boardClues ?? []), { id, locationId }];
+  return success(next, [{ type: "CLUE_SPAWNED", clueId: id, locationId }]);
 }
 
 /** Internal Mythos Omen effect; Ancient One awakening remains explicit, never inferred by the client. */
@@ -983,6 +1016,7 @@ export function executeCommand(
     usedConditionActionIds: [...(state.usedConditionActionIds ?? [])],
     monsterLocationIds: [...state.monsterLocationIds],
     activeGateIds: [...(state.activeGateIds ?? [])],
+    boardClues: state.boardClues?.map(clue => ({ ...clue })),
     reserveAssetIds: [...state.reserveAssetIds],
     assetDiscardIds: [...state.assetDiscardIds],
     completedMysteryIds: [...state.completedMysteryIds],
