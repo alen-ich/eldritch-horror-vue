@@ -273,6 +273,10 @@ describe("executeCommand", () => {
   });
   it("requires the recipient's consent and exchanges possessions atomically", () => {
     const state = startedGame();
+    state.privateState.tokenPoolById.clues = [];
+    state.privateState.tokenPoolById.clue_discard = [];
+    state.privateState.tokenPoolById["held_clues:host"] = ["clue_arkham"];
+    state.privateState.tokenPoolById["held_clues:guest"] = [];
     const give = { assetIds: [], clues: 1, tickets: [] };
     const receive = { assetIds: ["asset_45_automatic"], clues: 0, tickets: [] };
     const result = executeCommand(state, "host", { type: "OFFER_TRADE", targetPlayerId: "guest", give, receive }, testContent, createDeterministicEngineContext({ ids: ["trade-1"] }));
@@ -283,6 +287,8 @@ describe("executeCommand", () => {
     if (!accepted.ok) throw new Error(accepted.error.message);
     expect(accepted.state.players[0]).toMatchObject({ clues: 0, assetIds: ["asset_45_automatic"] });
     expect(accepted.state.players[1]).toMatchObject({ clues: 1, assetIds: [] });
+    expect(accepted.state.privateState.tokenPoolById["held_clues:host"]).toEqual([]);
+    expect(accepted.state.privateState.tokenPoolById["held_clues:guest"]).toEqual(["clue_arkham"]);
     expect(accepted.state.actionsRemaining).toBe(1);
     expect(accepted.state.tradeOffer).toBeUndefined();
   });
@@ -716,6 +722,9 @@ describe("Acquire Assets", () => {
   it("applies skill improvements and offers sequential Clue rerolls", () => {
     const state = marketState();
     state.players[0]!.clues = 2;
+    state.privateState.tokenPoolById.clues = [];
+    state.privateState.tokenPoolById.clue_discard = [];
+    state.privateState.tokenPoolById["held_clues:host"] = ["clue_arkham", "clue_london"];
     state.players[0]!.skillImprovements.influence = 1;
     const initiated = executeCommand(
       state,
@@ -729,6 +738,14 @@ describe("Acquire Assets", () => {
     expect(initiated.state.activeTest).toMatchObject({ id: "influence-test", dicePool: 3, dice: [1, 5, 2], successes: 1 });
     expect(initiated.state.pendingDecision).toMatchObject({ id: "reroll-one", kind: "select_rerolls", optionIds: ["die-0", "die-1", "die-2"] });
 
+    const invalidHoldings = structuredClone(initiated.state);
+    invalidHoldings.privateState.tokenPoolById["held_clues:host"] = [];
+    const invalidSnapshot = structuredClone(invalidHoldings);
+    expect(executeCommand(invalidHoldings, "host", { type: "RESOLVE_DECISION", decisionId: "reroll-one", selectedOptionIds: ["die-0"] }, testContent,
+      createDeterministicEngineContext({ dice: [6], ids: ["unused"] })))
+      .toMatchObject({ ok: false, error: { code: "CLUE_CONTENT_MISSING" } });
+    expect(invalidHoldings).toEqual(invalidSnapshot);
+
     const reconnectedState = JSON.parse(JSON.stringify(initiated.state)) as GameState;
     const rerolled = executeCommand(reconnectedState, "host", {
       type: "RESOLVE_DECISION",
@@ -738,6 +755,8 @@ describe("Acquire Assets", () => {
     expect(rerolled.ok).toBe(true);
     if (!rerolled.ok) return;
     expect(rerolled.state.players[0]!.clues).toBe(1);
+    expect(rerolled.state.privateState.tokenPoolById["held_clues:host"]).toEqual(["clue_london"]);
+    expect(rerolled.state.privateState.tokenPoolById.clue_discard).toEqual(["clue_arkham"]);
     expect(rerolled.state.activeTest).toMatchObject({ dice: [6, 5, 2], successes: 2 });
     expect(rerolled.state.pendingDecision).toMatchObject({ id: "reroll-two", kind: "select_rerolls" });
     expect(rerolled.events).toContainEqual({ type: "CLUE_SPENT_FOR_REROLL", testId: "influence-test", playerId: "host", dieIndex: 0 });

@@ -857,6 +857,25 @@ function exchangePossessions(a: EnginePlayer, b: EnginePlayer, give: TradeBundle
   b.travelTickets = [...remainingTickets(b, receive)!, ...give.tickets];
 }
 
+function heldClueKey(playerId: string): string { return `held_clues:${playerId}`; }
+
+function discardHeldClues(state: GameState, playerId: string, amount: number): boolean {
+  if (!state.privateState.tokenPoolById.clues) return true; // Legacy fixtures without physical Clue content.
+  const held = state.privateState.tokenPoolById[heldClueKey(playerId)];
+  if (!held || held.length < amount) return false;
+  (state.privateState.tokenPoolById.clue_discard ??= []).push(...held.splice(0, amount));
+  return true;
+}
+
+function transferHeldClues(state: GameState, fromId: string, toId: string, amount: number): boolean {
+  if (!state.privateState.tokenPoolById.clues || amount === 0) return true;
+  const from = state.privateState.tokenPoolById[heldClueKey(fromId)];
+  const to = state.privateState.tokenPoolById[heldClueKey(toId)];
+  if (!from || !to || from.length < amount) return false;
+  to.push(...from.splice(0, amount));
+  return true;
+}
+
 function refillReserve(state: GameState): string[] {
   const drawn: string[] = [];
   const deck = state.privateState.deckOrderById.assets ?? [];
@@ -1091,6 +1110,15 @@ export function executeCommand(
     const giverIndex = next.players.findIndex(player => player.id === offer.fromPlayerId);
     const giver = next.players[giverIndex];
     if (!giver || !canTrade(giver, actor, offer.give, offer.receive)) return failure("INVALID_TRADE", "The offered possessions or locations changed.");
+    if (next.privateState.tokenPoolById.clues) {
+      const giverHeld = next.privateState.tokenPoolById[heldClueKey(giver.id)];
+      const recipientHeld = next.privateState.tokenPoolById[heldClueKey(actor.id)];
+      if (!giverHeld || !recipientHeld || giverHeld.length < offer.give.clues || recipientHeld.length < offer.receive.clues) {
+        return failure("CLUE_CONTENT_MISSING", "The physical Clues offered in this trade are unavailable.");
+      }
+      transferHeldClues(next, giver.id, actor.id, offer.give.clues);
+      transferHeldClues(next, actor.id, giver.id, offer.receive.clues);
+    }
     exchangePossessions(giver, actor, offer.give, offer.receive);
     const events: GameEvent[] = [{ type: "TRADE_ACCEPTED", offerId: offer.id, playerId: actorPlayerId }];
     completeAction(next, giverIndex, "trade", events);
@@ -1130,6 +1158,7 @@ export function executeCommand(
       if (selectedDie) {
         if (actor.clues < 1) return failure("CLUE_REQUIRED", "A Clue is required to reroll a test die.");
         const dieIndex = Number.parseInt(selectedDie.slice("die-".length), 10);
+        if (!discardHeldClues(next, actorPlayerId, 1)) return failure("CLUE_CONTENT_MISSING", "The physical Clue for this reroll is unavailable.");
         actor.clues -= 1;
         activeTest.dice[dieIndex] = context.rollDie();
         activeTest.successes = countActiveTestSuccesses(activeTest, actor, content);
