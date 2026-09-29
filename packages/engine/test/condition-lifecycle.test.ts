@@ -161,6 +161,9 @@ describe("front-side Condition Reckoning", () => {
     const before = state();
     before.phase = "mythos";
     Object.assign(before.players[0]!, { investigatorId: "akachi_onyele", conditionIds: ["condition_hallucinations_01"], clues: 2 });
+    before.privateState.tokenPoolById.clues = [];
+    before.privateState.tokenPoolById.clue_discard = [];
+    before.privateState.tokenPoolById["held_clues:investigator"] = ["clue_arkham", "clue_london"];
     const started = resolveConditionReckoning(before, "investigator", "condition_hallucinations_01", testContent,
       createDeterministicEngineContext({ dice: [1, 2], ids: ["will-test", "reroll-1"] }));
     expect(started).toMatchObject({ ok: true, state: { pendingDecision: { kind: "select_rerolls", playerId: "investigator" }, activeTest: { continuation: "condition_reckoning", skill: "will" } } });
@@ -174,6 +177,8 @@ describe("front-side Condition Reckoning", () => {
     expect(kept).toMatchObject({ ok: true, events: [{ type: "DECISION_RESOLVED" }, { type: "TEST_RESOLVED", continuation: "condition_reckoning" }, { type: "CONDITION_BACK_RESOLVED", effect: "discard_all_clues_then_discard" }, { type: "CONDITION_DISCARDED", conditionId: "condition_hallucinations" }] });
     if (!kept.ok) return;
     expect(kept.state.players[0]!.clues).toBe(0);
+    expect(kept.state.privateState.tokenPoolById["held_clues:investigator"]).toEqual([]);
+    expect(kept.state.privateState.tokenPoolById.clue_discard).toEqual(["clue_arkham", "clue_london"]);
     expect(kept.state.players[0]!.conditionIds).toEqual([]);
     expect(kept.state.privateState.tokenPoolById["condition:hallucinations"]).toEqual(["condition_hallucinations_01"]);
     expect(JSON.stringify(projectPublicState(kept.state))).not.toContain("condition_hallucinations_01");

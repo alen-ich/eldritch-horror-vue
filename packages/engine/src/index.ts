@@ -416,7 +416,10 @@ function applyConditionBackEffect(state: GameState, playerId: string, cardId: st
   const recipient = state.players.find(player => player.id === playerId)!;
   const publicId = publicConditionId(cardId);
   if (effect.type === "discard" || effect.type === "discard_all_clues_then_discard") {
-    if (effect.type === "discard_all_clues_then_discard") recipient.clues = 0;
+    if (effect.type === "discard_all_clues_then_discard") {
+      if (!discardHeldClues(state, playerId, recipient.clues)) return [];
+      recipient.clues = 0;
+    }
     returnConditionToPool(state, recipient, cardId, content);
   }
   else if (effect.type === "recover_health_and_sanity_then_flip_front") {
