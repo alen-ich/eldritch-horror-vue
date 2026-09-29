@@ -116,6 +116,23 @@ describe("atomic Condition reverse effects", () => {
     expect(result.state.players[0]!.conditionIds).toEqual(["condition_blessed_02"]);
   });
 
+  it("takes Visions of Hypnos Clues from the finite physical supply", () => {
+    const before = state();
+    before.players[0]!.conditionIds = ["condition_blessed_02"];
+    before.privateState.tokenPoolById.clues = ["clue_arkham"];
+    before.privateState.tokenPoolById.clue_discard = [];
+    before.privateState.tokenPoolById["held_clues:investigator"] = [];
+    const physicalContent: GameContent = { ...withBacks, clues: [{ id: "clue_arkham", locationId: "arkham" }] };
+    const result = gainCondition(before, "investigator", "blessed", physicalContent, createDeterministicEngineContext({ tokenIndexes: [0] }));
+    expect(result).toMatchObject({ ok: true, events: [{ type: "CONDITION_BACK_RESOLVED" }, { type: "CLUE_GAINED", amount: 1 }] });
+    if (!result.ok) return;
+    expect(result.state.players[0]!.clues).toBe(1);
+    expect(result.state.privateState.tokenPoolById["held_clues:investigator"]).toEqual(["clue_arkham"]);
+    expect(result.state.privateState.tokenPoolById.clues).toEqual([]);
+    expect(result.state.players[0]!.conditionIds).toEqual(["condition_blessed_02"]);
+    expect(before.players[0]!.clues).toBe(0);
+  });
+
   it("discards the same Cursed copy when its reverse says so", () => {
     const before = state();
     before.players[0]!.conditionIds = ["condition_cursed_01"];

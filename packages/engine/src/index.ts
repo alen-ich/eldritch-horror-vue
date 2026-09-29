@@ -379,7 +379,7 @@ export function gainCondition(state: GameState, playerId: string, kind: string, 
   if (kind === "blessed" || kind === "cursed") {
     const replacement = resolveBoonBaneGain(owned, kind);
     if (replacement.type === "discard_opposite") return discardCondition(state, playerId, replacement.cardId, content);
-    if (replacement.type === "flip_existing") return resolveConditionFlip(state, playerId, replacement.cardId, content);
+    if (replacement.type === "flip_existing") return resolveConditionFlip(state, playerId, replacement.cardId, content, context);
   } else if (owned.some(id => content.conditions?.find(card => card.id === id)?.kind === kind)) {
     return success(structuredClone(state), [{ type: "CONDITION_GAIN_PREVENTED", playerId, kind }]);
   }
@@ -404,19 +404,20 @@ export function discardCondition(state: GameState, playerId: string, cardId: str
 }
 
 /** Resolves only atomic, transcribed reverse effects. The physical ID stays private. */
-function resolveConditionFlip(state: GameState, playerId: string, cardId: string, content: GameContent): CommandResult {
+function resolveConditionFlip(state: GameState, playerId: string, cardId: string, content: GameContent, context: EngineContext): CommandResult {
   const definition = content.conditions?.find(card => card.id === cardId);
   const effect = definition?.backEffect;
   if (!effect) return failure("CONDITION_EFFECT_UNSUPPORTED", "This Condition's reverse effect is not executable yet.");
   const owner = state.players.find(player => player.id === playerId && player.conditionIds?.includes(cardId));
   if (!owner) return failure("CONDITION_NOT_HELD", "That Condition is not held by this investigator.");
   const next = structuredClone(state);
-  return success(next, applyConditionBackEffect(next, playerId, cardId, content, effect));
+  return success(next, applyConditionBackEffect(next, playerId, cardId, content, effect, context));
 }
 
-function applyConditionBackEffect(state: GameState, playerId: string, cardId: string, content: GameContent, effect: ConditionBackEffect): GameEvent[] {
+function applyConditionBackEffect(state: GameState, playerId: string, cardId: string, content: GameContent, effect: ConditionBackEffect, context: EngineContext): GameEvent[] {
   const recipient = state.players.find(player => player.id === playerId)!;
   const publicId = publicConditionId(cardId);
+  const clueEvents: GameEvent[] = [];
   if (effect.type === "discard" || effect.type === "discard_all_clues_then_discard") {
     if (effect.type === "discard_all_clues_then_discard") {
       if (!discardHeldClues(state, playerId, recipient.clues)) return [];
@@ -427,9 +428,18 @@ function applyConditionBackEffect(state: GameState, playerId: string, cardId: st
   else if (effect.type === "recover_health_and_sanity_then_flip_front") {
     recipient.health = recoverResource(recipient.health ?? 0, recipient.maxHealth ?? recipient.health ?? 0, effect.amount).value;
     recipient.sanity = recoverResource(recipient.sanity ?? 0, recipient.maxSanity ?? recipient.sanity ?? 0, effect.amount).value;
-  } else if (effect.type === "gain_clues_then_flip_front") recipient.clues += effect.amount;
+  } else if (effect.type === "gain_clues_then_flip_front") {
+    if (state.privateState.tokenPoolById.clues) {
+      const gained = gainCluesFromPool(state, playerId, effect.amount, content, context);
+      if (!gained.ok) return [];
+      state.privateState = gained.state.privateState;
+      recipient.clues = gained.state.players.find(player => player.id === playerId)!.clues;
+      clueEvents.push(...gained.events);
+    } else recipient.clues += effect.amount; // Legacy fixtures without physical Clue content.
+  }
   else if (effect.type === "become_delayed_then_flip_front") recipient.delayed = true;
   const events: GameEvent[] = [{ type: "CONDITION_BACK_RESOLVED", playerId, conditionId: publicId, effect: effect.type }];
+  events.push(...clueEvents);
   if (effect.type === "become_delayed_then_flip_front") events.push({ type: "INVESTIGATOR_DELAYED", playerId });
   if (effect.type === "discard" || effect.type === "discard_all_clues_then_discard") events.push({ type: "CONDITION_DISCARDED", playerId, conditionId: publicId });
   return events;
@@ -1028,7 +1038,7 @@ function finishSkillTest(state: GameState, test: ActiveTest, content: GameConten
   if (test.continuation === "condition_reckoning") {
     if (conditionId && owner && test.successes === 0) {
       const effect = content.conditions?.find(card => card.id === conditionId)?.backEffect;
-      if (effect) events.push(...applyConditionBackEffect(state, owner.id, conditionId, content, effect));
+      if (effect) events.push(...applyConditionBackEffect(state, owner.id, conditionId, content, effect, context));
     }
     return events;
   }
