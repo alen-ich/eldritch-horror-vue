@@ -1,5 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { buildGateStack, buildMonsterPool, buildMythosDeck } from "../src/setup.js";
+import { buildGateStack, buildLocationEncounterDecks, buildMonsterPool, buildMythosDeck } from "../src/setup.js";
+
+describe("private location encounter decks", () => {
+  const cards = ["general", "america", "europe", "asia_australia"].flatMap(deck => [1, 2].map(number => ({ id: `${deck}-${number}`, deck: deck as "general" | "america" | "europe" | "asia_australia" })));
+  it("shuffles each deck separately and retains the card catalog", () => {
+    const decks = buildLocationEncounterDecks(cards, ids => [...ids].reverse());
+    expect(decks.general).toEqual(["general-2", "general-1"]);
+    expect(decks.europe).toEqual(["europe-2", "europe-1"]);
+    expect(cards[0]?.id).toBe("general-1");
+  });
+  it("rejects duplicate IDs and missing decks", () => {
+    expect(() => buildLocationEncounterDecks([...cards, cards[0]!], ids => [...ids])).toThrow(/unique/);
+    expect(() => buildLocationEncounterDecks(cards.filter(card => card.deck !== "general"), ids => [...ids])).toThrow(/empty/);
+  });
+});
 
 describe("staged Mythos setup", () => {
   const cards = ["green", "yellow", "blue"].flatMap(color => Array.from({ length: 4 }, (_, index) => ({ id: `${color}-${index}`, color: color as "green" | "yellow" | "blue" })));

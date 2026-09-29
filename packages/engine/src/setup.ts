@@ -1,4 +1,21 @@
 export type MythosColor = "green" | "yellow" | "blue";
+export const locationEncounterDeckIds = ["general", "america", "europe", "asia_australia"] as const;
+export type LocationEncounterDeckId = typeof locationEncounterDeckIds[number];
+
+/** Each location deck has its own private top-to-bottom order. */
+export function buildLocationEncounterDecks(
+  cards: readonly { id: string; deck: LocationEncounterDeckId }[],
+  shuffle: <T>(items: readonly T[]) => T[],
+): Record<LocationEncounterDeckId, string[]> {
+  if (new Set(cards.map(card => card.id)).size !== cards.length || cards.some(card => !card.id)) {
+    throw new Error("Location encounters require unique, nonempty card IDs.");
+  }
+  return Object.fromEntries(locationEncounterDeckIds.map(deck => {
+    const ids = cards.filter(card => card.deck === deck).map(card => card.id);
+    if (!ids.length) throw new Error(`Location encounter deck ${deck} is empty.`);
+    return [deck, shuffle(ids)];
+  })) as Record<LocationEncounterDeckId, string[]>;
+}
 
 /** The first element remains the hidden top of the Gate stack. */
 export function buildGateStack(gateIds: readonly string[], shuffle: <T>(items: readonly T[]) => T[]): string[] {

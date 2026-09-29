@@ -214,6 +214,11 @@ describe("authoritative game room", () => {
     const privateMysteries = (room as unknown as { privateState: { deckOrderById: Record<string, string[]> } }).privateState.deckOrderById.mysteries;
     assert.equal(privateMysteries?.length, 3);
     assert.ok(!JSON.stringify(room.state).includes(privateMysteries![0]!));
+    const encounterDecks = (room as unknown as { privateState: { deckOrderById: Record<string, string[]> } }).privateState.deckOrderById;
+    for (const [deck, count] of [["general", 12], ["america", 8], ["europe", 8], ["asia_australia", 8]] as const) {
+      assert.equal(encounterDecks[`encounter:${deck}`]?.length, count);
+      assert.ok(!JSON.stringify(room.state).includes(encounterDecks[`encounter:${deck}`]![0]!));
+    }
     assert.equal(room.state.activePlayerId, hostPlayer.id);
     assert.equal(hostPlayer.locationId, "space_15");
     assert.equal(hostPlayer.health, 5);

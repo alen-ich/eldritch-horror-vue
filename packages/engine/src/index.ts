@@ -15,7 +15,7 @@ import type {
 } from "@eldritch/protocol";
 import { calculateDicePool, countTestSuccesses } from "./skill-tests.js";
 import { loseResource, recoverResource } from "./resources.js";
-import { buildGateStack, buildMonsterPool, buildMythosDeck, type AncientSetup, type MythosColor } from "./setup.js";
+import { buildGateStack, buildLocationEncounterDecks, buildMonsterPool, buildMythosDeck, type AncientSetup, type LocationEncounterDeckId, type MythosColor } from "./setup.js";
 import { resolveStandardCombat, type CombatCheck } from "./combat.js";
 import { conditionSuccessThreshold, publicConditionId, resolveBoonBaneGain } from "./conditions.js";
 import { advanceOmenTrack, omenTrack } from "./omen.js";
@@ -212,6 +212,7 @@ export type ConditionBackEffect =
   | { type: "discard_all_clues_then_discard" };
 
 export interface GameContent {
+  locationEncounters?: readonly { id: string; deck: LocationEncounterDeckId }[];
   gates?: readonly { id: string; omenSymbol: "comet" | "constellation" | "eclipse"; locationId: LocationId }[];
   clues?: readonly { id: string; locationId: LocationId }[];
   conditions?: readonly { id: string; kind: string; backEffect?: ConditionBackEffect }[];
@@ -1630,6 +1631,10 @@ export function executeCommand(
       }
       next.privateState.tokenPoolById.clues = context.shuffle(clueIds);
       next.privateState.tokenPoolById.clue_discard = [];
+    }
+    if (content.locationEncounters?.length) {
+      const decks = buildLocationEncounterDecks(content.locationEncounters, context.shuffle);
+      for (const [deck, cards] of Object.entries(decks)) next.privateState.deckOrderById[`encounter:${deck}`] = cards;
     }
     if (content.monsters?.some(monster => monster.count !== undefined)) {
       if (!ancient) return failure("ANCIENT_ONE_REQUIRED", "Ancient One setup is required for the Monster cup.");
