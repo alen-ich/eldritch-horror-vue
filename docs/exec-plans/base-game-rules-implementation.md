@@ -30,6 +30,7 @@ Last updated: 2026-09-29
 - Monster spawning dependency: an internal deterministic cup draw now creates a public on-board instance, applies six typed printed move destinations, and resolves Wraith's Cursed gain. Empty-cup handling in a full icon sequence and Gate/Mythos trigger wiring remain pending; see `docs/rules/base-game-monsters.md`.
 - Gate opening dependency: the top private Gate can now be revealed on its printed city and its Monster spawned in one atomic internal transition. The finite-cup-empty case still opens the Gate. Setup and Mythos triggers, closure, and UI presentation remain pending; see `docs/rules/base-game-gates.md`.
 - Omen dependency: the internal Mythos Omen step now reads active Gates, applies matching-Gate Doom, handles Azathoth's green tokens and zero-Doom loss, and refuses unsupported awakening for the other Ancient Ones. Revealed-card icon sequencing remains pending; see `docs/rules/base-game-mythos.md`.
+- Import boundary: the scan-backed Mythos icon sequence includes Spawn Clues, but the repository has no base-game Clue token roster or location faces. The Clue pool and placement rules cannot be made source-grounded until the physical base-game Clue tokens (including every location-bearing side and shared back) are imported and verified. Research encounters and other encounter families remain separate later imports.
 
 ### Current verification evidence
 
