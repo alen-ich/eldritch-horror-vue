@@ -924,12 +924,15 @@ describe("private Mythos draw", () => {
   it("reveals only the top card, removes it from the private deck, and prevents a second draw", () => {
     const before = startedGame();
     before.phase = "mythos";
+    before.omen = 0;
+    before.doom = 12;
     before.privateState.deckOrderById.mythos = ["mythos_green_01", "mythos_yellow_02"];
-    const content: GameContent = { ...testContent, mythosCards: [{ id: "mythos_green_01", color: "green" }, { id: "mythos_yellow_02", color: "yellow" }] };
+    const content: GameContent = { ...testContent, mythosCards: [{ id: "mythos_green_01", color: "green", icons: [{ type: "advance_omen" }] }, { id: "mythos_yellow_02", color: "yellow", icons: [{ type: "advance_omen" }] }] };
     const drawn = drawMythosCard(before, content);
-    expect(drawn).toMatchObject({ ok: true, events: [{ type: "MYTHOS_CARD_REVEALED", cardId: "mythos_green_01" }] });
+    expect(drawn).toMatchObject({ ok: true, events: [{ type: "MYTHOS_CARD_REVEALED", cardId: "mythos_green_01" }, { type: "OMEN_ADVANCED" }] });
     if (!drawn.ok) return;
     expect(drawn.state.currentMythosCardId).toBe("mythos_green_01");
+    expect(drawn.state.omen).toBe(1);
     expect(drawn.state.privateState.deckOrderById.mythos).toEqual(["mythos_yellow_02"]);
     expect(before.privateState.deckOrderById.mythos).toHaveLength(2);
     expect(JSON.stringify(projectPublicState(drawn.state))).not.toContain("mythos_yellow_02");

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { advanceOmen, type GameContent, type GameState } from "../src/index.js";
+import { advanceOmen, drawMythosCard, type GameContent, type GameState } from "../src/index.js";
 import { advanceOmenTrack, omenTrack } from "../src/omen.js";
 
 describe("Omen track", () => {
@@ -49,6 +49,30 @@ function mythosState(): GameState {
 }
 
 describe("authoritative Mythos Omen effect", () => {
+  it("draws a green card and resolves its first Omen icon in one state change", () => {
+    const before = mythosState();
+    before.privateState.deckOrderById.mythos = ["mythos_green_01"];
+    const content: GameContent = { ...omenContent, mythosCards: [{ id: "mythos_green_01", color: "green", icons: [{ type: "advance_omen" }] }] };
+    const result = drawMythosCard(before, content);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.events.map(event => event.type)).toEqual(["MYTHOS_CARD_REVEALED", "OMEN_ADVANCED"]);
+    expect(result.state.omen).toBe(1);
+    expect(result.state.doom).toBe(10);
+    expect(result.state.stateVersion).toBe(before.stateVersion + 1);
+    expect(before.privateState.deckOrderById.mythos).toEqual(["mythos_green_01"]);
+  });
+
+  it("does not consume a card when its Omen would trigger unsupported awakening", () => {
+    const before = mythosState();
+    before.doom = 2;
+    before.privateState.deckOrderById.mythos = ["mythos_yellow_01"];
+    const content: GameContent = { ...omenContent, mythosCards: [{ id: "mythos_yellow_01", color: "yellow", icons: [{ type: "advance_omen" }] }] };
+    expect(drawMythosCard(before, content)).toMatchObject({ ok: false, error: { code: "AWAKENING_UNSUPPORTED" } });
+    expect(before.privateState.deckOrderById.mythos).toEqual(["mythos_yellow_01"]);
+    expect(before.omen).toBe(0);
+    expect(before.stateVersion).toBe(4);
+  });
   it("counts only matching active Gates and advances state once", () => {
     const before = mythosState();
     const result = advanceOmen(before, omenContent);
