@@ -40,6 +40,27 @@ describe("authoritative game room", () => {
     assert.ok(!JSON.stringify(room.state).includes("clue_arkham"));
   });
 
+  it("authorizes Mythos icon advancement and preserves the card on unsupported text", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "mythos";
+    state.leadInvestigatorId = [...room.state.players.values()][0]!.id;
+    state.currentMythosCardId = "mythos_yellow_01";
+    state.currentMythosIconIndex = 3;
+    internal.applyEngineState(state);
+    const notLead = guest.waitForMessage(commandErrorMessageType);
+    sendCommand(room, guest, { type: "ADVANCE_MYTHOS" });
+    assert.equal((await notLead as { code: string }).code, "WRONG_PHASE");
+    const unsupported = host.waitForMessage(commandErrorMessageType);
+    sendCommand(room, host, { type: "ADVANCE_MYTHOS" });
+    assert.equal((await unsupported as { code: string }).code, "MYTHOS_EFFECT_UNSUPPORTED");
+    assert.equal(room.state.currentMythosCardId, "mythos_yellow_01");
+    assert.equal(room.state.currentMythosIconIndex, 3);
+  });
+
   function sendCommand(
     room: { state: GameRoomState },
     client: { send: (type: string, payload: unknown) => void },

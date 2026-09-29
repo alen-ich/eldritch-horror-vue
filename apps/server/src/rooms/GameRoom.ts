@@ -1,7 +1,7 @@
 import { randomInt, randomUUID } from "node:crypto";
 import { Client, CloseCode, Room } from "colyseus";
 import { baseGameAncientOnes, baseGameMythosCards, baseGameAssets, baseGameClues, baseGameConditions, baseGameGates, baseGameInvestigators, baseGameMap, baseGameMysteries, baseGameMonsters, baseGameReferenceCards } from "@eldritch/content";
-import { createDeterministicEngineContext, executeCommand, publicConditionId, type GameContent, type GameState, type PrivateGameState } from "@eldritch/engine";
+import { createDeterministicEngineContext, executeCommand, publicConditionId, type EngineContext, type GameContent, type GameState, type PrivateGameState } from "@eldritch/engine";
 import {
   commandErrorMessageType,
   commandMessageType,
@@ -23,6 +23,26 @@ const RECONNECTION_SECONDS = 30;
 
 function randomShuffleIndexes(length: number): number[] {
   return Array.from({ length: Math.max(0, length - 1) }, (_, offset) => randomInt(length - offset));
+}
+function serverMythosContext(): EngineContext {
+  return {
+    rollDie: () => randomInt(1, 7),
+    createId: () => randomUUID(),
+    drawToken: <T>(pool: readonly T[]) => {
+      if (!pool.length) throw new Error("Cannot draw from an empty token pool.");
+      const remaining = [...pool];
+      const [token] = remaining.splice(randomInt(remaining.length), 1);
+      return { token: token!, remaining };
+    },
+    shuffle: <T>(items: readonly T[]) => {
+      const result = [...items];
+      for (let index = result.length - 1; index > 0; index -= 1) {
+        const swap = randomInt(index + 1);
+        [result[index], result[swap]] = [result[swap]!, result[index]!];
+      }
+      return result;
+    },
+  };
 }
 const baseGameContent: GameContent = {
   gates: baseGameGates.map(({ id, omenSymbol, locationId }) => ({ id, omenSymbol, locationId })),
@@ -155,7 +175,9 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       });
       return;
     }
-    const context = parsed.data.command.type === "START_GAME"
+    const context = parsed.data.command.type === "ADVANCE_MYTHOS"
+      ? serverMythosContext()
+      : parsed.data.command.type === "START_GAME"
       ? createDeterministicEngineContext({
           shuffleIndexes: [
             ...randomShuffleIndexes(4),

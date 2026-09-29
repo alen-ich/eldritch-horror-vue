@@ -38,6 +38,7 @@ Last updated: 2026-09-29
 - The second green icon, Monster Surge, now has an internal atomic handler: matching current-Omen Gates each receive the Reference-card number of Monsters, or one Gate opens if none match. It advances the icon cursor so green Clue spawning can follow. Live phase invocation and other icons remain pending.
 - The third yellow icon, Spawn Gates, now has an internal atomic handler using the player-count Reference card. It is cursor-gated after Reckoning and stops at the finite Gate stack; Reckoning and live phase invocation remain pending.
 - A conservative internal yellow Reckoning step now processes single Blessed/Cursed rolls in Lead Investigator order when no higher-priority Ancient One or Monster effect, possession, or multi-Condition choice is present. It refuses unsupported cases before moving the cursor; full Reckoning and live phase invocation remain pending.
+- A guarded `ADVANCE_MYTHOS` room command now dispatches one verified printed icon at a time for a Lead Investigator in Mythos, with server-owned randomness and a hard stop at unmodeled card text. Encounter-to-Mythos phase entry and card completion remain pending.
 
 ### Current verification evidence
 

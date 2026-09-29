@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createDeterministicEngineContext, resolveMythosReckoning, resolveMythosSpawnGates, type GameContent, type GameState } from "../src/index.js";
+import { createDeterministicEngineContext, executeCommand, resolveMythosReckoning, resolveMythosSpawnGates, type GameContent, type GameState } from "../src/index.js";
 
 const content: GameContent = {
   ancientOnes: { azathoth: { startingDoom: 15, mythosDeck: [], greenOmenTokens: 1, reckoningEffectIds: [] },
@@ -27,6 +27,21 @@ function state(): GameState {
 }
 
 describe("guarded yellow Reckoning", () => {
+  it("authorizes the Lead to advance one icon and stops at unimplemented card text", () => {
+    const before = state();
+    expect(executeCommand(before, "host", { type: "ADVANCE_MYTHOS" }, content, createDeterministicEngineContext({})))
+      .toMatchObject({ ok: false, error: { code: "WRONG_PHASE" } });
+    const reckoning = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, content, createDeterministicEngineContext({ dice: [4, 1] }));
+    expect(reckoning.ok).toBe(true);
+    if (!reckoning.ok) return;
+    const gates = executeCommand(reckoning.state, "guest", { type: "ADVANCE_MYTHOS" }, content, createDeterministicEngineContext({}));
+    expect(gates.ok).toBe(true);
+    if (!gates.ok) return;
+    expect(gates.state.currentMythosIconIndex).toBe(3);
+    expect(executeCommand(gates.state, "guest", { type: "ADVANCE_MYTHOS" }, content, createDeterministicEngineContext({})))
+      .toMatchObject({ ok: false, error: { code: "MYTHOS_EFFECT_UNSUPPORTED" } });
+    expect(before.currentMythosIconIndex).toBe(1);
+  });
   it("resolves supported Condition rolls clockwise from Lead, then unlocks Gate spawning", () => {
     const before = state();
     const resolved = resolveMythosReckoning(before, content, createDeterministicEngineContext({ dice: [4, 1] }));

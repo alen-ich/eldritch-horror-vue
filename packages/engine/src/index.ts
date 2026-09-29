@@ -228,6 +228,7 @@ export interface GameContent {
 
 export type RuleErrorCode =
   | "MYTHOS_CARD_ACTIVE" | "MYTHOS_DECK_MISSING" | "MYTHOS_CONTENT_MISSING"
+  | "MYTHOS_EFFECT_UNSUPPORTED"
   | "CONDITION_ACTION_INVALID" | "CONDITION_RESTRICTED"
   | "CONDITION_CONTENT_MISSING" | "CONDITION_UNAVAILABLE" | "CONDITION_NOT_HELD" | "CONDITION_EFFECT_UNSUPPORTED"
   | "RECKONING_UNSUPPORTED"
@@ -997,6 +998,21 @@ export function drawMythosCard(state: GameState, content: GameContent, context?:
   return success(advanced.state, [{ type: "MYTHOS_CARD_REVEALED", cardId: topId }, ...advanced.events]);
 }
 
+/** Resolve exactly one verified printed icon; card text is never skipped. */
+export function advanceMythosIcon(state: GameState, content: GameContent, context: EngineContext): CommandResult {
+  if (state.phase !== "mythos") return failure("WRONG_PHASE", "Mythos icons resolve only during Mythos.");
+  if (!state.currentMythosCardId) return drawMythosCard(state, content, context);
+  const card = content.mythosCards?.find(candidate => candidate.id === state.currentMythosCardId);
+  if (!card?.icons) return failure("MYTHOS_CONTENT_MISSING", "The revealed card's printed icons are unavailable.");
+  const icon = card.icons[state.currentMythosIconIndex ?? 0];
+  if (!icon) return failure("MYTHOS_EFFECT_UNSUPPORTED", "The revealed card's printed text is not executable yet.");
+  if (icon.type === "monster_surge") return resolveMythosMonsterSurge(state, content, context);
+  if (icon.type === "resolve_reckoning") return resolveMythosReckoning(state, content, context);
+  if (icon.type === "spawn_clues") return spawnMythosClues(state, content, context);
+  if (icon.type === "spawn_gates") return resolveMythosSpawnGates(state, content, context);
+  return failure("MYTHOS_EFFECT_UNSUPPORTED", "This printed Mythos icon is not executable yet.");
+}
+
 function routeBetween(map: GameMap, source: LocationId, target: LocationId) {
   return map.routes.find((route) => (route.source === source && route.target === target) || (route.source === target && route.target === source));
 }
@@ -1247,6 +1263,11 @@ export function executeCommand(
   const actorIndex = state.players.findIndex((player) => player.id === actorPlayerId);
   if (actorIndex < 0) return failure("PLAYER_NOT_FOUND", "The acting player is not in this game.");
   if (state.gameResult) return failure("GAME_ENDED", "The game has already ended.");
+  if (command.type === "ADVANCE_MYTHOS") {
+    if (state.phase !== "mythos" || actorPlayerId !== state.leadInvestigatorId) return failure("WRONG_PHASE", "Only the Lead Investigator can advance the Mythos phase.");
+    if (!context) return failure("RANDOM_INPUT_REQUIRED", "Mythos resolution requires server randomness.");
+    return advanceMythosIcon(state, content, context);
+  }
 
   const next: GameState = {
     ...state,
