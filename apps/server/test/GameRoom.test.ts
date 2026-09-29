@@ -88,6 +88,27 @@ describe("authoritative game room", () => {
     assert.equal(room.state.currentMythosIconIndex, 3);
   });
 
+  it("resolves a typed Mythos blessing and opens replacement timing", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    const hostId = state.players[0]!.id;
+    state.phase = "mythos";
+    state.activePlayerId = state.leadInvestigatorId = hostId;
+    state.currentMythosCardId = "mythos_green_04";
+    state.currentMythosIconIndex = 3;
+    state.players[0]!.investigatorId = "akachi_onyele";
+    state.players[0]!.conditionIds = [];
+    state.privateState.tokenPoolById["condition:blessed"] = ["condition_blessed_01"];
+    internal.applyEngineState(state);
+    sendCommand(room, host, { type: "ADVANCE_MYTHOS" });
+    await room.waitForMessage(commandMessageType);
+    assert.equal(room.state.currentMythosCardId, "");
+    assert.equal(internal.toEngineState().replacementWindow, true);
+    assert.deepEqual(internal.toEngineState().players[0]!.conditionIds, ["condition_blessed_01"]);
+  });
+
   it("resolves a supported location encounter through the room and leaves unsupported cards private", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });

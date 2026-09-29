@@ -221,7 +221,7 @@ export interface GameContent {
   conditions?: readonly { id: string; kind: string; backEffect?: ConditionBackEffect }[];
   monsters?: readonly MonsterCombatDefinition[];
   ancientOnes?: Readonly<Partial<Record<AncientOneId, AncientSetup>>>;
-  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[] }[];
+  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } }[];
   referenceCards?: readonly { playerCount: number; spawnClues: number; monsterSurge?: number; spawnGates?: number }[];
   map: GameMap;
   investigators: Readonly<Partial<Record<InvestigatorId, InvestigatorSetup>>>;
@@ -1010,6 +1010,20 @@ export function advanceMythosIcon(state: GameState, content: GameContent, contex
   const card = content.mythosCards?.find(candidate => candidate.id === state.currentMythosCardId);
   if (!card?.icons) return failure("MYTHOS_CONTENT_MISSING", "The revealed card's printed icons are unavailable.");
   const icon = card.icons[state.currentMythosIconIndex ?? 0];
+  if (!icon) {
+    if (!card.effect || !state.leadInvestigatorId || state.pendingDecision || state.pendingDefeat || state.activeTest) return failure("MYTHOS_EFFECT_UNSUPPORTED", "The revealed card's printed text is not executable yet.");
+    if (card.effect.type === "lead_gain_condition") {
+      const gained = gainCondition(state, state.leadInvestigatorId, card.effect.kind, content, context);
+      if (!gained.ok) return gained;
+      gained.state.currentMythosCardId = undefined;
+      gained.state.currentMythosIconIndex = undefined;
+      gained.state.stateVersion = state.stateVersion;
+      const opened = openReplacementWindow(gained.state, content);
+      if (!opened.ok) return opened;
+      opened.state.stateVersion = state.stateVersion;
+      return success(opened.state, gained.events.concat(opened.events));
+    }
+  }
   if (!icon) return failure("MYTHOS_EFFECT_UNSUPPORTED", "The revealed card's printed text is not executable yet.");
   if (icon.type === "monster_surge") return resolveMythosMonsterSurge(state, content, context);
   if (icon.type === "resolve_reckoning") return resolveMythosReckoning(state, content, context);

@@ -18,7 +18,8 @@ export interface MythosCardData {
   imageUrl: string;
   source: { sheet: string; row: number; column: number };
   verification: "verified_from_scan";
-  effectModelStatus: "transcription_pending";
+  effectModelStatus: "transcription_pending" | "typed";
+  effect?: { type: "lead_gain_condition"; kind: "blessed" };
 }
 
 const blueTitles = [
@@ -71,7 +72,7 @@ function scanCard(
   source: MythosCardData["source"],
 ): MythosCardData {
   const id = cardId(color, index);
-  return { id, color, title, kind, icons: iconsFor(color, index), imageUrl: `/cards/mythos/${id}.webp`, source, verification: "verified_from_scan", effectModelStatus: "transcription_pending" };
+  return { id, color, title, kind, icons: iconsFor(color, index), imageUrl: `/cards/mythos/${id}.webp`, source, verification: "verified_from_scan", effectModelStatus: id === "mythos_green_04" ? "typed" : "transcription_pending", ...(id === "mythos_green_04" ? { effect: { type: "lead_gain_condition" as const, kind: "blessed" as const } } : {}) };
 }
 
 export const baseGameMythosCards: readonly MythosCardData[] = [
@@ -99,7 +100,8 @@ const mythosCardSchema = z.object({
   imageUrl: z.string().regex(/^\/cards\/mythos\/mythos_(green|yellow|blue)_\d{2}\.webp$/),
   source: z.object({ sheet: z.string().regex(/^photo_.+\.jpg$/), row: z.number().int().positive(), column: z.number().int().positive() }).strict(),
   verification: z.literal("verified_from_scan"),
-  effectModelStatus: z.literal("transcription_pending"),
+  effectModelStatus: z.enum(["transcription_pending", "typed"]),
+  effect: z.object({ type: z.literal("lead_gain_condition"), kind: z.literal("blessed") }).strict().optional(),
 }).strict();
 
 export function validateMythosContent(cards: readonly MythosCardData[]): void {
@@ -114,6 +116,8 @@ export function validateMythosContent(cards: readonly MythosCardData[]): void {
     }
   }
   for (const card of parsed) {
+    if ((card.effectModelStatus === "typed") !== Boolean(card.effect)) throw new Error(`Mythos effect status mismatch for ${card.id}.`);
+    if (Boolean(card.effect) !== (card.id === "mythos_green_04")) throw new Error(`Unexpected Mythos effect transcription for ${card.id}.`);
     const colorIndex = Number.parseInt(card.id.slice(`mythos_${card.color}_`.length), 10) - 1;
     if (JSON.stringify(card.icons) !== JSON.stringify(iconsFor(card.color, colorIndex))) {
       throw new Error(`Invalid icon sequence for ${card.id}.`);

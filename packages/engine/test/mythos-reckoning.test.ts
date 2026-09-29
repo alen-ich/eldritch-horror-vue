@@ -93,3 +93,34 @@ describe("guarded yellow Reckoning", () => {
       .toMatchObject({ ok: false, error: { code: "RECKONING_UNSUPPORTED" } });
   });
 });
+
+describe("typed Mythos card text", () => {
+  it("grants the Lead a physical Blessed Condition, closes the card, and opens replacement timing", () => {
+    const before = state();
+    before.currentMythosCardId = "mythos_green_04";
+    before.currentMythosIconIndex = 3;
+    before.players.forEach(player => { player.conditionIds = []; });
+    before.privateState.tokenPoolById["condition:blessed"] = ["condition_blessed_01"];
+    const cardContent: GameContent = { ...content, mythosCards: [{ id: "mythos_green_04", color: "green", icons: [{ type: "advance_omen" }, { type: "monster_surge" }, { type: "spawn_clues" }], effect: { type: "lead_gain_condition", kind: "blessed" } }] };
+    const result = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, cardContent, createDeterministicEngineContext({ tokenIndexes: [0] }));
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.state.stateVersion).toBe(before.stateVersion + 1);
+    expect(result.state.players[1]?.conditionIds).toEqual(["condition_blessed_01"]);
+    expect(result.state.privateState.tokenPoolById["condition:blessed"]).toEqual([]);
+    expect(result.state.currentMythosCardId).toBeUndefined();
+    expect(result.state.replacementWindow).toBe(true);
+    expect(before.currentMythosCardId).toBe("mythos_green_04");
+  });
+
+  it("leaves the card untouched when the Blessed supply cannot satisfy its effect", () => {
+    const before = state();
+    before.currentMythosCardId = "mythos_green_04";
+    before.currentMythosIconIndex = 3;
+    before.players.forEach(player => { player.conditionIds = []; });
+    const cardContent: GameContent = { ...content, mythosCards: [{ id: "mythos_green_04", color: "green", icons: [{ type: "advance_omen" }, { type: "monster_surge" }, { type: "spawn_clues" }], effect: { type: "lead_gain_condition", kind: "blessed" } }] };
+    expect(executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, cardContent, createDeterministicEngineContext({})))
+      .toMatchObject({ ok: false, error: { code: "CONDITION_UNAVAILABLE" } });
+    expect(before.currentMythosCardId).toBe("mythos_green_04");
+    expect(before.replacementWindow).toBeUndefined();
+  });
+});
