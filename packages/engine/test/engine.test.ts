@@ -235,6 +235,8 @@ describe("combat encounter integration", () => {
 describe("executeCommand", () => {
   it("interrupts a defeated investigator and preserves their possessions on their sheet", () => {
     const state = startedGame();
+    state.privateState.tokenPoolById.clues = [];
+    state.privateState.tokenPoolById["held_clues:host"] = ["clue_arkham"];
     state.doom = 12;
     const damaged = damageInvestigator(state, "host", 99, 0, testContent);
     if (!damaged.ok) throw new Error(damaged.error.message);
@@ -246,6 +248,9 @@ describe("executeCommand", () => {
     expect(resolved.state.activePlayerId).toBe("guest");
     expect(resolved.state.leadInvestigatorId).toBe("guest");
     expect(resolved.state.defeatedInvestigators?.[0]).toMatchObject({ investigatorId: "akachi_onyele", clues: 1, cause: "health" });
+    expect(resolved.state.privateState.tokenPoolById["defeated_clues:akachi_onyele"]).toEqual(["clue_arkham"]);
+    expect(resolved.state.privateState.tokenPoolById["held_clues:host"]).toEqual([]);
+    expect(projectPublicState(resolved.state)).not.toHaveProperty("privateState");
     expect(resolved.state.players[0]?.clues).toBe(0);
     expect(state.players[0]?.health).toBe(4);
   });

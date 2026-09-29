@@ -1057,6 +1057,11 @@ export function executeCommand(
     if (!defeat || defeat.playerId !== actorPlayerId || !defeat.cityIds.includes(command.cityId) || !defeat.causes.includes(command.cause)) return failure("INVALID_DEFEAT", "Choose a legal defeat location and cause.");
     const survivors = next.players.filter(player => !player.defeated && !player.eliminated);
     if (state.leadInvestigatorId === actorPlayerId && survivors.length && !survivors.some(player => player.id === command.leadPlayerId)) return failure("INVALID_DEFEAT", "Choose a surviving lead investigator.");
+    if (next.privateState.tokenPoolById.clues) {
+      const held = next.privateState.tokenPoolById[heldClueKey(actorPlayerId)];
+      if (!held || held.length !== actor.clues) return failure("CLUE_CONTENT_MISSING", "The defeated investigator's physical Clues are unavailable.");
+      next.privateState.tokenPoolById[`defeated_clues:${actor.investigatorId}`] = held.splice(0);
+    }
     next.defeatedInvestigators = [...(state.defeatedInvestigators ?? []), { investigatorId: actor.investigatorId!, locationId: command.cityId, cause: command.cause, assetIds: [...actor.assetIds], clues: actor.clues, travelTickets: [...(actor.travelTickets ?? [])] }];
     actor.assetIds = [];
     for (const id of [...(actor.conditionIds ?? [])]) returnConditionToPool(next, actor, id, content);
