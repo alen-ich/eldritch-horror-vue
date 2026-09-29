@@ -13,6 +13,7 @@ export const monsterSpawnDestinationById: Readonly<Partial<Record<string, Locati
 
 export function typedMonsterSpawnEffect(id: string, hasPrintedEffect: boolean): MonsterCombatDefinition["spawnEffect"] {
   if (!hasPrintedEffect) return undefined;
+  if (id === "monster_wraith") return { type: "curse_lead" };
   const locationId = monsterSpawnDestinationById[id];
   return locationId ? { type: "move_to", locationId } : { type: "unsupported" };
 }

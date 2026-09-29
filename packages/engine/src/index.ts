@@ -126,7 +126,7 @@ export interface MonsterCombatDefinition {
   id: string;
   type: "normal" | "epic";
   count?: number;
-  spawnEffect?: { type: "move_to"; locationId: LocationId } | { type: "unsupported" };
+  spawnEffect?: { type: "move_to"; locationId: LocationId } | { type: "curse_lead" } | { type: "unsupported" };
   horrorCheck: CombatCheck | null | "ancient_one";
   damageCheck: CombatCheck | null | "ancient_one";
   toughness: { base: number; perInvestigator: number } | "ancient_one";
@@ -568,11 +568,24 @@ export function spawnMonsterFromCup(state: GameState, spawnLocationId: LocationI
   if (!content.map.locationTypes[locationId]) return failure("MONSTER_CONTENT_MISSING", "The Monster's spawn destination is not on the map.");
   const monsterInstanceId = context.createId();
   if (state.monsters?.some(monster => monster.id === monsterInstanceId)) return failure("MONSTER_CONTENT_MISSING", "The generated Monster instance ID is already in use.");
-  const next = structuredClone(state);
+  let next = structuredClone(state);
+  const events: GameEvent[] = [];
+  if (definition.spawnEffect?.type === "curse_lead") {
+    if (!next.leadInvestigatorId) return failure("PLAYER_NOT_FOUND", "The Lead Investigator is missing.");
+    const gained = gainCondition(next, next.leadInvestigatorId, "cursed", content, context);
+    if (gained.ok === false) {
+      if (gained.error.code !== "CONDITION_UNAVAILABLE") return gained;
+    } else {
+      next = gained.state;
+      next.stateVersion = state.stateVersion;
+      events.push(...gained.events);
+    }
+  }
   next.privateState.tokenPoolById.monsters = remaining;
   next.monsters = [...(next.monsters ?? []), { id: monsterInstanceId, monsterId, locationId, damage: 0 }];
   next.monsterLocationIds = [...new Set(next.monsters.map(monster => monster.locationId))];
-  return success(next, [{ type: "MONSTER_SPAWNED", monsterInstanceId, monsterId, locationId, spawnLocationId }]);
+  events.unshift({ type: "MONSTER_SPAWNED", monsterInstanceId, monsterId, locationId, spawnLocationId });
+  return success(next, events);
 }
 
 export function resolveCombatEncounter(state: GameState, playerId: string, monsterInstanceId: string, content: GameContent, context: EngineContext): CommandResult {

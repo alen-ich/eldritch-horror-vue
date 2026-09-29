@@ -21,8 +21,8 @@ describe("base-game Monster cup content", () => {
     assert.equal(printed.length, 7);
     const typed = printed.map(monster => typedMonsterSpawnEffect(monster.id, true));
     assert.equal(typed.filter(effect => effect?.type === "move_to").length, 6);
-    assert.equal(typed.filter(effect => effect?.type === "unsupported").length, 1);
-    assert.deepEqual(typedMonsterSpawnEffect("monster_wraith", true), { type: "unsupported" });
+    assert.equal(typed.filter(effect => effect?.type === "curse_lead").length, 1);
+    assert.deepEqual(typedMonsterSpawnEffect("monster_wraith", true), { type: "curse_lead" });
     assert.equal(typedMonsterSpawnEffect("monster_ghoul", false), undefined);
   });
 });

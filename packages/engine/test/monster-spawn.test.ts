@@ -4,10 +4,12 @@ import { createDeterministicEngineContext, spawnMonsterFromCup, type GameContent
 const content: GameContent = {
   map: { adjacentLocationIds: {}, routes: [], locationTypes: { arkham: "city", tunguska: "wilderness" } },
   investigators: {}, assets: [], mysteryIdsByAncientOne: {}, mysteryTargetsById: {},
+  conditions: [{ id: "condition_cursed_01", kind: "cursed" }, { id: "condition_blessed_01", kind: "blessed" }],
   monsters: [
     { id: "monster_ghoul", type: "normal", count: 2, horrorCheck: null, damageCheck: null, toughness: { base: 1, perInvestigator: 0 } },
     { id: "monster_colour_out_of_space", type: "normal", count: 1, horrorCheck: null, damageCheck: null, toughness: { base: 2, perInvestigator: 0 }, spawnEffect: { type: "move_to", locationId: "tunguska" } },
-    { id: "monster_wraith", type: "normal", count: 1, horrorCheck: null, damageCheck: null, toughness: { base: 1, perInvestigator: 0 }, spawnEffect: { type: "unsupported" } },
+    { id: "monster_wraith", type: "normal", count: 1, horrorCheck: null, damageCheck: null, toughness: { base: 1, perInvestigator: 0 }, spawnEffect: { type: "curse_lead" } },
+    { id: "monster_untyped", type: "normal", count: 1, horrorCheck: null, damageCheck: null, toughness: { base: 1, perInvestigator: 0 }, spawnEffect: { type: "unsupported" } },
   ],
 };
 
@@ -35,11 +37,46 @@ describe("internal Monster draw and spawn", () => {
     expect(before.privateState.tokenPoolById.monsters).toHaveLength(2);
   });
 
-  it("rejects an unsupported printed effect without consuming the token", () => {
+  it("resolves Wraith's printed Curse through the existing Condition lifecycle", () => {
     const before = state(["monster_wraith"]);
+    before.leadInvestigatorId = "lead";
+    before.players = [{ id: "lead", assetIds: [], clues: 0, skillImprovements: {} }];
+    before.privateState.tokenPoolById["condition:cursed"] = ["condition_cursed_01"];
+    const result = spawnMonsterFromCup(before, "arkham", content, createDeterministicEngineContext({ tokenIndexes: [0, 0], ids: ["instance-1"] }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.players[0]?.conditionIds).toEqual(["condition_cursed_01"]);
+    expect(result.state.privateState.tokenPoolById["condition:cursed"]).toEqual([]);
+    expect(result.state.monsters?.[0]?.monsterId).toBe("monster_wraith");
+    expect(result.state.stateVersion).toBe(4);
+    expect(result.events.map(event => event.type)).toEqual(["MONSTER_SPAWNED", "CONDITION_GAINED"]);
+    expect(before.players[0]?.conditionIds).toBeUndefined();
+  });
+
+  it("cancels Blessed instead of adding Cursed, and still spawns when Cursed copies are exhausted", () => {
+    const blessed = state(["monster_wraith"]);
+    blessed.leadInvestigatorId = "lead";
+    blessed.players = [{ id: "lead", assetIds: [], conditionIds: ["condition_blessed_01"], clues: 0, skillImprovements: {} }];
+    const canceled = spawnMonsterFromCup(blessed, "arkham", content, createDeterministicEngineContext({ tokenIndexes: [0], ids: ["instance-1"] }));
+    expect(canceled.ok).toBe(true);
+    if (canceled.ok) {
+      expect(canceled.state.players[0]?.conditionIds).toEqual([]);
+      expect(canceled.state.privateState.tokenPoolById["condition:blessed"]).toEqual(["condition_blessed_01"]);
+      expect(canceled.state.stateVersion).toBe(4);
+    }
+    const empty = state(["monster_wraith"]);
+    empty.leadInvestigatorId = "lead";
+    empty.players = [{ id: "lead", assetIds: [], clues: 0, skillImprovements: {} }];
+    const spawned = spawnMonsterFromCup(empty, "arkham", content, createDeterministicEngineContext({ tokenIndexes: [0], ids: ["instance-2"] }));
+    expect(spawned.ok).toBe(true);
+    if (spawned.ok) expect(spawned.state.monsters).toHaveLength(1);
+  });
+
+  it("rejects an unsupported printed effect without consuming the token", () => {
+    const before = state(["monster_untyped"]);
     const result = spawnMonsterFromCup(before, "arkham", content, createDeterministicEngineContext({ tokenIndexes: [0] }));
     expect(result).toMatchObject({ ok: false, error: { code: "MONSTER_EFFECT_UNSUPPORTED" } });
-    expect(before.privateState.tokenPoolById.monsters).toEqual(["monster_wraith"]);
+    expect(before.privateState.tokenPoolById.monsters).toEqual(["monster_untyped"]);
     expect(before.stateVersion).toBe(3);
   });
 
