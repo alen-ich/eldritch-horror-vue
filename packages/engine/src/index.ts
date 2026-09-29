@@ -160,6 +160,7 @@ export interface GameState {
   usedConditionActionIds?: string[];
   monsterLocationIds: LocationId[];
   monsters?: MonsterInstance[];
+  activeGateIds?: string[];
   reserveAssetIds: string[];
   assetDiscardIds: string[];
   pendingDecision?: PendingDecision;
@@ -268,6 +269,7 @@ export function createLobby(playerIds: string[]): GameState {
     performedActions: [],
     usedConditionActionIds: [],
     monsterLocationIds: [],
+    activeGateIds: [],
     reserveAssetIds: [],
     assetDiscardIds: [],
     mysteryProgress: 0,
@@ -314,6 +316,7 @@ export function projectStateForPlayer(state: GameState, viewerPlayerId?: string)
     usedConditionActionIds: [...(publicState.usedConditionActionIds ?? [])],
     monsterLocationIds: [...publicState.monsterLocationIds],
     monsters: publicState.monsters?.map(monster => ({ ...monster })),
+    activeGateIds: [...(publicState.activeGateIds ?? [])],
     reserveAssetIds: [...publicState.reserveAssetIds],
     assetDiscardIds: [...publicState.assetDiscardIds],
     completedMysteryIds: [...publicState.completedMysteryIds],
@@ -928,6 +931,7 @@ export function executeCommand(
     performedActions: [...state.performedActions],
     usedConditionActionIds: [...(state.usedConditionActionIds ?? [])],
     monsterLocationIds: [...state.monsterLocationIds],
+    activeGateIds: [...(state.activeGateIds ?? [])],
     reserveAssetIds: [...state.reserveAssetIds],
     assetDiscardIds: [...state.assetDiscardIds],
     completedMysteryIds: [...state.completedMysteryIds],

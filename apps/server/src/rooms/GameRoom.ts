@@ -208,6 +208,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       usedConditionActionIds: this.state.usedConditionActionIds ? this.state.usedConditionActionIds.split(",") : [],
       monsterLocationIds: [...new Set(monsters.map(monster => monster.locationId))],
       monsters,
+      activeGateIds: this.state.activeGateIds ? this.state.activeGateIds.split(",") : [],
       reserveAssetIds: this.state.reserveAssetIds ? this.state.reserveAssetIds.split(",") : [],
       assetDiscardIds: this.state.assetDiscardIds ? this.state.assetDiscardIds.split(",") : [],
       pendingDecision: this.pendingDecision,
@@ -270,6 +271,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     this.state.performedActions = engineState.performedActions.join(",");
     this.state.usedConditionActionIds = (engineState.usedConditionActionIds ?? []).join(",");
     this.state.monsters = JSON.stringify(engineState.monsters ?? []);
+    this.state.activeGateIds = (engineState.activeGateIds ?? []).join(",");
     this.state.reserveAssetIds = engineState.reserveAssetIds.join(",");
     this.state.assetDiscardIds = engineState.assetDiscardIds.join(",");
     for (const enginePlayer of engineState.players) {
