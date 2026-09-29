@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { collectBoardClue, createDeterministicEngineContext, gainCluesFromPool, projectPublicState, spawnClueFromPool, type GameContent, type GameState } from "../src/index.js";
+import { collectBoardClue, createDeterministicEngineContext, gainCluesFromPool, projectPublicState, spawnClueFromPool, spawnMythosClues, type GameContent, type GameState } from "../src/index.js";
 
 const content: GameContent = {
   clues: [{ id: "clue_arkham", locationId: "arkham" }, { id: "clue_london", locationId: "london" }],
@@ -114,5 +114,44 @@ describe("internal Clue gain and collection", () => {
     delete before.privateState.tokenPoolById["board_clue:marker-1"];
     expect(collectBoardClue(before, "host", "marker-1")).toMatchObject({ ok: false, error: { code: "CLUE_CONTENT_MISSING" } });
     expect(before.boardClues).toHaveLength(1);
+  });
+});
+
+describe("Mythos Clue icon", () => {
+  const mythosContent: GameContent = { ...content,
+    mythosCards: [{ id: "mythos_blue_01", color: "blue", icons: [{ type: "spawn_clues" }] }],
+    referenceCards: [{ playerCount: 3, spawnClues: 2 }],
+  };
+
+  it("uses the reference-card count and cannot resolve the same icon twice", () => {
+    const before = state();
+    before.currentMythosCardId = "mythos_blue_01";
+    before.players = ["a", "b", "c"].map(id => ({ id, clues: 0, assetIds: [], skillImprovements: {} }));
+    const result = spawnMythosClues(before, mythosContent, createDeterministicEngineContext({ tokenIndexes: [0, 0], ids: ["marker-1", "marker-2"] }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.boardClues).toHaveLength(2);
+    expect(result.state.stateVersion).toBe(before.stateVersion + 1);
+    expect(result.events.map(event => event.type)).toEqual(["CLUE_SPAWNED", "CLUE_SPAWNED"]);
+    expect(spawnMythosClues(result.state, mythosContent, createDeterministicEngineContext({}))).toMatchObject({ ok: false, error: { code: "MYTHOS_CARD_ACTIVE" } });
+    expect(before.boardClues).toEqual([]);
+  });
+
+  it("stops at the physical component limit without manufacturing tokens", () => {
+    const before = state(["clue_arkham"]);
+    before.currentMythosCardId = "mythos_blue_01";
+    before.players = ["a", "b", "c"].map(id => ({ id, clues: 0, assetIds: [], skillImprovements: {} }));
+    const result = spawnMythosClues(before, mythosContent, createDeterministicEngineContext({ tokenIndexes: [0], ids: ["marker-1"] }));
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.state.boardClues).toHaveLength(1);
+    expect(result.state.privateState.tokenPoolById.clues).toEqual([]);
+  });
+
+  it("rejects missing card/icon data without mutation", () => {
+    const before = state();
+    before.currentMythosCardId = "mythos_blue_01";
+    before.players = ["a", "b", "c"].map(id => ({ id, clues: 0, assetIds: [], skillImprovements: {} }));
+    expect(spawnMythosClues(before, { ...mythosContent, mythosCards: [] }, createDeterministicEngineContext({}))).toMatchObject({ ok: false, error: { code: "MYTHOS_CONTENT_MISSING" } });
+    expect(before.boardClues).toEqual([]);
   });
 });

@@ -1,6 +1,6 @@
 import { randomInt, randomUUID } from "node:crypto";
 import { Client, CloseCode, Room } from "colyseus";
-import { baseGameAncientOnes, baseGameMythosCards, baseGameAssets, baseGameClues, baseGameConditions, baseGameGates, baseGameInvestigators, baseGameMap, baseGameMysteries, baseGameMonsters } from "@eldritch/content";
+import { baseGameAncientOnes, baseGameMythosCards, baseGameAssets, baseGameClues, baseGameConditions, baseGameGates, baseGameInvestigators, baseGameMap, baseGameMysteries, baseGameMonsters, baseGameReferenceCards } from "@eldritch/content";
 import { createDeterministicEngineContext, executeCommand, publicConditionId, type GameContent, type GameState, type PrivateGameState } from "@eldritch/engine";
 import {
   commandErrorMessageType,
@@ -39,6 +39,7 @@ const baseGameContent: GameContent = {
     setAsideMonsters: ancient.setup.filter(effect => effect.type === "set_aside_monster").map(({ monsterId, quantity }) => ({ monsterId, quantity })),
   }])),
   mythosCards: baseGameMythosCards,
+  referenceCards: baseGameReferenceCards,
   map: baseGameMap,
   investigators: Object.fromEntries(baseGameInvestigators.map((investigator) => [investigator.id, {
     startingLocationId: investigator.startingLocationId,
@@ -201,6 +202,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       leadInvestigatorId: this.state.leadInvestigatorId || undefined,
       ancientOneId: (this.state.ancientOneId || undefined) as AncientOneId | undefined,
       currentMythosCardId: this.state.currentMythosCardId || undefined,
+      resolvedMythosClueCardId: this.state.resolvedMythosClueCardId || undefined,
       activeMysteryId: this.state.activeMysteryId || undefined,
       mysteryProgress: this.state.mysteryProgress,
       mysteryTarget: this.state.mysteryTarget,
@@ -266,6 +268,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     this.state.leadInvestigatorId = engineState.leadInvestigatorId ?? "";
     this.state.ancientOneId = engineState.ancientOneId ?? "";
     this.state.currentMythosCardId = engineState.currentMythosCardId ?? "";
+    this.state.resolvedMythosClueCardId = engineState.resolvedMythosClueCardId ?? "";
     this.state.activeMysteryId = engineState.activeMysteryId ?? "";
     this.state.mysteryProgress = engineState.mysteryProgress;
     this.state.mysteryTarget = engineState.mysteryTarget;

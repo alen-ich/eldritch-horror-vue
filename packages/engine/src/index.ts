@@ -155,6 +155,7 @@ export interface GameState {
   leadInvestigatorId?: string;
   ancientOneId?: AncientOneId;
   currentMythosCardId?: string;
+  resolvedMythosClueCardId?: string;
   activeMysteryId?: string;
   mysteryProgress: number;
   mysteryTarget: number;
@@ -214,7 +215,8 @@ export interface GameContent {
   conditions?: readonly { id: string; kind: string; backEffect?: ConditionBackEffect }[];
   monsters?: readonly MonsterCombatDefinition[];
   ancientOnes?: Readonly<Partial<Record<AncientOneId, AncientSetup>>>;
-  mythosCards?: readonly { id: string; color: MythosColor }[];
+  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[] }[];
+  referenceCards?: readonly { playerCount: number; spawnClues: number }[];
   map: GameMap;
   investigators: Readonly<Partial<Record<InvestigatorId, InvestigatorSetup>>>;
   assets: readonly { id: string; value: number; engineEffects: readonly AssetEngineEffect[] }[];
@@ -654,6 +656,31 @@ export function spawnClueFromPool(state: GameState, content: GameContent, contex
   next.privateState.tokenPoolById[`board_clue:${id}`] = [clueId];
   next.boardClues = [...(next.boardClues ?? []), { id, locationId }];
   return success(next, [{ type: "CLUE_SPAWNED", clueId: id, locationId }]);
+}
+
+/** Internal Mythos icon step; the caller must resolve preceding printed icons first. */
+export function spawnMythosClues(state: GameState, content: GameContent, context: EngineContext): CommandResult {
+  if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
+  if (state.phase !== "mythos" || !state.currentMythosCardId || state.pendingDecision || state.activeTest || state.pendingDefeat) {
+    return failure("WRONG_PHASE", "A revealed Mythos card is required to spawn Clues.");
+  }
+  if (state.resolvedMythosClueCardId === state.currentMythosCardId) return failure("MYTHOS_CARD_ACTIVE", "This card's Clue icon has already resolved.");
+  const card = content.mythosCards?.find(candidate => candidate.id === state.currentMythosCardId);
+  if (!card?.icons?.some(icon => icon.type === "spawn_clues")) return failure("MYTHOS_CONTENT_MISSING", "The revealed card has no verified Clue icon.");
+  const count = content.referenceCards?.find(reference => reference.playerCount === state.players.length)?.spawnClues;
+  if (!count || !Number.isSafeInteger(count)) return failure("MYTHOS_CONTENT_MISSING", "The Clue icon count is missing from the reference card.");
+  let next = structuredClone(state);
+  const events: GameEvent[] = [];
+  for (let index = 0; index < count; index += 1) {
+    if (!next.privateState.tokenPoolById.clues?.length && !next.privateState.tokenPoolById.clue_discard?.length) break;
+    const spawned = spawnClueFromPool(next, content, context);
+    if (!spawned.ok) return spawned;
+    next = spawned.state;
+    events.push(...spawned.events);
+  }
+  next.resolvedMythosClueCardId = state.currentMythosCardId;
+  next.stateVersion = state.stateVersion;
+  return success(next, events);
 }
 
 /** Internal effect for gaining Clues from supply; never a client command. */

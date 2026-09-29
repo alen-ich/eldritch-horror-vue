@@ -33,4 +33,6 @@ The pure engine now has an internal draw transition: it reveals the top card fro
 
 The pure Omen kernel now models the board's four printed spaces in clockwise order (comet, constellation, eclipse, constellation). It counts Doom from active Gates separately for every space entered, including both constellation spaces and wraps around the track. This is not yet a live Mythos transition: active Gate placement, Ancient One overrides, awakening, and subsequent icons must be connected before a card can progress.
 
+The internal Clue-icon step now uses the revealed card's verified icon and the reference-card count for the current player count. It places opaque board markers through the physical Clue pool, stops at the component limit, and rejects a second resolution for the same card. It remains disconnected from the live phase until a sequencer can enforce the printed order (especially the preceding icons on green cards).
+
 An internal Mythos-only Omen transition now reads the public active Gates, moves one space clockwise, and reduces Doom for matching symbols. Azathoth's Eldritch tokens on green also advance Doom, with its immediate loss at zero. Awakening for the other three Ancient Ones remains explicitly unsupported, so their Doom cannot silently cross zero. This transition is not yet invoked from a revealed Mythos card.
