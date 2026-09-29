@@ -18,6 +18,7 @@ import { loseResource, recoverResource } from "./resources.js";
 import { buildGateStack, buildMonsterPool, buildMythosDeck, type AncientSetup, type MythosColor } from "./setup.js";
 import { resolveStandardCombat, type CombatCheck } from "./combat.js";
 import { conditionSuccessThreshold, publicConditionId, resolveBoonBaneGain } from "./conditions.js";
+import { advanceOmenTrack } from "./omen.js";
 export * from "./setup.js";
 export * from "./skill-tests.js";
 export * from "./resources.js";
@@ -220,6 +221,7 @@ export type RuleErrorCode =
   | "CONDITION_CONTENT_MISSING" | "CONDITION_UNAVAILABLE" | "CONDITION_NOT_HELD" | "CONDITION_EFFECT_UNSUPPORTED"
   | "INVALID_COMBAT" | "MONSTER_CONTENT_MISSING" | "MONSTER_EFFECT_UNSUPPORTED" | "MONSTER_UNAVAILABLE"
   | "GATE_UNAVAILABLE" | "GATE_CONTENT_MISSING"
+  | "OMEN_CONTENT_MISSING" | "AWAKENING_UNSUPPORTED"
   | "INVALID_DEFEAT" | "INVESTIGATOR_DEFEATED" | "INVALID_DAMAGE"
   | "INVALID_TRADE"
   | "INVESTIGATOR_DELAYED"
@@ -613,6 +615,28 @@ export function openGateFromStack(state: GameState, content: GameContent, contex
     events.push(...spawned.events);
   }
   next.activeGateIds = [...(next.activeGateIds ?? []), gateId];
+  return success(next, events);
+}
+
+/** Internal Mythos Omen effect; Ancient One awakening remains explicit, never inferred by the client. */
+export function advanceOmen(state: GameState, content: GameContent): CommandResult {
+  if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
+  if (state.phase !== "mythos") return failure("WRONG_PHASE", "Omen advances during Mythos resolution.");
+  if (state.omen === undefined || state.doom === undefined || !state.ancientOneId) return failure("OMEN_CONTENT_MISSING", "Omen, Doom, or Ancient One setup is missing.");
+  const activeGateSymbols = (state.activeGateIds ?? []).map(id => content.gates?.find(gate => gate.id === id)?.omenSymbol);
+  if (activeGateSymbols.some(symbol => symbol === undefined)) return failure("GATE_CONTENT_MISSING", "An active Gate is missing its Omen symbol.");
+  const result = advanceOmenTrack(state.omen, 1, activeGateSymbols as ("comet" | "constellation" | "eclipse")[]);
+  const azathothGreenDoom = state.ancientOneId === "azathoth" && result.position === 0 ? state.greenOmenTokens ?? 0 : 0;
+  const doomAdvance = result.doomAdvanceFromGates + azathothGreenDoom;
+  if (doomAdvance >= state.doom && state.ancientOneId !== "azathoth") return failure("AWAKENING_UNSUPPORTED", "Ancient One awakening is not implemented yet.");
+  const next = structuredClone(state);
+  next.omen = result.position;
+  next.doom = Math.max(0, state.doom - doomAdvance);
+  const events: GameEvent[] = [{ type: "OMEN_ADVANCED", position: result.position, symbol: result.symbol, doomAdvance }];
+  if (next.doom === 0 && state.ancientOneId === "azathoth") {
+    next.gameResult = "investigators_lose";
+    events.push({ type: "GAME_ENDED", result: "investigators_lose", reason: "azathoth_awakened" });
+  }
   return success(next, events);
 }
 
