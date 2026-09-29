@@ -1137,13 +1137,28 @@ export function executeCommand(
     if (state.players.some(player => player.investigatorId === command.investigatorId) || state.defeatedInvestigators?.some(player => player.investigatorId === command.investigatorId)) return failure("INVESTIGATOR_TAKEN", "That investigator is unavailable.");
     const setup = content.investigators[command.investigatorId];
     if (!setup) return failure("INVESTIGATOR_CONTENT_MISSING", "Investigator setup is missing.");
+    if (next.privateState.tokenPoolById.clues) {
+      const held = next.privateState.tokenPoolById[heldClueKey(actorPlayerId)];
+      if (!held || held.length !== 0) return failure("CLUE_CONTENT_MISSING", "The previous investigator's Clues were not set aside.");
+      let available = next.privateState.tokenPoolById.clues;
+      const discard = next.privateState.tokenPoolById.clue_discard ?? [];
+      if (available.length < setup.startingClues && discard.length) {
+        if (!context) return failure("RANDOM_INPUT_REQUIRED", "Recycling Clues requires server randomness.");
+        available = [...available, ...context.shuffle(discard)];
+        next.privateState.tokenPoolById.clue_discard = [];
+      }
+      const drawn = available.splice(0, Math.min(setup.startingClues, available.length));
+      if (drawn.some(id => !content.clues?.some(clue => clue.id === id))) return failure("CLUE_CONTENT_MISSING", "A starting Clue is missing from content.");
+      next.privateState.tokenPoolById.clues = available;
+      next.privateState.tokenPoolById[heldClueKey(actorPlayerId)] = drawn;
+      actor.clues = drawn.length;
+    } else actor.clues = setup.startingClues;
     actor.investigatorId = command.investigatorId;
     actor.defeated = false;
     actor.delayed = false;
     actor.health = actor.maxHealth = setup.health;
     actor.sanity = actor.maxSanity = setup.sanity;
     actor.locationId = setup.startingLocationId;
-    actor.clues = setup.startingClues;
     actor.skillImprovements = {};
     actor.travelTickets = [];
     actor.assetIds = [];

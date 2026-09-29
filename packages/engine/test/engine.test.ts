@@ -276,6 +276,31 @@ describe("executeCommand", () => {
     expect(replaced.state.players[0]).toMatchObject({ investigatorId: "leo_anderson", defeated: false, health: 5, sanity: 7 });
     expect(replaced.state.defeatedInvestigators).toHaveLength(1);
   });
+
+  it("draws a replacement's starting physical Clues without duplicating defeated holdings", () => {
+    const before = startedGame();
+    before.phase = "mythos";
+    before.players[0]!.defeated = true;
+    before.players[0]!.clues = 0;
+    before.privateState.tokenPoolById.clues = ["clue_london"];
+    before.privateState.tokenPoolById.clue_discard = [];
+    before.privateState.tokenPoolById["held_clues:host"] = [];
+    before.privateState.tokenPoolById["defeated_clues:akachi_onyele"] = ["clue_arkham"];
+    before.defeatedInvestigators = [{ investigatorId: "akachi_onyele", locationId: "san_francisco", cause: "health", assetIds: [], clues: 1, travelTickets: [] }];
+    const replacementContent: GameContent = { ...testContent,
+      clues: [{ id: "clue_arkham", locationId: "san_francisco" }, { id: "clue_london", locationId: "space_15" }],
+      investigators: { ...testContent.investigators, leo_anderson: testContent.investigators.akachi_onyele! },
+    };
+    const window = openReplacementWindow(before);
+    if (!window.ok) throw new Error(window.error.message);
+    const result = executeCommand(window.state, "host", { type: "REPLACE_INVESTIGATOR", investigatorId: "leo_anderson" }, replacementContent);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.players[0]?.clues).toBe(1);
+    expect(result.state.privateState.tokenPoolById["held_clues:host"]).toEqual(["clue_london"]);
+    expect(result.state.privateState.tokenPoolById["defeated_clues:akachi_onyele"]).toEqual(["clue_arkham"]);
+    expect(result.state.privateState.tokenPoolById.clues).toEqual([]);
+  });
   it("requires the recipient's consent and exchanges possessions atomically", () => {
     const state = startedGame();
     state.privateState.tokenPoolById.clues = [];

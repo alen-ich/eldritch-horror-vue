@@ -174,6 +174,8 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
           })
         : parsed.data.command.type === "RESOLVE_DECISION" || parsed.data.command.type === "OFFER_TRADE"
           ? createDeterministicEngineContext({ dice: Array.from({ length: 12 }, () => randomInt(1, 7)), ids: [randomUUID(), randomUUID()], tokenIndexes: [randomInt(Math.max(1, this.privateState.tokenPoolById["condition:debt"]?.length ?? 0))] })
+          : parsed.data.command.type === "REPLACE_INVESTIGATOR"
+            ? createDeterministicEngineContext({ shuffleIndexes: randomShuffleIndexes(this.privateState.tokenPoolById.clue_discard?.length ?? 0) })
           : parsed.data.command.type === "REST"
             ? createDeterministicEngineContext({ ids: [randomUUID()] })
           : undefined;
