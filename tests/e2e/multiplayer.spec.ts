@@ -17,6 +17,7 @@ test('two browsers join, resolve an Asset test, and share Travel state', async (
     await guest.waitForLoadState('networkidle')
     await expect(guest.getByText('Investigator roster')).toBeVisible()
     await host.getByRole('button', { name: /Akachi Onyele/i }).click()
+    await expect(guest.locator('.roster article').filter({ hasText: 'Akachi Onyele' })).toBeVisible()
     await guest.getByRole('button', { name: /Trish Scarborough/i }).click()
     await expect(host.locator('.roster article').filter({ hasText: 'Trish Scarborough' })).toBeVisible()
     await host.getByRole('button', { name: /Cthulhu.*Doom 12/i }).click()
@@ -39,6 +40,9 @@ test('two browsers join, resolve an Asset test, and share Travel state', async (
     await host.getByRole('button', { name: 'Confirm travel' }).click()
     await guest.getByRole('button', { name: 'Show Host' }).click()
     await expect(guest.locator('.investigator-facts').getByText('10', { exact: true })).toBeVisible()
+    await guest.getByRole('button', { name: 'End actions' }).click()
+    await expect(host.getByRole('region', { name: 'Location encounter' })).toBeVisible()
+    await expect(host.getByRole('button', { name: 'General', exact: true })).toBeVisible()
   } finally {
     await guestContext.close()
     await hostContext.close()
