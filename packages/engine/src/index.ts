@@ -217,7 +217,7 @@ export interface GameContent {
   monsters?: readonly MonsterCombatDefinition[];
   ancientOnes?: Readonly<Partial<Record<AncientOneId, AncientSetup>>>;
   mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[] }[];
-  referenceCards?: readonly { playerCount: number; spawnClues: number; monsterSurge?: number }[];
+  referenceCards?: readonly { playerCount: number; spawnClues: number; monsterSurge?: number; spawnGates?: number }[];
   map: GameMap;
   investigators: Readonly<Partial<Record<InvestigatorId, InvestigatorSetup>>>;
   assets: readonly { id: string; value: number; engineEffects: readonly AssetEngineEffect[] }[];
@@ -733,6 +733,32 @@ export function resolveMythosMonsterSurge(state: GameState, content: GameContent
     }
   }
   next.currentMythosIconIndex = 2;
+  next.stateVersion = state.stateVersion;
+  return success(next, events);
+}
+
+/** Internal third yellow Mythos icon; Reckoning must advance the cursor first. */
+export function resolveMythosSpawnGates(state: GameState, content: GameContent, context: EngineContext): CommandResult {
+  if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
+  if (state.phase !== "mythos" || !state.currentMythosCardId || state.pendingDecision || state.activeTest || state.pendingDefeat) {
+    return failure("WRONG_PHASE", "A revealed Mythos card is required to spawn Gates.");
+  }
+  const card = content.mythosCards?.find(candidate => candidate.id === state.currentMythosCardId);
+  if (card?.icons?.[2]?.type !== "spawn_gates") return failure("MYTHOS_CONTENT_MISSING", "The revealed card has no verified Spawn Gates icon at this position.");
+  if (state.currentMythosIconIndex !== 2) return failure("MYTHOS_CARD_ACTIVE", "Resolve preceding Mythos icons first.");
+  const count = content.referenceCards?.find(reference => reference.playerCount === state.players.length)?.spawnGates;
+  if (!count || !Number.isSafeInteger(count)) return failure("MYTHOS_CONTENT_MISSING", "The Gate spawn count is missing from the reference card.");
+  if (!state.privateState.deckOrderById.gates) return failure("GATE_CONTENT_MISSING", "The Gate stack is not initialized.");
+  let next = structuredClone(state);
+  const events: GameEvent[] = [];
+  for (let index = 0; index < count; index += 1) {
+    if (!next.privateState.deckOrderById.gates?.length) break;
+    const opened = openGateFromStack(next, content, context);
+    if (!opened.ok) return opened;
+    next = opened.state;
+    events.push(...opened.events);
+  }
+  next.currentMythosIconIndex = 3;
   next.stateVersion = state.stateVersion;
   return success(next, events);
 }

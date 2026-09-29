@@ -36,6 +36,7 @@ Last updated: 2026-09-29
 - Green and yellow Mythos draws now also resolve their first printed Advance Omen icon atomically; unsupported awakening leaves the private deck untouched. Later icons and card effects remain unimplemented.
 - A persisted Mythos icon cursor now tracks the first resolved icon and rejects early green-card Clue spawning. Later icon handlers remain to be implemented before a live Mythos command is safe.
 - The second green icon, Monster Surge, now has an internal atomic handler: matching current-Omen Gates each receive the Reference-card number of Monsters, or one Gate opens if none match. It advances the icon cursor so green Clue spawning can follow. Live phase invocation and other icons remain pending.
+- The third yellow icon, Spawn Gates, now has an internal atomic handler using the player-count Reference card. It is cursor-gated after Reckoning and stops at the finite Gate stack; Reckoning and live phase invocation remain pending.
 
 ### Current verification evidence
 

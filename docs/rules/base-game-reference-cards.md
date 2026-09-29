@@ -15,4 +15,4 @@ The supplied English sheet contains all eight base-game player-count faces plus 
 | 7 | 2 | 4 | 3 |
 | 8 | 2 | 4 | 3 |
 
-`packages/content/src/reference-cards.ts` owns this scan-backed table and validates complete, unique coverage for 1-8 investigators. The values are now available to deterministic setup and Mythos icon resolution, but those engine transitions remain pending.
+`packages/content/src/reference-cards.ts` owns this scan-backed table and validates complete, unique coverage for 1-8 investigators. Internal Mythos Clue spawning, Monster Surge, and yellow Gate spawning now read these counts; the live Mythos phase still awaits the remaining icon and card-effect handlers.
