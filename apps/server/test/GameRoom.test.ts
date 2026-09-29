@@ -96,6 +96,38 @@ describe("authoritative game room", () => {
     assert.equal(room.state.phase, "encounter");
   });
 
+  it("keeps a location encounter test pending for the owner and resumes it after a decision", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "encounter";
+    const hostId = state.players[0]!.id;
+    state.activePlayerId = state.leadInvestigatorId = hostId;
+    state.players[0]!.investigatorId = "akachi_onyele";
+    state.players[0]!.locationId = "space_2";
+    state.players[0]!.clues = 1;
+    state.privateState.tokenPoolById[`held_clues:${hostId}`] = ["clue_arkham"];
+    state.privateState.tokenPoolById.clues = ["clue_london"];
+    state.privateState.deckOrderById["encounter:general"] = ["encounter_general_08"];
+    internal.applyEngineState(state);
+    sendCommand(room, host, { type: "RESOLVE_LOCATION_ENCOUNTER", deck: "general" });
+    await room.waitForMessage(commandMessageType);
+    assert.equal(room.state.currentLocationEncounterCardId, "encounter_general_08");
+    assert.equal(room.state.pendingDecision?.kind, "select_rerolls");
+    assert.equal(room.state.activeTest?.continuation, "location_encounter");
+    const decisionId = room.state.pendingDecision!.id;
+    const denied = guest.waitForMessage(commandErrorMessageType);
+    sendCommand(room, guest, { type: "RESOLVE_DECISION", decisionId, selectedOptionIds: [] });
+    assert.equal((await denied as { code: string }).code, "NOT_DECISION_OWNER");
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId, selectedOptionIds: [] });
+    await room.waitForMessage(commandMessageType);
+    assert.equal(room.state.currentLocationEncounterCardId, "");
+    assert.equal(room.state.lastLocationEncounterCardId, "encounter_general_08");
+    assert.equal(room.state.pendingDecision, undefined);
+  });
+
   function sendCommand(
     room: { state: GameRoomState },
     client: { send: (type: string, payload: unknown) => void },

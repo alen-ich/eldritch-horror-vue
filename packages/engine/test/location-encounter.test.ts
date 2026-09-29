@@ -7,8 +7,8 @@ const content: GameContent = {
       pass: { kind: "effects", effects: [{ kind: "clues", amount: 1 }] }, fail: { kind: "effects", effects: [] } } } },
     { id: "encounter_general_01", deck: "general", sections: { sea: { kind: "choice", options: [] } } },
   ],
-  clues: [{ id: "clue_arkham", locationId: "arkham" }],
-  map: { adjacentLocationIds: {}, routes: [], locationTypes: { space_2: "sea", arkham: "city" } },
+  clues: [{ id: "clue_arkham", locationId: "arkham" }, { id: "clue_london", locationId: "london" }],
+  map: { adjacentLocationIds: {}, routes: [], locationTypes: { space_2: "sea", arkham: "city", london: "city" } },
   investigators: { akachi_onyele: { startingLocationId: "space_2", health: 5, sanity: 7, skills: { lore: 3, influence: 2, observation: 2, strength: 2, will: 4 }, startingAssetIds: [], startingClues: 0 } },
   assets: [], mysteryIdsByAncientOne: {}, mysteryTargetsById: {},
 };
@@ -48,16 +48,45 @@ describe("guarded location encounter", () => {
     if (result.ok) expect(result.state.players[1]?.clues).toBe(0);
   });
 
-  it("refuses unsupported text, rerolls, possessions, wrong deck, and mandatory combat without consuming the card", () => {
+  it("offers a reconnectable Clue reroll, enforces ownership, then completes the encounter", () => {
+    const before = state();
+    before.players[0]!.clues = 1;
+    before.privateState.tokenPoolById["held_clues:host"] = ["clue_arkham"];
+    before.privateState.tokenPoolById.clues = ["clue_london"];
+    const started = executeCommand(before, "host", { type: "RESOLVE_LOCATION_ENCOUNTER", deck: "general" }, content,
+      createDeterministicEngineContext({ dice: [1, 1], ids: ["test-1", "choice-1"] }));
+    expect(started).toMatchObject({ ok: true, state: { currentLocationEncounterCardId: "encounter_general_08", activeTest: { continuation: "location_encounter" }, pendingDecision: { playerId: "host" } } });
+    if (!started.ok) return;
+    expect(started.state.privateState.deckOrderById["encounter:general"]?.[0]).toBe("encounter_general_08");
+    const wrongOwner = executeCommand(started.state, "guest", { type: "RESOLVE_DECISION", decisionId: "choice-1", selectedOptionIds: ["die-0"] }, content, createDeterministicEngineContext({ dice: [5] }));
+    expect(wrongOwner).toMatchObject({ ok: false, error: { code: "NOT_DECISION_OWNER" } });
+    const finished = executeCommand(started.state, "host", { type: "RESOLVE_DECISION", decisionId: "choice-1", selectedOptionIds: ["die-0"] }, content,
+      createDeterministicEngineContext({ dice: [5], tokenIndexes: [0] }));
+    expect(finished).toMatchObject({ ok: true, state: { stateVersion: 4, activePlayerId: "guest", currentLocationEncounterCardId: undefined, lastLocationEncounterCardId: "encounter_general_08" } });
+    if (!finished.ok) return;
+    expect(finished.state.players[0]?.clues).toBe(1);
+    expect(finished.state.privateState.tokenPoolById["held_clues:host"]).toEqual(["clue_london"]);
+    expect(finished.state.privateState.tokenPoolById.clue_discard).toEqual(["clue_arkham"]);
+    expect(finished.state.activeTest).toBeUndefined();
+  });
+
+  it("allows keeping the first result without spending a Clue", () => {
+    const before = state();
+    before.players[0]!.clues = 1;
+    before.privateState.tokenPoolById["held_clues:host"] = ["clue_arkham"];
+    const started = resolveLocationEncounter(before, "host", "general", content, createDeterministicEngineContext({ dice: [1, 1], ids: ["test-1", "choice-1"] }));
+    if (!started.ok) throw new Error("Expected an encounter decision");
+    const finished = executeCommand(started.state, "host", { type: "RESOLVE_DECISION", decisionId: "choice-1", selectedOptionIds: [] }, content, createDeterministicEngineContext({}));
+    expect(finished).toMatchObject({ ok: true, state: { activePlayerId: "guest", lastLocationEncounterCardId: "encounter_general_08" } });
+    if (finished.ok) expect(finished.state.players[0]?.clues).toBe(1);
+  });
+
+  it("refuses unsupported text, possessions, wrong deck, and mandatory combat without consuming the card", () => {
     const before = state();
     before.privateState.deckOrderById["encounter:general"] = ["encounter_general_01"];
     expect(resolveLocationEncounter(before, "host", "general", content, createDeterministicEngineContext({})))
       .toMatchObject({ ok: false, error: { code: "ENCOUNTER_UNSUPPORTED" } });
     before.privateState.deckOrderById["encounter:general"] = ["encounter_general_08"];
-    before.players[0]!.clues = 1;
-    expect(resolveLocationEncounter(before, "host", "general", content, createDeterministicEngineContext({})))
-      .toMatchObject({ ok: false, error: { code: "ENCOUNTER_UNSUPPORTED" } });
-    before.players[0]!.clues = 0;
     before.players[0]!.assetIds = ["untyped_asset"];
     expect(resolveLocationEncounter(before, "host", "general", content, createDeterministicEngineContext({})))
       .toMatchObject({ ok: false, error: { code: "ENCOUNTER_UNSUPPORTED" } });

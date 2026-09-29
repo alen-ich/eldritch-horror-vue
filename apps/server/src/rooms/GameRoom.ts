@@ -177,6 +177,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       return;
     }
     const context = parsed.data.command.type === "ADVANCE_MYTHOS" || parsed.data.command.type === "RESOLVE_LOCATION_ENCOUNTER"
+      || (parsed.data.command.type === "RESOLVE_DECISION" && this.activeTest?.continuation === "location_encounter")
       ? serverMythosContext()
       : parsed.data.command.type === "START_GAME"
       ? createDeterministicEngineContext({
@@ -229,6 +230,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       currentMythosCardId: this.state.currentMythosCardId || undefined,
       currentMythosIconIndex: this.state.currentMythosIconIndex,
       lastLocationEncounterCardId: this.state.lastLocationEncounterCardId || undefined,
+      currentLocationEncounterCardId: this.state.currentLocationEncounterCardId || undefined,
       resolvedMythosClueCardId: this.state.resolvedMythosClueCardId || undefined,
       activeMysteryId: this.state.activeMysteryId || undefined,
       mysteryProgress: this.state.mysteryProgress,
@@ -297,6 +299,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     this.state.currentMythosCardId = engineState.currentMythosCardId ?? "";
     this.state.currentMythosIconIndex = engineState.currentMythosIconIndex ?? 0;
     this.state.lastLocationEncounterCardId = engineState.lastLocationEncounterCardId ?? "";
+    this.state.currentLocationEncounterCardId = engineState.currentLocationEncounterCardId ?? "";
     this.state.resolvedMythosClueCardId = engineState.resolvedMythosClueCardId ?? "";
     this.state.activeMysteryId = engineState.activeMysteryId ?? "";
     this.state.mysteryProgress = engineState.mysteryProgress;

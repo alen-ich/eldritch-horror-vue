@@ -48,7 +48,7 @@ const encounterDecks = computed(() => {
   return regional ? [{ id: 'general' as const, label: 'General' }, { id: regional, label: regional === 'asia_australia' ? 'Asia / Australia' : regional[0]!.toUpperCase() + regional.slice(1) }]
     : [{ id: 'general' as const, label: 'General' }]
 })
-const latestEncounterCard = computed(() => baseGameScannedLocationEncounters.find(card => card.id === game.lastLocationEncounterCardId.value))
+const latestEncounterCard = computed(() => baseGameScannedLocationEncounters.find(card => card.id === (game.currentLocationEncounterCardId.value || game.lastLocationEncounterCardId.value)))
 const isDetained = computed(() => (me.value?.conditionIds?.split(',') ?? []).some(id => conditionById[id]?.kind === 'detained'))
 const canUseNormalActions = computed(() => isMyTurn.value && !isDetained.value)
 const localConditionActions = computed(() => game.players.value.flatMap(player => (player.conditionIds ? player.conditionIds.split(',') : [])
@@ -365,7 +365,7 @@ async function copyInvite() {
           <section v-if="game.phase.value === 'encounter'" class="encounter-panel" aria-label="Location encounter">
             <div><strong>Encounter phase</strong><small v-if="isMyEncounter">Choose a location deck. Monsters on your space must be resolved first; many card effects remain unsupported.</small><small v-else>Waiting for the active investigator.</small></div>
             <template v-if="isMyEncounter"><button v-for="deck in encounterDecks" :key="deck.id" @click="game.send({ type: 'RESOLVE_LOCATION_ENCOUNTER', deck: deck.id })">{{ deck.label }}</button></template>
-            <img v-if="latestEncounterCard" :src="latestEncounterCard.imageUrl" :alt="`Last resolved encounter: ${latestEncounterCard.id}`" />
+            <img v-if="latestEncounterCard" :src="latestEncounterCard.imageUrl" :alt="`${game.currentLocationEncounterCardId.value ? 'Active' : 'Last resolved'} encounter: ${latestEncounterCard.id}`" />
           </section>
           <section v-if="game.phase.value === 'mythos' && game.activePlayerId.value === game.playerId.value" class="encounter-panel" aria-label="Mythos resolution"><strong>Mythos phase</strong><button @click="game.send({ type: 'ADVANCE_MYTHOS' })">Resolve next printed icon</button><small>Unimplemented card text will stop resolution safely.</small></section>
           <section v-if="me?.delayed" class="travel-planner" aria-label="Delayed investigator">

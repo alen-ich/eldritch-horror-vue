@@ -70,6 +70,7 @@ export const GameRoomState = schema({
   currentMythosCardId: t.string().default(""),
   currentMythosIconIndex: t.uint8().default(0),
   lastLocationEncounterCardId: t.string().default(""),
+  currentLocationEncounterCardId: t.string().default(""),
   activeMysteryId: t.string().default(""),
   mysteryProgress: t.uint16().default(0),
   mysteryTarget: t.uint16().default(0),

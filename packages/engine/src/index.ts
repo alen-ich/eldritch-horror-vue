@@ -158,6 +158,7 @@ export interface GameState {
   currentMythosCardId?: string;
   currentMythosIconIndex?: number;
   lastLocationEncounterCardId?: string;
+  currentLocationEncounterCardId?: string;
   resolvedMythosClueCardId?: string;
   activeMysteryId?: string;
   mysteryProgress: number;
@@ -1106,6 +1107,33 @@ function simpleEncounterInstruction(value: unknown): SimpleEncounterInstruction 
   return undefined;
 }
 
+function finishLocationEncounter(
+  state: GameState, playerId: string, cardId: string, deck: LocationEncounterDeckId,
+  instruction: SimpleEncounterInstruction, dice: number[], successes: number, content: GameContent, context: EngineContext,
+): CommandResult {
+  const order = state.privateState.deckOrderById[`encounter:${deck}`];
+  if (!order || order[0] !== cardId) return failure("ENCOUNTER_DECK_MISSING", "The active encounter is no longer on top of its deck.");
+  const effects = instruction.kind === "test" ? (successes ? instruction.pass.effects : instruction.fail.effects) : instruction.effects;
+  let next = structuredClone(state);
+  next.activeTest = undefined;
+  next.pendingDecision = undefined;
+  const events: GameEvent[] = [];
+  for (const effect of effects) {
+    if (effect.amount === 0) continue;
+    const gained = gainCluesFromPool(next, playerId, effect.amount, content, context);
+    if (!gained.ok) return gained;
+    next = gained.state;
+    events.push(...gained.events);
+  }
+  next.privateState.deckOrderById[`encounter:${deck}`] = [...order.slice(1), cardId];
+  next.lastLocationEncounterCardId = cardId;
+  next.currentLocationEncounterCardId = undefined;
+  const advanced = advanceEncounterInvestigator(next, playerId);
+  if (!advanced.ok) return advanced;
+  advanced.state.stateVersion = state.stateVersion;
+  return success(advanced.state, [{ type: "LOCATION_ENCOUNTER_RESOLVED", playerId, cardId, deck, dice, successes }, ...events, ...advanced.events]);
+}
+
 /** Draws and resolves one supported location encounter, then advances the phase order. */
 export function resolveLocationEncounter(state: GameState, playerId: string, deck: LocationEncounterDeckId, content: GameContent, context: EngineContext): CommandResult {
   if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
@@ -1121,8 +1149,8 @@ export function resolveLocationEncounter(state: GameState, playerId: string, dec
   if (!card || !player.locationId) return failure("ENCOUNTER_CONTENT_MISSING", "The top encounter card or location is missing.");
   const section = regionalEncounterDeckByCity[player.locationId] === deck ? player.locationId : content.map.locationTypes[player.locationId];
   const instruction = simpleEncounterInstruction(card.sections?.[section ?? ""]);
-  if (!instruction || player.assetIds.length || (instruction.kind === "test" && player.clues > 0)) {
-    return failure("ENCOUNTER_UNSUPPORTED", "This encounter needs effects, possession bonuses, or Clue rerolls that are not executable yet.");
+  if (!instruction || player.assetIds.length) {
+    return failure("ENCOUNTER_UNSUPPORTED", "This encounter needs effects or possession bonuses that are not executable yet.");
   }
   const investigator = player.investigatorId && content.investigators[player.investigatorId];
   if (instruction.kind === "test" && !investigator) return failure("INVESTIGATOR_CONTENT_MISSING", "Investigator skills are unavailable.");
@@ -1130,22 +1158,19 @@ export function resolveLocationEncounter(state: GameState, playerId: string, dec
     skill: instruction.skill, baseSkill: investigator!.skills[instruction.skill], improvement: player.skillImprovements[instruction.skill], modifier: instruction.modifier,
   }).dicePool }, () => context.rollDie()) : [];
   const successes = countTestSuccesses(dice, conditionSuccessThreshold(player.conditionIds ?? []));
-  const effects = instruction.kind === "test" ? (successes ? instruction.pass.effects : instruction.fail.effects) : instruction.effects;
-  let next = structuredClone(state);
-  const events: GameEvent[] = [];
-  for (const effect of effects) {
-    if (effect.amount === 0) continue;
-    const gained = gainCluesFromPool(next, playerId, effect.amount, content, context);
-    if (!gained.ok) return gained;
-    next = gained.state;
-    events.push(...gained.events);
+  if (instruction.kind === "test" && player.clues > 0) {
+    const next = structuredClone(state);
+    const test: ActiveTest = {
+      id: context.createId(), playerId, skill: instruction.skill, modifier: instruction.modifier, dicePool: dice.length,
+      dice, successes, successThreshold: conditionSuccessThreshold(player.conditionIds ?? []), continuation: "location_encounter",
+      sourceEncounterCardId: cardId, sourceEncounterDeck: deck,
+    };
+    next.currentLocationEncounterCardId = cardId;
+    next.activeTest = test;
+    createTestRerollDecision(next, test, context);
+    return success(next, [{ type: "TEST_ROLLED", testId: test.id, playerId, skill: test.skill, modifier: test.modifier, dice, successes }]);
   }
-  next.privateState.deckOrderById[`encounter:${deck}`] = [...order.slice(1), cardId];
-  next.lastLocationEncounterCardId = cardId;
-  const advanced = advanceEncounterInvestigator(next, playerId);
-  if (!advanced.ok) return advanced;
-  advanced.state.stateVersion = state.stateVersion;
-  return success(advanced.state, [{ type: "LOCATION_ENCOUNTER_RESOLVED", playerId, cardId, deck, dice, successes }, ...events, ...advanced.events]);
+  return finishLocationEncounter(state, playerId, cardId, deck, instruction, dice, successes, content, context);
 }
 
 /** Called by verified effects, never exposed as a client command. */
@@ -1544,7 +1569,21 @@ export function executeCommand(
         );
       }
       if (selectedDie && actor.clues > 0) createTestRerollDecision(next, activeTest, context);
-      else events.push(...finishSkillTest(next, activeTest, content, context));
+      else if (activeTest.continuation === "location_encounter") {
+        const cardId = activeTest.sourceEncounterCardId;
+        const deck = activeTest.sourceEncounterDeck;
+        const player = next.players.find(candidate => candidate.id === actorPlayerId);
+        const card = content.locationEncounters?.find(candidate => candidate.id === cardId && candidate.deck === deck);
+        const section = player?.locationId && deck ? (regionalEncounterDeckByCity[player.locationId] === deck ? player.locationId : content.map.locationTypes[player.locationId]) : undefined;
+        const instruction = simpleEncounterInstruction(card?.sections?.[section ?? ""]);
+        if (!cardId || !deck || !instruction || next.currentLocationEncounterCardId !== cardId) {
+          return failure("ENCOUNTER_CONTENT_MISSING", "The active encounter test is missing its card or section.");
+        }
+        const resolved = finishLocationEncounter(next, actorPlayerId, cardId, deck, instruction, [...activeTest.dice], activeTest.successes, content, context);
+        if (!resolved.ok) return resolved;
+        resolved.state.stateVersion = state.stateVersion;
+        return success(resolved.state, [...events, { type: "TEST_RESOLVED", testId: activeTest.id, playerId: actorPlayerId, successes: activeTest.successes, continuation: "location_encounter" }, ...resolved.events]);
+      } else events.push(...finishSkillTest(next, activeTest, content, context));
       return success(next, events);
     }
     if (decision.continuation === "condition_rest_recovery") {

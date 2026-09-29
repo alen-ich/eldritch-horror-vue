@@ -83,8 +83,10 @@ export interface ActiveTest {
   dice: number[];
   successes: number;
   successThreshold: number;
-  continuation: "acquire_assets" | "condition_action" | "condition_reckoning";
+  continuation: "acquire_assets" | "condition_action" | "condition_reckoning" | "location_encounter";
   sourceConditionId?: string;
+  sourceEncounterCardId?: string;
+  sourceEncounterDeck?: "general" | "america" | "europe" | "asia_australia";
 }
 
 export interface PendingDecisionSummary {
@@ -197,6 +199,7 @@ export interface PublicGameState {
   ancientOneId?: AncientOneId;
   currentMythosCardId?: string;
   lastLocationEncounterCardId?: string;
+  currentLocationEncounterCardId?: string;
   activeMysteryId?: string;
   mysteryProgress: number;
   mysteryTarget: number;

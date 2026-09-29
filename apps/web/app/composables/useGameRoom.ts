@@ -49,6 +49,7 @@ interface ClientGameState {
   ancientOneId?: string
   activeMysteryId?: string
   lastLocationEncounterCardId?: string
+  currentLocationEncounterCardId?: string
   mysteryProgress?: number
   mysteryTarget?: number
   completedMysteryIds?: string
@@ -95,6 +96,7 @@ const phase = ref('lobby')
 const ancientOneId = ref('')
 const activeMysteryId = ref('')
 const lastLocationEncounterCardId = ref('')
+const currentLocationEncounterCardId = ref('')
 const mysteryProgress = ref(0)
 const mysteryTarget = ref(0)
 const completedMysteryIds = ref<string[]>([])
@@ -131,6 +133,7 @@ export function useGameRoom() {
     ancientOneId.value = state.ancientOneId ?? ''
     activeMysteryId.value = state.activeMysteryId ?? ''
     lastLocationEncounterCardId.value = state.lastLocationEncounterCardId ?? ''
+    currentLocationEncounterCardId.value = state.currentLocationEncounterCardId ?? ''
     mysteryProgress.value = state.mysteryProgress ?? 0
     mysteryTarget.value = state.mysteryTarget ?? 0
     completedMysteryIds.value = state.completedMysteryIds ? state.completedMysteryIds.split(',') : []
@@ -262,7 +265,7 @@ export function useGameRoom() {
     investigatorLifecycle: readonly(investigatorLifecycle),
     doom: readonly(doom), omen: readonly(omen),
     tradeOffer: readonly(tradeOffer),
-    players: readonly(players), stateVersion: readonly(stateVersion), phase: readonly(phase), ancientOneId: readonly(ancientOneId), activeMysteryId: readonly(activeMysteryId), lastLocationEncounterCardId: readonly(lastLocationEncounterCardId), mysteryProgress: readonly(mysteryProgress), mysteryTarget: readonly(mysteryTarget), completedMysteryIds: readonly(completedMysteryIds), gameResult: readonly(gameResult), activePlayerId: readonly(activePlayerId),
+    players: readonly(players), stateVersion: readonly(stateVersion), phase: readonly(phase), ancientOneId: readonly(ancientOneId), activeMysteryId: readonly(activeMysteryId), lastLocationEncounterCardId: readonly(lastLocationEncounterCardId), currentLocationEncounterCardId: readonly(currentLocationEncounterCardId), mysteryProgress: readonly(mysteryProgress), mysteryTarget: readonly(mysteryTarget), completedMysteryIds: readonly(completedMysteryIds), gameResult: readonly(gameResult), activePlayerId: readonly(activePlayerId),
     turnNumber: readonly(turnNumber), actionsRemaining: readonly(actionsRemaining), performedActions: readonly(performedActions), usedConditionActionIds: readonly(usedConditionActionIds), reserveAssetIds: readonly(reserveAssetIds), assetDiscardIds: readonly(assetDiscardIds), boardClues: readonly(boardClues), activeTest: readonly(activeTest), pendingDecision: readonly(pendingDecision), playerId: readonly(playerId), roomId: readonly(roomId),
     status: readonly(status), errorMessage: readonly(errorMessage), createGame, joinGame, reconnect, send
   }
