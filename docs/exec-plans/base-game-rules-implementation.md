@@ -34,6 +34,7 @@ Last updated: 2026-09-29
 - The Visions of Hypnos Blessed reverse now gains physical Clues from the finite private supply, including discard recycling; its previous counter-only grant has been removed.
 - The internal Mythos draw now resolves the first Clue icon on blue Rumor cards in the same atomic transition. Green cards and remaining Rumor icons still await the ordered Mythos sequencer; no client draw command is exposed.
 - Green and yellow Mythos draws now also resolve their first printed Advance Omen icon atomically; unsupported awakening leaves the private deck untouched. Later icons and card effects remain unimplemented.
+- A persisted Mythos icon cursor now tracks the first resolved icon and rejects early green-card Clue spawning. Later icon handlers remain to be implemented before a live Mythos command is safe.
 
 ### Current verification evidence
 

@@ -155,6 +155,7 @@ export interface GameState {
   leadInvestigatorId?: string;
   ancientOneId?: AncientOneId;
   currentMythosCardId?: string;
+  currentMythosIconIndex?: number;
   resolvedMythosClueCardId?: string;
   activeMysteryId?: string;
   mysteryProgress: number;
@@ -677,6 +678,9 @@ export function spawnMythosClues(state: GameState, content: GameContent, context
   if (state.resolvedMythosClueCardId === state.currentMythosCardId) return failure("MYTHOS_CARD_ACTIVE", "This card's Clue icon has already resolved.");
   const card = content.mythosCards?.find(candidate => candidate.id === state.currentMythosCardId);
   if (!card?.icons?.some(icon => icon.type === "spawn_clues")) return failure("MYTHOS_CONTENT_MISSING", "The revealed card has no verified Clue icon.");
+  if (card.icons.findIndex(icon => icon.type === "spawn_clues") !== (state.currentMythosIconIndex ?? 0)) {
+    return failure("MYTHOS_CARD_ACTIVE", "Resolve preceding Mythos icons first.");
+  }
   const count = content.referenceCards?.find(reference => reference.playerCount === state.players.length)?.spawnClues;
   if (!count || !Number.isSafeInteger(count)) return failure("MYTHOS_CONTENT_MISSING", "The Clue icon count is missing from the reference card.");
   let next = structuredClone(state);
@@ -689,6 +693,7 @@ export function spawnMythosClues(state: GameState, content: GameContent, context
     events.push(...spawned.events);
   }
   next.resolvedMythosClueCardId = state.currentMythosCardId;
+  next.currentMythosIconIndex = (state.currentMythosIconIndex ?? 0) + 1;
   next.stateVersion = state.stateVersion;
   return success(next, events);
 }
@@ -862,6 +867,7 @@ export function drawMythosCard(state: GameState, content: GameContent, context?:
   if (card.color === "blue" && !context) return failure("RANDOM_INPUT_REQUIRED", "The Clue icon requires server randomness.");
   const next = structuredClone(state);
   next.currentMythosCardId = next.privateState.deckOrderById.mythos!.shift();
+  next.currentMythosIconIndex = 0;
   if (card.color === "blue") {
     const spawned = spawnMythosClues(next, content, context!);
     if (!spawned.ok) return spawned;
@@ -870,6 +876,7 @@ export function drawMythosCard(state: GameState, content: GameContent, context?:
   }
   const advanced = advanceOmen(next, content);
   if (!advanced.ok) return advanced;
+  advanced.state.currentMythosIconIndex = 1;
   advanced.state.stateVersion = state.stateVersion;
   return success(advanced.state, [{ type: "MYTHOS_CARD_REVEALED", cardId: topId }, ...advanced.events]);
 }

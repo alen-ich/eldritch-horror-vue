@@ -35,4 +35,6 @@ The pure Omen kernel now models the board's four printed spaces in clockwise ord
 
 The internal Clue-icon step now uses the revealed card's verified icon and the reference-card count for the current player count. It places opaque board markers through the physical Clue pool, stops at the component limit, and rejects a second resolution for the same card. It remains disconnected from the live phase until a sequencer can enforce the printed order (especially the preceding icons on green cards).
 
+The room now persists a printed-icon cursor. Drawing a card advances it past the first resolved icon; the Clue step rejects a green card while Monster Surge is still next, and advances the cursor only after successful spawning. Other icon handlers must use the same cursor before the room can expose the Mythos phase.
+
 An internal Mythos-only Omen transition now reads the public active Gates, moves one space clockwise, and reduces Doom for matching symbols. Azathoth's Eldritch tokens on green also advance Doom, with its immediate loss at zero. Awakening for the other three Ancient Ones remains explicitly unsupported, so their Doom cannot silently cross zero. The transition now resolves as the first icon of a green or yellow revealed Mythos card; the room still cannot initiate a live draw.

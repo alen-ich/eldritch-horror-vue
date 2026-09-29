@@ -933,6 +933,7 @@ describe("private Mythos draw", () => {
     if (!drawn.ok) return;
     expect(drawn.state.currentMythosCardId).toBe("mythos_green_01");
     expect(drawn.state.omen).toBe(1);
+    expect(drawn.state.currentMythosIconIndex).toBe(1);
     expect(drawn.state.privateState.deckOrderById.mythos).toEqual(["mythos_yellow_02"]);
     expect(before.privateState.deckOrderById.mythos).toHaveLength(2);
     expect(JSON.stringify(projectPublicState(drawn.state))).not.toContain("mythos_yellow_02");

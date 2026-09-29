@@ -15,3 +15,5 @@ The web client now reads the room's public opaque board markers and draws the co
 An internal Mythos Clue-icon transition now reads the revealed card's verified icon and the player-count reference card, spawns that many Clues atomically (up to the physical component limit), and records that this card's Clue icon resolved so a retry cannot spawn duplicates. It is not exposed as a standalone client action: the shared Mythos sequencer must enforce preceding icons and invoke it at the printed position.
 
 For blue Rumor cards, Spawn Clues is the first icon, so the internal Mythos draw now resolves it atomically with the reveal. Green cards still require ordered Omen and Monster Surge steps before their Clue icon; neither the draw nor the remaining icons are exposed as live room commands yet.
+
+The persisted Mythos icon cursor now prevents the Clue step from running early on green cards. A blue card's draw advances that cursor after spawning; duplicate or out-of-order calls do not change the board.

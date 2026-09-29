@@ -148,6 +148,7 @@ describe("Mythos Clue icon", () => {
     expect(result.events.map(event => event.type)).toEqual(["MYTHOS_CARD_REVEALED", "CLUE_SPAWNED", "CLUE_SPAWNED"]);
     expect(result.state.currentMythosCardId).toBe("mythos_blue_01");
     expect(result.state.resolvedMythosClueCardId).toBe("mythos_blue_01");
+    expect(result.state.currentMythosIconIndex).toBe(1);
     expect(result.state.privateState.deckOrderById.mythos).toEqual([]);
     expect(result.state.stateVersion).toBe(before.stateVersion + 1);
     expect(before.privateState.deckOrderById.mythos).toEqual(["mythos_blue_01"]);
@@ -170,5 +171,19 @@ describe("Mythos Clue icon", () => {
     before.players = ["a", "b", "c"].map(id => ({ id, clues: 0, assetIds: [], skillImprovements: {} }));
     expect(spawnMythosClues(before, { ...mythosContent, mythosCards: [] }, createDeterministicEngineContext({}))).toMatchObject({ ok: false, error: { code: "MYTHOS_CONTENT_MISSING" } });
     expect(before.boardClues).toEqual([]);
+  });
+
+  it("blocks a green card's Clue icon until preceding icons are resolved", () => {
+    const before = state();
+    before.currentMythosCardId = "mythos_green_01";
+    before.currentMythosIconIndex = 1;
+    before.players = ["a", "b", "c"].map(id => ({ id, clues: 0, assetIds: [], skillImprovements: {} }));
+    const greenContent: GameContent = { ...mythosContent,
+      mythosCards: [{ id: "mythos_green_01", color: "green", icons: [{ type: "advance_omen" }, { type: "monster_surge" }, { type: "spawn_clues" }] }],
+    };
+    expect(spawnMythosClues(before, greenContent, createDeterministicEngineContext({})))
+      .toMatchObject({ ok: false, error: { code: "MYTHOS_CARD_ACTIVE" } });
+    expect(before.boardClues).toEqual([]);
+    expect(before.currentMythosIconIndex).toBe(1);
   });
 });
