@@ -219,6 +219,7 @@ export type RuleErrorCode =
   | "CONDITION_ACTION_INVALID" | "CONDITION_RESTRICTED"
   | "CONDITION_CONTENT_MISSING" | "CONDITION_UNAVAILABLE" | "CONDITION_NOT_HELD" | "CONDITION_EFFECT_UNSUPPORTED"
   | "INVALID_COMBAT" | "MONSTER_CONTENT_MISSING" | "MONSTER_EFFECT_UNSUPPORTED" | "MONSTER_UNAVAILABLE"
+  | "GATE_UNAVAILABLE" | "GATE_CONTENT_MISSING"
   | "INVALID_DEFEAT" | "INVESTIGATOR_DEFEATED" | "INVALID_DAMAGE"
   | "INVALID_TRADE"
   | "INVESTIGATOR_DELAYED"
@@ -588,6 +589,30 @@ export function spawnMonsterFromCup(state: GameState, spawnLocationId: LocationI
   next.monsters = [...(next.monsters ?? []), { id: monsterInstanceId, monsterId, locationId, damage: 0 }];
   next.monsterLocationIds = [...new Set(next.monsters.map(monster => monster.locationId))];
   events.unshift({ type: "MONSTER_SPAWNED", monsterInstanceId, monsterId, locationId, spawnLocationId });
+  return success(next, events);
+}
+
+/** Draw the top physical Gate, then resolve its required Monster spawn atomically. */
+export function openGateFromStack(state: GameState, content: GameContent, context: EngineContext): CommandResult {
+  if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
+  if (state.phase === "lobby") return failure("WRONG_PHASE", "Gates cannot open before setup.");
+  const gateId = state.privateState.deckOrderById.gates?.[0];
+  if (!gateId) return failure("GATE_UNAVAILABLE", "No Gate remains in the stack.");
+  const gate = content.gates?.find(candidate => candidate.id === gateId);
+  if (!gate || !content.map.locationTypes[gate.locationId] || state.activeGateIds?.includes(gateId)) {
+    return failure("GATE_CONTENT_MISSING", "The next Gate is missing, misplaced, or already active.");
+  }
+  let next = structuredClone(state);
+  next.privateState.deckOrderById.gates.shift();
+  const events: GameEvent[] = [{ type: "GATE_OPENED", gateId, locationId: gate.locationId }];
+  if (next.privateState.tokenPoolById.monsters?.length) {
+    const spawned = spawnMonsterFromCup(next, gate.locationId, content, context);
+    if (!spawned.ok) return spawned;
+    next = spawned.state;
+    next.stateVersion = state.stateVersion;
+    events.push(...spawned.events);
+  }
+  next.activeGateIds = [...(next.activeGateIds ?? []), gateId];
   return success(next, events);
 }
 
