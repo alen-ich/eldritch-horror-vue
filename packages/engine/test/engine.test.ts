@@ -126,6 +126,39 @@ describe("encounter phase ordering and legal location decks", () => {
   });
 });
 
+describe("Mythos to next round handoff", () => {
+  it("lets only the Lead begin a fresh Action round after replacement timing", () => {
+    const game = startedGame();
+    game.phase = "mythos";
+    game.leadInvestigatorId = "guest";
+    game.activePlayerId = "guest";
+    game.turnNumber = 2;
+    game.replacementWindow = true;
+    game.usedConditionActionIds = ["condition_action:guest:c1"];
+    expect(executeCommand(game, "host", { type: "BEGIN_NEXT_ROUND" }, testContent)).toMatchObject({ ok: false, error: { code: "WRONG_PHASE" } });
+    const started = executeCommand(game, "guest", { type: "BEGIN_NEXT_ROUND" }, testContent);
+    if (!started.ok) throw new Error(started.error.message);
+    expect(started.state).toMatchObject({ phase: "action", activePlayerId: "guest", turnNumber: 3, actionsRemaining: 2, replacementWindow: false });
+    expect(started.state.usedConditionActionIds).toEqual([]);
+    expect(executeCommand(started.state, "guest", { type: "BEGIN_NEXT_ROUND" }, testContent)).toMatchObject({ ok: false, error: { code: "WRONG_PHASE" } });
+    const next = executeCommand(started.state, "guest", { type: "END_ACTIONS" }, testContent);
+    if (!next.ok) throw new Error(next.error.message);
+    expect(next.state.activePlayerId).toBe("host");
+  });
+
+  it("does not skip an unresolved card or permit a next round without replacement timing", () => {
+    const game = startedGame();
+    game.phase = "mythos";
+    game.replacementWindow = true;
+    game.currentMythosCardId = "mythos_green_04";
+    expect(executeCommand(game, "host", { type: "BEGIN_NEXT_ROUND" }, testContent)).toMatchObject({ ok: false, error: { code: "WRONG_PHASE" } });
+    game.currentMythosCardId = undefined;
+    game.replacementWindow = false;
+    expect(executeCommand(game, "host", { type: "BEGIN_NEXT_ROUND" }, testContent)).toMatchObject({ ok: false, error: { code: "WRONG_PHASE" } });
+    expect(game.turnNumber).toBe(1);
+  });
+});
+
 describe("Condition recovery during Rest", () => {
   const conditionContent: GameContent = { ...testContent, conditions: [
     { id: "condition_leg_injury_01", kind: "leg_injury" },

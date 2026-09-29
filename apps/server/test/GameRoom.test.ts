@@ -107,6 +107,11 @@ describe("authoritative game room", () => {
     assert.equal(room.state.currentMythosCardId, "");
     assert.equal(internal.toEngineState().replacementWindow, true);
     assert.deepEqual(internal.toEngineState().players[0]!.conditionIds, ["condition_blessed_01"]);
+    sendCommand(room, host, { type: "BEGIN_NEXT_ROUND" });
+    await room.waitForMessage(commandMessageType);
+    assert.equal(room.state.phase, "action");
+    assert.equal(room.state.turnNumber, state.turnNumber + 1);
+    assert.equal(internal.toEngineState().replacementWindow, false);
   });
 
   it("resolves a supported location encounter through the room and leaves unsupported cards private", async () => {

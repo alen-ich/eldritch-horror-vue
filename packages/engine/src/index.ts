@@ -1037,28 +1037,26 @@ function routeBetween(map: GameMap, source: LocationId, target: LocationId) {
 }
 
 function advanceActionInvestigator(state: GameState, actorIndex: number, events: GameEvent[]): void {
-  const nextIndex = actorIndex + 1;
-  if (nextIndex < state.players.length) {
-    const player = state.players[nextIndex]!;
+  const leadIndex = state.players.findIndex(player => player.id === state.leadInvestigatorId);
+  const ordered = [...state.players.slice(Math.max(0, leadIndex)), ...state.players.slice(0, Math.max(0, leadIndex))];
+  const activeIndex = ordered.findIndex(player => player.id === state.players[actorIndex]?.id);
+  for (const player of ordered.slice(activeIndex + 1)) {
     if (player.defeated || player.eliminated) {
-      advanceActionInvestigator(state, nextIndex, events);
-      return;
+      continue;
     }
     if (player.delayed) {
       player.delayed = false;
       events.push({ type: "INVESTIGATOR_STOOD_UP", playerId: player.id });
-      advanceActionInvestigator(state, nextIndex, events);
-      return;
+      continue;
     }
-    state.activePlayerId = state.players[nextIndex]!.id;
+    state.activePlayerId = player.id;
     state.actionsRemaining = 2;
     state.performedActions = [];
     return;
   }
   state.phase = "encounter";
   state.encounteredMonsterInstanceIds = [];
-  const leadIndex = state.players.findIndex(player => player.id === state.leadInvestigatorId);
-  state.activePlayerId = [...state.players.slice(Math.max(0, leadIndex)), ...state.players.slice(0, Math.max(0, leadIndex))]
+  state.activePlayerId = ordered
     .find(player => !player.defeated && !player.eliminated)?.id;
   state.actionsRemaining = 0;
   state.performedActions = [];
@@ -1472,6 +1470,25 @@ export function executeCommand(
     if (state.phase !== "mythos" || actorPlayerId !== state.leadInvestigatorId) return failure("WRONG_PHASE", "Only the Lead Investigator can advance the Mythos phase.");
     if (!context) return failure("RANDOM_INPUT_REQUIRED", "Mythos resolution requires server randomness.");
     return advanceMythosIcon(state, content, context);
+  }
+  if (command.type === "BEGIN_NEXT_ROUND") {
+    if (state.phase !== "mythos" || state.leadInvestigatorId !== actorPlayerId || !state.replacementWindow || state.currentMythosCardId || state.pendingDecision || state.pendingDefeat || state.activeTest) {
+      return failure("WRONG_PHASE", "Only the Lead Investigator can begin the next round after Mythos and replacement choices.");
+    }
+    const nextRound = structuredClone(state);
+    const leadIndex = nextRound.players.findIndex(player => player.id === nextRound.leadInvestigatorId);
+    const first = [...nextRound.players.slice(leadIndex), ...nextRound.players.slice(0, leadIndex)]
+      .find(player => !player.defeated && !player.eliminated);
+    if (!first) return failure("INVESTIGATOR_DEFEATED", "No investigator remains to begin the round.");
+    nextRound.phase = "action";
+    nextRound.activePlayerId = first.id;
+    nextRound.turnNumber += 1;
+    nextRound.actionsRemaining = 2;
+    nextRound.performedActions = [];
+    nextRound.usedConditionActionIds = [];
+    nextRound.replacementWindow = false;
+    nextRound.encounteredMonsterInstanceIds = [];
+    return success(nextRound, [{ type: "PHASE_ADVANCED", phase: "action", activePlayerId: first.id }]);
   }
 
   const next: GameState = {

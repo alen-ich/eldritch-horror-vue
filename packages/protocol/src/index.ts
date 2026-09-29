@@ -117,6 +117,7 @@ export const gameCommandSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("USE_CONDITION_ACTION"), targetPlayerId: z.string().min(1), conditionKind: z.enum(conditionKindIds) }).strict(),
   z.object({ type: z.literal("END_ACTIONS") }).strict(),
   z.object({ type: z.literal("ADVANCE_MYTHOS") }).strict(),
+  z.object({ type: z.literal("BEGIN_NEXT_ROUND") }).strict(),
   z.object({ type: z.literal("RESOLVE_LOCATION_ENCOUNTER"), deck: z.enum(["general", "america", "europe", "asia_australia"]) }).strict(),
   z.object({ type: z.literal("FIGHT_MONSTER"), monsterInstanceId: z.string().min(1) }).strict(),
   z.object({
