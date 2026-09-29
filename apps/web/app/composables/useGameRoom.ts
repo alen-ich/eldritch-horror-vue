@@ -59,6 +59,7 @@ interface ClientGameState {
   usedConditionActionIds?: string
   reserveAssetIds?: string
   assetDiscardIds?: string
+  boardClues?: string
   activeTest?: {
     id: string
     playerId: string
@@ -105,6 +106,7 @@ const performedActions = ref<string[]>([])
 const usedConditionActionIds = ref<string[]>([])
 const reserveAssetIds = ref<string[]>([])
 const assetDiscardIds = ref<string[]>([])
+const boardClues = ref<{ id: string; locationId: string }[]>([])
 const activeTest = ref<ActiveTest>()
 const tradeOffer = ref<TradeOffer>()
 const investigatorLifecycle = ref<{ pendingDefeat?: { playerId: string; cityIds: string[]; causes: ('health' | 'sanity')[] }; replacementWindow?: boolean; defeatedInvestigators?: { investigatorId: string }[]; awakened?: boolean }>({})
@@ -139,6 +141,7 @@ export function useGameRoom() {
     usedConditionActionIds.value = state.usedConditionActionIds ? state.usedConditionActionIds.split(',') : []
     reserveAssetIds.value = state.reserveAssetIds ? state.reserveAssetIds.split(',') : []
     assetDiscardIds.value = state.assetDiscardIds ? state.assetDiscardIds.split(',') : []
+    boardClues.value = JSON.parse(state.boardClues ?? '[]') as { id: string; locationId: string }[]
     activeTest.value = state.activeTest ? {
       ...state.activeTest,
       skill: state.activeTest.skill as ActiveTest['skill'],
@@ -257,7 +260,7 @@ export function useGameRoom() {
     doom: readonly(doom), omen: readonly(omen),
     tradeOffer: readonly(tradeOffer),
     players: readonly(players), stateVersion: readonly(stateVersion), phase: readonly(phase), ancientOneId: readonly(ancientOneId), activeMysteryId: readonly(activeMysteryId), mysteryProgress: readonly(mysteryProgress), mysteryTarget: readonly(mysteryTarget), completedMysteryIds: readonly(completedMysteryIds), gameResult: readonly(gameResult), activePlayerId: readonly(activePlayerId),
-    turnNumber: readonly(turnNumber), actionsRemaining: readonly(actionsRemaining), performedActions: readonly(performedActions), usedConditionActionIds: readonly(usedConditionActionIds), reserveAssetIds: readonly(reserveAssetIds), assetDiscardIds: readonly(assetDiscardIds), activeTest: readonly(activeTest), pendingDecision: readonly(pendingDecision), playerId: readonly(playerId), roomId: readonly(roomId),
+    turnNumber: readonly(turnNumber), actionsRemaining: readonly(actionsRemaining), performedActions: readonly(performedActions), usedConditionActionIds: readonly(usedConditionActionIds), reserveAssetIds: readonly(reserveAssetIds), assetDiscardIds: readonly(assetDiscardIds), boardClues: readonly(boardClues), activeTest: readonly(activeTest), pendingDecision: readonly(pendingDecision), playerId: readonly(playerId), roomId: readonly(roomId),
     status: readonly(status), errorMessage: readonly(errorMessage), createGame, joinGame, reconnect, send
   }
 }

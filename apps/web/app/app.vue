@@ -69,6 +69,7 @@ const legalDestinations = computed(() => new Set(
     })
 ))
 const inspectedLocation = computed(() => inspectedLocationId.value ? locationById[inspectedLocationId.value] : undefined)
+const inspectedClueCount = computed(() => game.boardClues.value.filter(clue => clue.locationId === inspectedLocationId.value).length)
 const myAssetIds = computed(() => me.value?.assetIds ? me.value.assetIds.split(',') : [])
 const ownedAssets = computed(() => myAssetIds.value.map((id) => assetById[id]).filter((asset): asset is AssetCardData => Boolean(asset)))
 const ownedConditions = computed(() => (me.value?.conditionIds ? me.value.conditionIds.split(',') : [])
@@ -415,12 +416,15 @@ async function copyInvite() {
               <title>{{ locationItem.name }} · {{ locationItem.type }} space</title>
               <circle :cx="locationItem.x" :cy="locationItem.y" :r="locationItem.name.length > 3 ? 34 : 24"/>
             </g>
+            <g v-for="(clue, index) in game.boardClues.value" :key="clue.id" class="board-clue" :transform="`translate(${(locationById[clue.locationId as LocationId]?.x ?? 0) + 40 + (game.boardClues.value.slice(0, index).filter(other => other.locationId === clue.locationId).length % 3) * 11}, ${(locationById[clue.locationId as LocationId]?.y ?? 0) + 28})`" aria-hidden="true" pointer-events="none">
+              <image href="/tokens/clues/back.webp" x="-19" y="-19" width="38" height="38" />
+            </g>
             <g v-for="(player, index) in game.players.value" :key="player.id" class="token" :transform="`translate(${locationById[player.locationId as LocationId]?.x + index * 26 - 13 || 0}, ${locationById[player.locationId as LocationId]?.y - 44 || 0})`">
               <circle r="20"/><text y="7">{{ player.displayName.slice(0, 1).toUpperCase() }}</text>
             </g>
           </svg>
           <div class="location-inspector" aria-live="polite">
-            <template v-if="inspectedLocation"><div><span class="chapter">{{ inspectedLocation.type }} space</span><strong>{{ inspectedLocation.name }}</strong></div><p>{{ inspectedRoutes.length }} connections · {{ [...new Set(inspectedRoutes.map(route => route.type))].join(', ') }}</p><button v-if="legalDestinations.has(inspectedLocation.id) && isMyTurn" class="move-here" @click="move(inspectedLocation.id)">Move here</button><button class="inspector-close" aria-label="Close location details" @click="inspectedLocationId = undefined">×</button></template>
+            <template v-if="inspectedLocation"><div><span class="chapter">{{ inspectedLocation.type }} space</span><strong>{{ inspectedLocation.name }}</strong></div><p>{{ inspectedRoutes.length }} connections · {{ [...new Set(inspectedRoutes.map(route => route.type))].join(', ') }}<span v-if="inspectedClueCount"> · {{ inspectedClueCount }} Clue{{ inspectedClueCount === 1 ? '' : 's' }}</span></p><button v-if="legalDestinations.has(inspectedLocation.id) && isMyTurn" class="move-here" @click="move(inspectedLocation.id)">Move here</button><button class="inspector-close" aria-label="Close location details" @click="inspectedLocationId = undefined">×</button></template>
             <p v-else>Focus or hover a location to inspect its connections.</p>
           </div>
           <div class="action-controls"><button :disabled="!canUseNormalActions || game.performedActions.value.includes('rest')" @click="game.send({ type: 'REST' })">Rest</button><button :disabled="!canUseNormalActions || game.performedActions.value.includes('prepare_travel')" @click="game.send({ type: 'PREPARE_TRAVEL', ticketType: 'train' })">+ Train</button><button :disabled="!canUseNormalActions || game.performedActions.value.includes('prepare_travel')" @click="game.send({ type: 'PREPARE_TRAVEL', ticketType: 'ship' })">+ Ship</button><button :disabled="!canUseNormalActions || game.performedActions.value.includes('acquire_assets')" @click="game.send({ type: 'ACQUIRE_ASSETS' })">Acquire Assets</button><button v-for="localAction in localConditionActions" :key="`${localAction.ownerId}-${localAction.id}`" :disabled="!isMyTurn" @click="game.send({ type: 'USE_CONDITION_ACTION', targetPlayerId: localAction.ownerId, conditionKind: localAction.kind })">Resolve {{ localAction.name }} · {{ localAction.owner }}</button><button class="end-turn" :disabled="!isMyTurn" @click="game.send({ type: 'END_ACTIONS' })">End actions</button></div>

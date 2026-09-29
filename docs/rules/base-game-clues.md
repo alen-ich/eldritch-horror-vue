@@ -7,3 +7,5 @@ The user-supplied `source-assets/clues/Images (2).rar` contains 36 individual 51
 The executable Delusions reverse returns discarded physical Clues to the faceup discard pile, including any Clue spent for a test reroll before the reverse resolves. Other Condition effects still need physical-token integration.
 
 Replacing a defeated investigator now draws their starting Clues from the remaining private pool, recycling and shuffling the discard pile if needed. Physical Clues on the defeated investigator's sheet stay set aside; replacement never duplicates them. A shortage grants only the available tokens.
+
+The web client now reads the room's public opaque board markers and draws the common Clue back near each marked location. The location inspector shows the count. Physical face IDs remain private; the markers do not yet offer an encounter command.
