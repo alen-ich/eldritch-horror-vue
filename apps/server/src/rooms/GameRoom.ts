@@ -1,6 +1,6 @@
 import { randomInt, randomUUID } from "node:crypto";
 import { Client, CloseCode, Room } from "colyseus";
-import { baseGameAncientOnes, baseGameMythosCards, baseGameAssets, baseGameClues, baseGameConditions, baseGameGates, baseGameInvestigators, baseGameMap, baseGameMysteries, baseGameMonsters, baseGameReferenceCards, baseGameScannedLocationEncounters, locationEncounterDecks } from "@eldritch/content";
+import { baseGameAncientOnes, baseGameMythosCards, baseGameAssets, baseGameClues, baseGameConditions, baseGameGates, baseGameInvestigators, baseGameMap, baseGameMysteries, baseGameMonsters, baseGameReferenceCards, baseGameScannedLocationEncounters, baseGameLocationEncounterRules, locationEncounterDecks } from "@eldritch/content";
 import { createDeterministicEngineContext, executeCommand, publicConditionId, type EngineContext, type GameContent, type GameState, type PrivateGameState } from "@eldritch/engine";
 import {
   commandErrorMessageType,
@@ -45,7 +45,7 @@ function serverMythosContext(): EngineContext {
   };
 }
 const baseGameContent: GameContent = {
-  locationEncounters: baseGameScannedLocationEncounters.map(({ id, deck }) => ({ id, deck })),
+  locationEncounters: baseGameScannedLocationEncounters.map(({ id, deck }) => ({ id, deck, sections: baseGameLocationEncounterRules.find(card => card.id === id)?.sections })),
   gates: baseGameGates.map(({ id, omenSymbol, locationId }) => ({ id, omenSymbol, locationId })),
   clues: baseGameClues.map(({ id, locationId }) => ({ id, locationId })),
   conditions: baseGameConditions.map(({ id, kind }) => ({ id, kind, backEffect: privateConditionBackEffectById[id] })),
@@ -176,7 +176,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       });
       return;
     }
-    const context = parsed.data.command.type === "ADVANCE_MYTHOS"
+    const context = parsed.data.command.type === "ADVANCE_MYTHOS" || parsed.data.command.type === "RESOLVE_LOCATION_ENCOUNTER"
       ? serverMythosContext()
       : parsed.data.command.type === "START_GAME"
       ? createDeterministicEngineContext({

@@ -40,6 +40,7 @@ Last updated: 2026-09-29
 - A conservative internal yellow Reckoning step now processes single Blessed/Cursed rolls in Lead Investigator order when no higher-priority Ancient One or Monster effect, possession, or multi-Condition choice is present. It refuses unsupported cases before moving the cursor; full Reckoning and live phase invocation remain pending.
 - A guarded `ADVANCE_MYTHOS` room command now dispatches one verified printed icon at a time for a Lead Investigator in Mythos, with server-owned randomness and a hard stop at unmodeled card text. Encounter-to-Mythos phase entry and card completion remain pending.
 - The four location Encounter decks are now shuffled separately into server-private state at setup. Internal helpers derive legal General/Regional deck choices and advance completed encounters from Lead through all surviving seats into Mythos; no public skip command or unverified card resolution is exposed.
+- A guarded room command now draws and resolves a choice-free, supported location Encounter section (initially simple tests and Clue awards), cycles that physical card, and invokes the internal turn continuation. Unsupported effects, possessions, and Clue-reroll opportunities fail before deck consumption; broad encounter coverage and UI remain pending.
 
 ### Current verification evidence
 

@@ -212,7 +212,7 @@ export type ConditionBackEffect =
   | { type: "discard_all_clues_then_discard" };
 
 export interface GameContent {
-  locationEncounters?: readonly { id: string; deck: LocationEncounterDeckId }[];
+  locationEncounters?: readonly { id: string; deck: LocationEncounterDeckId; sections?: Readonly<Record<string, unknown>> }[];
   gates?: readonly { id: string; omenSymbol: "comet" | "constellation" | "eclipse"; locationId: LocationId }[];
   clues?: readonly { id: string; locationId: LocationId }[];
   conditions?: readonly { id: string; kind: string; backEffect?: ConditionBackEffect }[];
@@ -228,6 +228,7 @@ export interface GameContent {
 }
 
 export type RuleErrorCode =
+  | "ENCOUNTER_UNSUPPORTED" | "ENCOUNTER_CONTENT_MISSING" | "ENCOUNTER_DECK_MISSING" | "ENCOUNTER_DECK_ILLEGAL"
   | "MYTHOS_CARD_ACTIVE" | "MYTHOS_DECK_MISSING" | "MYTHOS_CONTENT_MISSING"
   | "MYTHOS_EFFECT_UNSUPPORTED"
   | "CONDITION_ACTION_INVALID" | "CONDITION_RESTRICTED"
@@ -1081,6 +1082,70 @@ export function advanceEncounterInvestigator(state: GameState, playerId: string)
   return success(next, [{ type: "PHASE_ADVANCED", phase: next.phase, activePlayerId: next.activePlayerId }]);
 }
 
+type SimpleEncounterEffect = { kind: "clues"; amount: number };
+type SimpleEncounterInstruction =
+  | { kind: "effects"; effects: SimpleEncounterEffect[] }
+  | { kind: "test"; skill: SkillId; modifier: number; pass: { kind: "effects"; effects: SimpleEncounterEffect[] }; fail: { kind: "effects"; effects: SimpleEncounterEffect[] } };
+
+/** Only atomic, choice-free tests and Clue awards are currently executable. */
+function simpleEncounterInstruction(value: unknown): SimpleEncounterInstruction | undefined {
+  if (!value || typeof value !== "object" || !("kind" in value)) return undefined;
+  if (value.kind === "effects") {
+    if (!("effects" in value) || !Array.isArray(value.effects)
+      || value.effects.some(effect => !effect || effect.kind !== "clues" || !Number.isInteger(effect.amount) || effect.amount < 0)) return undefined;
+    return value as SimpleEncounterInstruction;
+  }
+  if (value.kind === "test" && "skill" in value && "modifier" in value && "pass" in value && "fail" in value
+    && ["lore", "influence", "observation", "strength", "will"].includes(String(value.skill))
+    && Number.isInteger(value.modifier)) {
+    const pass = simpleEncounterInstruction(value.pass);
+    const fail = simpleEncounterInstruction(value.fail);
+    if (pass?.kind === "effects" && fail?.kind === "effects") return { kind: "test", skill: value.skill as SkillId, modifier: value.modifier as number, pass, fail };
+  }
+  return undefined;
+}
+
+/** Draws and resolves one supported location encounter, then advances the phase order. */
+export function resolveLocationEncounter(state: GameState, playerId: string, deck: LocationEncounterDeckId, content: GameContent, context: EngineContext): CommandResult {
+  if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
+  if (state.phase !== "encounter" || state.activePlayerId !== playerId || state.pendingDecision || state.pendingDefeat || state.activeTest) {
+    return failure("WRONG_PHASE", "This investigator cannot resolve a location encounter now.");
+  }
+  if (!legalLocationEncounterDecks(state, playerId, content).includes(deck)) return failure("ENCOUNTER_DECK_ILLEGAL", "That encounter deck is not legal on this space.");
+  const order = state.privateState.deckOrderById[`encounter:${deck}`];
+  if (!order?.length) return failure("ENCOUNTER_DECK_MISSING", "The private encounter deck is unavailable.");
+  const cardId = order[0]!;
+  const card = content.locationEncounters?.find(candidate => candidate.id === cardId && candidate.deck === deck);
+  const player = state.players.find(candidate => candidate.id === playerId)!;
+  if (!card || !player.locationId) return failure("ENCOUNTER_CONTENT_MISSING", "The top encounter card or location is missing.");
+  const section = regionalEncounterDeckByCity[player.locationId] === deck ? player.locationId : content.map.locationTypes[player.locationId];
+  const instruction = simpleEncounterInstruction(card.sections?.[section ?? ""]);
+  if (!instruction || player.assetIds.length || (instruction.kind === "test" && player.clues > 0)) {
+    return failure("ENCOUNTER_UNSUPPORTED", "This encounter needs effects, possession bonuses, or Clue rerolls that are not executable yet.");
+  }
+  const investigator = player.investigatorId && content.investigators[player.investigatorId];
+  if (instruction.kind === "test" && !investigator) return failure("INVESTIGATOR_CONTENT_MISSING", "Investigator skills are unavailable.");
+  const dice = instruction.kind === "test" ? Array.from({ length: calculateDicePool({
+    skill: instruction.skill, baseSkill: investigator!.skills[instruction.skill], improvement: player.skillImprovements[instruction.skill], modifier: instruction.modifier,
+  }).dicePool }, () => context.rollDie()) : [];
+  const successes = countTestSuccesses(dice, conditionSuccessThreshold(player.conditionIds ?? []));
+  const effects = instruction.kind === "test" ? (successes ? instruction.pass.effects : instruction.fail.effects) : instruction.effects;
+  let next = structuredClone(state);
+  const events: GameEvent[] = [];
+  for (const effect of effects) {
+    if (effect.amount === 0) continue;
+    const gained = gainCluesFromPool(next, playerId, effect.amount, content, context);
+    if (!gained.ok) return gained;
+    next = gained.state;
+    events.push(...gained.events);
+  }
+  next.privateState.deckOrderById[`encounter:${deck}`] = [...order.slice(1), cardId];
+  const advanced = advanceEncounterInvestigator(next, playerId);
+  if (!advanced.ok) return advanced;
+  advanced.state.stateVersion = state.stateVersion;
+  return success(advanced.state, [{ type: "LOCATION_ENCOUNTER_RESOLVED", playerId, cardId, deck, dice, successes }, ...events, ...advanced.events]);
+}
+
 /** Called by verified effects, never exposed as a client command. */
 export function delayInvestigator(state: GameState, playerId: string): CommandResult {
   if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
@@ -1301,6 +1366,10 @@ export function executeCommand(
   const actorIndex = state.players.findIndex((player) => player.id === actorPlayerId);
   if (actorIndex < 0) return failure("PLAYER_NOT_FOUND", "The acting player is not in this game.");
   if (state.gameResult) return failure("GAME_ENDED", "The game has already ended.");
+  if (command.type === "RESOLVE_LOCATION_ENCOUNTER") {
+    if (!context) return failure("RANDOM_INPUT_REQUIRED", "Encounter resolution requires server randomness.");
+    return resolveLocationEncounter(state, actorPlayerId, command.deck, content, context);
+  }
   if (command.type === "ADVANCE_MYTHOS") {
     if (state.phase !== "mythos" || actorPlayerId !== state.leadInvestigatorId) return failure("WRONG_PHASE", "Only the Lead Investigator can advance the Mythos phase.");
     if (!context) return failure("RANDOM_INPUT_REQUIRED", "Mythos resolution requires server randomness.");

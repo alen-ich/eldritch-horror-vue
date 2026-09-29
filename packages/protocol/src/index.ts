@@ -115,6 +115,7 @@ export const gameCommandSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("USE_CONDITION_ACTION"), targetPlayerId: z.string().min(1), conditionKind: z.enum(conditionKindIds) }).strict(),
   z.object({ type: z.literal("END_ACTIONS") }).strict(),
   z.object({ type: z.literal("ADVANCE_MYTHOS") }).strict(),
+  z.object({ type: z.literal("RESOLVE_LOCATION_ENCOUNTER"), deck: z.enum(["general", "america", "europe", "asia_australia"]) }).strict(),
   z.object({
     type: z.literal("RESOLVE_DECISION"),
     decisionId: z.string().min(1),
@@ -132,6 +133,7 @@ export const gameCommandMessageSchema = z.object({
 export type GameCommandMessage = z.infer<typeof gameCommandMessageSchema>;
 
 export type GameEvent =
+  | { type: "LOCATION_ENCOUNTER_RESOLVED"; playerId: string; cardId: string; deck: "general" | "america" | "europe" | "asia_australia"; dice: number[]; successes: number }
   | { type: "MYTHOS_CARD_REVEALED"; cardId: string }
   | { type: "CONDITION_BACK_RESOLVED"; playerId: string; conditionId: string; effect: "discard" | "recover_health_and_sanity_then_flip_front" | "gain_clues_then_flip_front" | "become_delayed_then_flip_front" | "discard_all_clues_then_discard" }
   | { type: "CONDITION_RECKONING_ROLLED"; playerId: string; conditionId: string; die: number; discarded: boolean }

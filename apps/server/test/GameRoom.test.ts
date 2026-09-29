@@ -61,6 +61,40 @@ describe("authoritative game room", () => {
     assert.equal(room.state.currentMythosIconIndex, 3);
   });
 
+  it("resolves a supported location encounter through the room and leaves unsupported cards private", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "encounter";
+    state.leadInvestigatorId = state.activePlayerId = state.players[0]!.id;
+    for (const player of state.players) {
+      player.investigatorId = "akachi_onyele";
+      player.locationId = "space_2";
+      player.clues = 0;
+      player.assetIds = [];
+      player.skillImprovements = {};
+      state.privateState.tokenPoolById[`held_clues:${player.id}`] = [];
+    }
+    state.privateState.deckOrderById["encounter:general"] = ["encounter_general_08", "encounter_general_01"];
+    state.privateState.tokenPoolById.clues = ["clue_arkham"];
+    state.privateState.tokenPoolById.clue_discard = [];
+    internal.applyEngineState(state);
+    const denied = guest.waitForMessage(commandErrorMessageType);
+    sendCommand(room, guest, { type: "RESOLVE_LOCATION_ENCOUNTER", deck: "general" });
+    assert.equal((await denied as { code: string }).code, "WRONG_PHASE");
+    sendCommand(room, host, { type: "RESOLVE_LOCATION_ENCOUNTER", deck: "general" });
+    await room.waitForMessage(commandMessageType);
+    assert.equal(room.state.activePlayerId, state.players[1]!.id);
+    assert.deepEqual(internal.toEngineState().privateState.deckOrderById["encounter:general"], ["encounter_general_01", "encounter_general_08"]);
+    assert.ok(!JSON.stringify(room.state).includes("encounter_general_01"));
+    const unsupported = guest.waitForMessage(commandErrorMessageType);
+    sendCommand(room, guest, { type: "RESOLVE_LOCATION_ENCOUNTER", deck: "general" });
+    assert.equal((await unsupported as { code: string }).code, "ENCOUNTER_UNSUPPORTED");
+    assert.equal(room.state.phase, "encounter");
+  });
+
   function sendCommand(
     room: { state: GameRoomState },
     client: { send: (type: string, payload: unknown) => void },
