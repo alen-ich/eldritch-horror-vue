@@ -1038,10 +1038,47 @@ function advanceActionInvestigator(state: GameState, actorIndex: number, events:
     return;
   }
   state.phase = "encounter";
-  state.activePlayerId = state.leadInvestigatorId;
+  const leadIndex = state.players.findIndex(player => player.id === state.leadInvestigatorId);
+  state.activePlayerId = [...state.players.slice(Math.max(0, leadIndex)), ...state.players.slice(0, Math.max(0, leadIndex))]
+    .find(player => !player.defeated && !player.eliminated)?.id;
   state.actionsRemaining = 0;
   state.performedActions = [];
   events.push({ type: "PHASE_ADVANCED", phase: "encounter", activePlayerId: state.activePlayerId });
+}
+
+const regionalEncounterDeckByCity: Readonly<Partial<Record<LocationId, LocationEncounterDeckId>>> = {
+  arkham: "america", san_francisco: "america", buenos_aires: "america",
+  london: "europe", rome: "europe", istanbul: "europe",
+  shanghai: "asia_australia", tokyo: "asia_australia", sydney: "asia_australia",
+};
+
+/** Location deck choices; mandatory combat is not bypassed by this helper. */
+export function legalLocationEncounterDecks(state: GameState, playerId: string, content: GameContent): LocationEncounterDeckId[] {
+  if (state.phase !== "encounter" || state.activePlayerId !== playerId || state.pendingDecision || state.pendingDefeat || state.activeTest) return [];
+  const player = state.players.find(candidate => candidate.id === playerId);
+  if (!player?.locationId || player.defeated || player.eliminated || state.monsters?.some(monster => monster.locationId === player.locationId)) return [];
+  const spaceType = content.map.locationTypes[player.locationId];
+  if (!spaceType) return [];
+  const regional = regionalEncounterDeckByCity[player.locationId];
+  return regional ? ["general", regional] : ["general"];
+}
+
+/** Internal continuation after a fully resolved encounter, never a skip command. */
+export function advanceEncounterInvestigator(state: GameState, playerId: string): CommandResult {
+  if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
+  if (state.phase !== "encounter" || state.activePlayerId !== playerId || state.pendingDecision || state.pendingDefeat || state.activeTest) {
+    return failure("WRONG_PHASE", "Finish the active encounter before advancing.");
+  }
+  if (!state.players.some(player => player.id === playerId)) return failure("PLAYER_NOT_FOUND", "The active investigator is missing.");
+  const next = structuredClone(state);
+  const leadIndex = next.players.findIndex(player => player.id === next.leadInvestigatorId);
+  if (leadIndex < 0) return failure("PLAYER_NOT_FOUND", "The Lead Investigator is missing.");
+  const ordered = [...next.players.slice(leadIndex), ...next.players.slice(0, leadIndex)];
+  const activeIndex = ordered.findIndex(player => player.id === playerId);
+  const following = ordered.slice(activeIndex + 1).find(player => !player.defeated && !player.eliminated);
+  if (following) next.activePlayerId = following.id;
+  else { next.phase = "mythos"; next.activePlayerId = next.leadInvestigatorId; }
+  return success(next, [{ type: "PHASE_ADVANCED", phase: next.phase, activePlayerId: next.activePlayerId }]);
 }
 
 /** Called by verified effects, never exposed as a client command. */

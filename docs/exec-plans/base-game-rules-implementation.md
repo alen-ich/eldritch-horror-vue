@@ -39,6 +39,7 @@ Last updated: 2026-09-29
 - The third yellow icon, Spawn Gates, now has an internal atomic handler using the player-count Reference card. It is cursor-gated after Reckoning and stops at the finite Gate stack; Reckoning and live phase invocation remain pending.
 - A conservative internal yellow Reckoning step now processes single Blessed/Cursed rolls in Lead Investigator order when no higher-priority Ancient One or Monster effect, possession, or multi-Condition choice is present. It refuses unsupported cases before moving the cursor; full Reckoning and live phase invocation remain pending.
 - A guarded `ADVANCE_MYTHOS` room command now dispatches one verified printed icon at a time for a Lead Investigator in Mythos, with server-owned randomness and a hard stop at unmodeled card text. Encounter-to-Mythos phase entry and card completion remain pending.
+- The four location Encounter decks are now shuffled separately into server-private state at setup. Internal helpers derive legal General/Regional deck choices and advance completed encounters from Lead through all surviving seats into Mythos; no public skip command or unverified card resolution is exposed.
 
 ### Current verification evidence
 

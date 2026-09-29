@@ -9,6 +9,8 @@ import {
   createDeterministicEngineContext,
   createLobby,
   executeCommand,
+  advanceEncounterInvestigator,
+  legalLocationEncounterDecks,
   projectPublicState,
   projectStateForPlayer,
   type GameContent,
@@ -86,6 +88,43 @@ function startedGame(): GameState {
     ],
   };
 }
+
+describe("encounter phase ordering and legal location decks", () => {
+  it("offers general and regional decks at a named city, but only general elsewhere", () => {
+    const game = startedGame();
+    game.phase = "encounter";
+    expect(legalLocationEncounterDecks(game, "host", testContent)).toEqual(["general", "america"]);
+    game.players[0]!.locationId = "space_4";
+    expect(legalLocationEncounterDecks(game, "host", testContent)).toEqual(["general"]);
+    game.monsters = [{ id: "m1", monsterId: "monster_test", locationId: "space_4", damage: 0 }];
+    expect(legalLocationEncounterDecks(game, "host", testContent)).toEqual([]);
+    game.monsters = [];
+    expect(legalLocationEncounterDecks(game, "guest", testContent)).toEqual([]);
+  });
+
+  it("advances from Lead through surviving investigators and then enters Mythos", () => {
+    const game = startedGame();
+    game.phase = "encounter";
+    game.leadInvestigatorId = "guest";
+    game.activePlayerId = "guest";
+    const first = advanceEncounterInvestigator(game, "guest");
+    expect(first).toMatchObject({ ok: true, state: { phase: "encounter", activePlayerId: "host" } });
+    if (!first.ok) return;
+    expect(advanceEncounterInvestigator(first.state, "guest")).toMatchObject({ ok: false, error: { code: "WRONG_PHASE" } });
+    const last = advanceEncounterInvestigator(first.state, "host");
+    expect(last).toMatchObject({ ok: true, state: { phase: "mythos", activePlayerId: "guest" } });
+    expect(game.phase).toBe("encounter");
+  });
+
+  it("skips defeated investigators and refuses advancement during a pending decision", () => {
+    const game = startedGame();
+    game.phase = "encounter";
+    game.players[1]!.defeated = true;
+    expect(advanceEncounterInvestigator(game, "host")).toMatchObject({ ok: true, state: { phase: "mythos" } });
+    game.pendingDecision = { id: "d", kind: "choose_encounter", playerId: "host", visibility: "owner", prompt: "Choose", optionIds: ["general"], minSelections: 1, maxSelections: 1 };
+    expect(advanceEncounterInvestigator(game, "host")).toMatchObject({ ok: false, error: { code: "WRONG_PHASE" } });
+  });
+});
 
 describe("Condition recovery during Rest", () => {
   const conditionContent: GameContent = { ...testContent, conditions: [
