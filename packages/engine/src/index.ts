@@ -204,6 +204,7 @@ export type ConditionBackEffect =
 
 export interface GameContent {
   gates?: readonly { id: string; omenSymbol: "comet" | "constellation" | "eclipse"; locationId: LocationId }[];
+  clues?: readonly { id: string; locationId: LocationId }[];
   conditions?: readonly { id: string; kind: string; backEffect?: ConditionBackEffect }[];
   monsters?: readonly MonsterCombatDefinition[];
   ancientOnes?: Readonly<Partial<Record<AncientOneId, AncientSetup>>>;
@@ -221,6 +222,7 @@ export type RuleErrorCode =
   | "CONDITION_CONTENT_MISSING" | "CONDITION_UNAVAILABLE" | "CONDITION_NOT_HELD" | "CONDITION_EFFECT_UNSUPPORTED"
   | "INVALID_COMBAT" | "MONSTER_CONTENT_MISSING" | "MONSTER_EFFECT_UNSUPPORTED" | "MONSTER_UNAVAILABLE"
   | "GATE_UNAVAILABLE" | "GATE_CONTENT_MISSING"
+  | "CLUE_CONTENT_MISSING"
   | "OMEN_CONTENT_MISSING" | "AWAKENING_UNSUPPORTED"
   | "INVALID_DEFEAT" | "INVESTIGATOR_DEFEATED" | "INVALID_DAMAGE"
   | "INVALID_TRADE"
@@ -1289,6 +1291,16 @@ export function executeCommand(
       next.privateState.deckOrderById.mythos = buildMythosDeck(content.mythosCards ?? [], ancient.mythosDeck, context.shuffle);
     }
     if (content.gates?.length) next.privateState.deckOrderById.gates = buildGateStack(content.gates.map(gate => gate.id), context.shuffle);
+    if (content.clues?.length) {
+      const clueIds = content.clues.map(clue => clue.id);
+      if (new Set(clueIds).size !== clueIds.length || new Set(content.clues.map(clue => clue.locationId)).size !== content.clues.length
+        || content.clues.some(clue => !content.map.locationTypes[clue.locationId])
+        || clueIds.length < next.players.reduce((sum, player) => sum + (content.investigators[player.investigatorId!]?.startingClues ?? 0), 0)) {
+        return failure("CLUE_CONTENT_MISSING", "Clue tokens must uniquely map to board spaces and cover starting Clues.");
+      }
+      next.privateState.tokenPoolById.clues = context.shuffle(clueIds);
+      next.privateState.tokenPoolById.clue_discard = [];
+    }
     if (content.monsters?.some(monster => monster.count !== undefined)) {
       if (!ancient) return failure("ANCIENT_ONE_REQUIRED", "Ancient One setup is required for the Monster cup.");
       if (content.monsters.some(monster => monster.count === undefined)) return failure("MONSTER_CONTENT_MISSING", "Every Monster requires a token count to build the cup.");
@@ -1312,6 +1324,7 @@ export function executeCommand(
       player.assetIds = [...setup.startingAssetIds];
       player.conditionIds = [];
       player.clues = setup.startingClues;
+      if (content.clues?.length) next.privateState.tokenPoolById[`held_clues:${player.id}`] = next.privateState.tokenPoolById.clues.splice(0, setup.startingClues);
       player.skillImprovements = {};
       events.push(...player.assetIds.map((assetId) => ({
         type: "ASSET_GAINED" as const,

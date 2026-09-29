@@ -198,6 +198,10 @@ describe("authoritative game room", () => {
     const privateAssets = (room as unknown as { privateState: { deckOrderById: Record<string, string[]> } }).privateState.deckOrderById.assets;
     assert.equal(privateAssets?.length, 35);
     assert.ok(!JSON.stringify(room.state).includes(privateAssets![0]!));
+    const privateClues = (room as unknown as { privateState: { tokenPoolById: Record<string, string[]> } }).privateState.tokenPoolById;
+    assert.equal(privateClues.clues?.length, 35);
+    assert.equal(privateClues[`held_clues:${hostPlayer.id}`]?.length, 1);
+    assert.ok(!JSON.stringify(room.state).includes(privateClues.clues![0]!));
 
     sendCommand(room, host, { type: "ACQUIRE_ASSETS" });
     await room.waitForMessage(commandMessageType);

@@ -344,8 +344,19 @@ describe("executeCommand", () => {
     const selectedAncientOne = executeCommand(selectedGuest.state, "host", { type: "SELECT_ANCIENT_ONE", ancientOneId: "cthulhu" }, testContent);
     expect(selectedAncientOne.ok).toBe(true);
     if (!selectedAncientOne.ok) return;
-    const context = createDeterministicEngineContext({ shuffleIndexes: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0] });
-    const started = executeCommand(selectedAncientOne.state, "host", { type: "START_GAME" }, testContent, context);
+    const clueContent: GameContent = { ...testContent, clues: [
+      { id: "clue_space_15", locationId: "space_15" },
+      { id: "clue_space_16", locationId: "space_16" },
+      { id: "clue_san_francisco", locationId: "san_francisco" },
+    ] };
+    const context = createDeterministicEngineContext({ shuffleIndexes: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0] });
+    const started = executeCommand(selectedAncientOne.state, "host", { type: "START_GAME" }, clueContent, context);
+    const badClueContent: GameContent = { ...clueContent, clues: [clueContent.clues![0]!, clueContent.clues![0]!] };
+    const beforeBadStart = structuredClone(selectedAncientOne.state);
+    expect(executeCommand(selectedAncientOne.state, "host", { type: "START_GAME" }, badClueContent,
+      createDeterministicEngineContext({ shuffleIndexes: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0] })))
+      .toMatchObject({ ok: false, error: { code: "CLUE_CONTENT_MISSING" } });
+    expect(selectedAncientOne.state).toEqual(beforeBadStart);
     expect(started.ok).toBe(true);
     if (started.ok) expect(started.state).toMatchObject({
       phase: "action", activePlayerId: "host", leadInvestigatorId: "host", turnNumber: 1, actionsRemaining: 2,
@@ -361,6 +372,11 @@ describe("executeCommand", () => {
     });
     if (started.ok) {
       expect(started.state.privateState.deckOrderById.mysteries).toEqual(["cthulhu_four", "cthulhu_two", "cthulhu_one"]);
+      expect(started.state.privateState.tokenPoolById.clues).toHaveLength(2);
+      expect(started.state.privateState.tokenPoolById["held_clues:host"]).toHaveLength(1);
+      expect(started.state.privateState.tokenPoolById["held_clues:guest"]).toHaveLength(0);
+      expect(started.state.privateState.tokenPoolById.clue_discard).toEqual([]);
+      expect(JSON.stringify(projectPublicState(started.state))).not.toContain("clue_space_");
       expect(started.state.privateState.deckOrderById.assets).toEqual([
         "asset_personal_assistant",
         "asset_fine_clothes",
