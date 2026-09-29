@@ -1084,17 +1084,23 @@ export function advanceEncounterInvestigator(state: GameState, playerId: string)
   return success(next, [{ type: "PHASE_ADVANCED", phase: next.phase, activePlayerId: next.activePlayerId }]);
 }
 
-type SimpleEncounterEffect = { kind: "clues"; amount: number };
+type SimpleEncounterEffect = { kind: "clues" | "health" | "sanity" | "recover_health" | "recover_sanity"; amount: number } | { kind: "condition"; condition: string };
 type SimpleEncounterInstruction =
   | { kind: "effects"; effects: SimpleEncounterEffect[] }
   | { kind: "test"; skill: SkillId; modifier: number; pass: { kind: "effects"; effects: SimpleEncounterEffect[] }; fail: { kind: "effects"; effects: SimpleEncounterEffect[] } };
 
-/** Only atomic, choice-free tests and Clue awards are currently executable. */
+/** Only atomic, choice-free tests and supported resource effects are currently executable. */
 function simpleEncounterInstruction(value: unknown): SimpleEncounterInstruction | undefined {
   if (!value || typeof value !== "object" || !("kind" in value)) return undefined;
   if (value.kind === "effects") {
     if (!("effects" in value) || !Array.isArray(value.effects)
-      || value.effects.some(effect => !effect || effect.kind !== "clues" || !Number.isInteger(effect.amount) || effect.amount < 0)) return undefined;
+      || value.effects.some(effect => !effect || (effect.kind === "condition"
+        ? typeof effect.condition !== "string" || !effect.condition
+        : !Number.isInteger(effect.amount) || (
+          effect.kind === "clues" ? effect.amount < 0
+            : effect.kind === "health" || effect.kind === "sanity" ? effect.amount > 0
+              : effect.kind === "recover_health" || effect.kind === "recover_sanity" ? effect.amount < 0 : true)
+      ))) return undefined;
     return value as SimpleEncounterInstruction;
   }
   if (value.kind === "test" && "skill" in value && "modifier" in value && "pass" in value && "fail" in value
@@ -1118,12 +1124,39 @@ function finishLocationEncounter(
   next.activeTest = undefined;
   next.pendingDecision = undefined;
   const events: GameEvent[] = [];
+  const player = next.players.find(candidate => candidate.id === playerId);
+  if (!player) return failure("PLAYER_NOT_FOUND", "The encounter investigator is missing.");
+  const healthLoss = -effects.filter((effect): effect is { kind: "health"; amount: number } => effect.kind === "health").reduce((total, effect) => total + effect.amount, 0);
+  const sanityLoss = -effects.filter((effect): effect is { kind: "sanity"; amount: number } => effect.kind === "sanity").reduce((total, effect) => total + effect.amount, 0);
+  if ((healthLoss > 0 && (player.health ?? 0) <= healthLoss) || (sanityLoss > 0 && (player.sanity ?? 0) <= sanityLoss)) {
+    return failure("ENCOUNTER_UNSUPPORTED", "An encounter defeat needs an interruptible resolution path.");
+  }
   for (const effect of effects) {
-    if (effect.amount === 0) continue;
-    const gained = gainCluesFromPool(next, playerId, effect.amount, content, context);
-    if (!gained.ok) return gained;
-    next = gained.state;
-    events.push(...gained.events);
+    if (effect.kind !== "condition" && effect.amount === 0) continue;
+    if (effect.kind === "condition") {
+      const gained = gainCondition(next, playerId, effect.condition, content, context);
+      if (!gained.ok) return gained;
+      next = gained.state;
+      events.push(...gained.events);
+    } else if (effect.kind === "clues") {
+      const gained = gainCluesFromPool(next, playerId, effect.amount, content, context);
+      if (!gained.ok) return gained;
+      next = gained.state;
+      events.push(...gained.events);
+    } else if (effect.kind === "health" || effect.kind === "sanity") {
+      const damaged = damageInvestigator(next, playerId, effect.kind === "health" ? -effect.amount : 0, effect.kind === "sanity" ? -effect.amount : 0, content);
+      if (!damaged.ok) return damaged;
+      next = damaged.state;
+      events.push(...damaged.events);
+    } else {
+      const recipient = next.players.find(candidate => candidate.id === playerId)!;
+      const resource = effect.kind === "recover_health" ? "health" : "sanity";
+      const maximum = resource === "health" ? recipient.maxHealth : recipient.maxSanity;
+      if (maximum === undefined) return failure("ENCOUNTER_CONTENT_MISSING", "The investigator's resource maximum is missing.");
+      const recovered = recoverResource(recipient[resource] ?? 0, maximum, effect.amount);
+      recipient[resource] = recovered.value;
+      events.push({ type: "INVESTIGATOR_RECOVERED", playerId, healthRecovered: resource === "health" ? recovered.amount : 0, sanityRecovered: resource === "sanity" ? recovered.amount : 0 });
+    }
   }
   next.privateState.deckOrderById[`encounter:${deck}`] = [...order.slice(1), cardId];
   next.lastLocationEncounterCardId = cardId;

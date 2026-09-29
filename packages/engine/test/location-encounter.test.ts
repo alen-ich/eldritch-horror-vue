@@ -6,7 +6,12 @@ const content: GameContent = {
     { id: "encounter_general_08", deck: "general", sections: { sea: { kind: "test", skill: "influence", modifier: 0,
       pass: { kind: "effects", effects: [{ kind: "clues", amount: 1 }] }, fail: { kind: "effects", effects: [] } } } },
     { id: "encounter_general_01", deck: "general", sections: { sea: { kind: "choice", options: [] } } },
+    { id: "encounter_general_resource", deck: "general", sections: { sea: { kind: "test", skill: "influence", modifier: 0,
+      pass: { kind: "effects", effects: [{ kind: "recover_sanity", amount: 2 }] }, fail: { kind: "effects", effects: [{ kind: "sanity", amount: -1 }] } } } },
+    { id: "encounter_general_04", deck: "general", sections: { city: { kind: "test", skill: "influence", modifier: 0,
+      pass: { kind: "effects", effects: [] }, fail: { kind: "effects", effects: [{ kind: "condition", condition: "leg_injury" }] } } } },
   ],
+  conditions: [{ id: "condition_leg_injury_01", kind: "leg_injury" }],
   clues: [{ id: "clue_arkham", locationId: "arkham" }, { id: "clue_london", locationId: "london" }],
   map: { adjacentLocationIds: {}, routes: [], locationTypes: { space_2: "sea", arkham: "city", london: "city" } },
   investigators: { akachi_onyele: { startingLocationId: "space_2", health: 5, sanity: 7, skills: { lore: 3, influence: 2, observation: 2, strength: 2, will: 4 }, startingAssetIds: [], startingClues: 0 } },
@@ -17,7 +22,7 @@ function state(): GameState {
   return {
     stateVersion: 2, phase: "encounter", activePlayerId: "host", leadInvestigatorId: "host", turnNumber: 1,
     players: [
-      { id: "host", investigatorId: "akachi_onyele", locationId: "space_2", health: 5, sanity: 7, assetIds: [], clues: 0, skillImprovements: {} },
+      { id: "host", investigatorId: "akachi_onyele", locationId: "space_2", health: 5, sanity: 7, maxHealth: 5, maxSanity: 7, assetIds: [], clues: 0, skillImprovements: {} },
       { id: "guest", investigatorId: "akachi_onyele", locationId: "space_2", health: 5, sanity: 7, assetIds: [], clues: 0, skillImprovements: {} },
     ],
     actionsRemaining: 0, performedActions: [], monsterLocationIds: [], reserveAssetIds: [], assetDiscardIds: [],
@@ -79,6 +84,38 @@ describe("guarded location encounter", () => {
     const finished = executeCommand(started.state, "host", { type: "RESOLVE_DECISION", decisionId: "choice-1", selectedOptionIds: [] }, content, createDeterministicEngineContext({}));
     expect(finished).toMatchObject({ ok: true, state: { activePlayerId: "guest", lastLocationEncounterCardId: "encounter_general_08" } });
     if (finished.ok) expect(finished.state.players[0]?.clues).toBe(1);
+  });
+
+  it("applies capped recovery and nonlethal loss, but does not silently advance through defeat", () => {
+    const before = state();
+    before.privateState.deckOrderById["encounter:general"] = ["encounter_general_resource"];
+    before.players[0]!.sanity = 6;
+    const passed = resolveLocationEncounter(before, "host", "general", content, createDeterministicEngineContext({ dice: [5, 1] }));
+    expect(passed).toMatchObject({ ok: true, state: { activePlayerId: "guest" } });
+    if (passed.ok) {
+      expect(passed.state.players[0]?.sanity).toBe(7);
+      expect(passed.events).toContainEqual({ type: "INVESTIGATOR_RECOVERED", playerId: "host", healthRecovered: 0, sanityRecovered: 1 });
+    }
+    const failed = resolveLocationEncounter(before, "host", "general", content, createDeterministicEngineContext({ dice: [1, 1] }));
+    expect(failed).toMatchObject({ ok: true, state: { activePlayerId: "guest" } });
+    if (failed.ok) expect(failed.state.players[0]?.sanity).toBe(5);
+    before.players[0]!.sanity = 1;
+    expect(resolveLocationEncounter(before, "host", "general", content, createDeterministicEngineContext({ dice: [1, 1] })))
+      .toMatchObject({ ok: false, error: { code: "ENCOUNTER_UNSUPPORTED" } });
+    expect(before.privateState.deckOrderById["encounter:general"]).toEqual(["encounter_general_resource"]);
+  });
+
+  it("resolves General 4 city failure through the physical Condition supply", () => {
+    const before = state();
+    before.players[0]!.locationId = "arkham";
+    before.privateState.deckOrderById["encounter:general"] = ["encounter_general_04"];
+    before.privateState.tokenPoolById["condition:leg_injury"] = ["condition_leg_injury_01"];
+    const result = resolveLocationEncounter(before, "host", "general", content, createDeterministicEngineContext({ dice: [1, 1], tokenIndexes: [0] }));
+    expect(result).toMatchObject({ ok: true, state: { activePlayerId: "guest" } });
+    if (!result.ok) return;
+    expect(result.state.players[0]?.conditionIds).toEqual(["condition_leg_injury_01"]);
+    expect(result.events).toContainEqual({ type: "CONDITION_GAINED", playerId: "host", conditionId: "condition_leg_injury" });
+    expect(before.privateState.tokenPoolById["condition:leg_injury"]).toEqual(["condition_leg_injury_01"]);
   });
 
   it("refuses unsupported text, possessions, wrong deck, and mandatory combat without consuming the card", () => {

@@ -151,6 +151,7 @@ export type GameEvent =
   | { type: "CLUE_COLLECTED"; clueId: string; playerId: string; locationId: LocationId }
   | { type: "OMEN_ADVANCED"; position: number; symbol: "comet" | "constellation" | "eclipse"; doomAdvance: number }
   | { type: "INVESTIGATOR_DAMAGED"; playerId: string; healthLost: number; sanityLost: number }
+  | { type: "INVESTIGATOR_RECOVERED"; playerId: string; healthRecovered: number; sanityRecovered: number }
   | { type: "INVESTIGATOR_DEFEATED" | "INVESTIGATOR_REPLACED"; playerId: string; investigatorId: InvestigatorId }
   | { type: "TRADE_OFFERED" | "TRADE_ACCEPTED" | "TRADE_DECLINED"; offerId: string; playerId: string }
   | { type: "INVESTIGATOR_DELAYED" | "INVESTIGATOR_STOOD_UP"; playerId: string }
