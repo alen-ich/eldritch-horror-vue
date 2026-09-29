@@ -139,6 +139,7 @@ export type GameEvent =
   | { type: "CONDITION_GAINED" | "CONDITION_DISCARDED"; playerId: string; conditionId: string }
   | { type: "COMBAT_RESOLVED"; playerId: string; monsterInstanceId: string; horrorDice: number[]; strengthDice: number[]; sanityLost: number; healthLost: number; monsterHealthLost: number }
   | { type: "MONSTER_DEFEATED"; monsterInstanceId: string; monsterId: string }
+  | { type: "MONSTER_SPAWNED"; monsterInstanceId: string; monsterId: string; locationId: LocationId; spawnLocationId: LocationId }
   | { type: "INVESTIGATOR_DAMAGED"; playerId: string; healthLost: number; sanityLost: number }
   | { type: "INVESTIGATOR_DEFEATED" | "INVESTIGATOR_REPLACED"; playerId: string; investigatorId: InvestigatorId }
   | { type: "TRADE_OFFERED" | "TRADE_ACCEPTED" | "TRADE_DECLINED"; offerId: string; playerId: string }

@@ -126,6 +126,7 @@ export interface MonsterCombatDefinition {
   id: string;
   type: "normal" | "epic";
   count?: number;
+  spawnEffect?: { type: "move_to"; locationId: LocationId } | { type: "unsupported" };
   horrorCheck: CombatCheck | null | "ancient_one";
   damageCheck: CombatCheck | null | "ancient_one";
   toughness: { base: number; perInvestigator: number } | "ancient_one";
@@ -216,7 +217,7 @@ export type RuleErrorCode =
   | "MYTHOS_CARD_ACTIVE" | "MYTHOS_DECK_MISSING" | "MYTHOS_CONTENT_MISSING"
   | "CONDITION_ACTION_INVALID" | "CONDITION_RESTRICTED"
   | "CONDITION_CONTENT_MISSING" | "CONDITION_UNAVAILABLE" | "CONDITION_NOT_HELD" | "CONDITION_EFFECT_UNSUPPORTED"
-  | "INVALID_COMBAT" | "MONSTER_CONTENT_MISSING" | "MONSTER_EFFECT_UNSUPPORTED"
+  | "INVALID_COMBAT" | "MONSTER_CONTENT_MISSING" | "MONSTER_EFFECT_UNSUPPORTED" | "MONSTER_UNAVAILABLE"
   | "INVALID_DEFEAT" | "INVESTIGATOR_DEFEATED" | "INVALID_DAMAGE"
   | "INVALID_TRADE"
   | "INVESTIGATOR_DELAYED"
@@ -552,6 +553,28 @@ export function damageInvestigator(state: GameState, playerId: string, health: n
 }
 
 /** Internal combat transition for Monsters without combat-specific card text. */
+/** Internal draw effect. The chosen physical token and its post-spawn move are server-owned. */
+export function spawnMonsterFromCup(state: GameState, spawnLocationId: LocationId, content: GameContent, context: EngineContext): CommandResult {
+  if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
+  if (state.phase === "lobby") return failure("WRONG_PHASE", "Monsters cannot spawn before setup.");
+  if (!content.map.locationTypes[spawnLocationId]) return failure("MONSTER_CONTENT_MISSING", "The spawn space is not on the map.");
+  const cup = state.privateState.tokenPoolById.monsters;
+  if (!cup?.length) return failure("MONSTER_UNAVAILABLE", "No normal Monster token remains in the cup.");
+  const { token: monsterId, remaining } = context.drawToken(cup);
+  const definition = content.monsters?.find(monster => monster.id === monsterId && monster.type === "normal");
+  if (!definition) return failure("MONSTER_CONTENT_MISSING", "The drawn Monster is missing from the normal catalog.");
+  if (definition.spawnEffect?.type === "unsupported") return failure("MONSTER_EFFECT_UNSUPPORTED", "The drawn Monster requires an unimplemented spawn effect.");
+  const locationId = definition.spawnEffect?.type === "move_to" ? definition.spawnEffect.locationId : spawnLocationId;
+  if (!content.map.locationTypes[locationId]) return failure("MONSTER_CONTENT_MISSING", "The Monster's spawn destination is not on the map.");
+  const monsterInstanceId = context.createId();
+  if (state.monsters?.some(monster => monster.id === monsterInstanceId)) return failure("MONSTER_CONTENT_MISSING", "The generated Monster instance ID is already in use.");
+  const next = structuredClone(state);
+  next.privateState.tokenPoolById.monsters = remaining;
+  next.monsters = [...(next.monsters ?? []), { id: monsterInstanceId, monsterId, locationId, damage: 0 }];
+  next.monsterLocationIds = [...new Set(next.monsters.map(monster => monster.locationId))];
+  return success(next, [{ type: "MONSTER_SPAWNED", monsterInstanceId, monsterId, locationId, spawnLocationId }]);
+}
+
 export function resolveCombatEncounter(state: GameState, playerId: string, monsterInstanceId: string, content: GameContent, context: EngineContext): CommandResult {
   if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
   if (state.phase !== "encounter" || state.activePlayerId !== playerId || state.pendingDecision || state.pendingDefeat) {

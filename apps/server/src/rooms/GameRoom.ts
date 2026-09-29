@@ -16,8 +16,10 @@ import {
 } from "@eldritch/protocol";
 import { ActiveTestState, GameRoomState, PendingDecisionState, PlayerState } from "./schema/GameRoomState.js";
 import { privateConditionBackEffectById } from "../private-condition-backs.js";
+import { typedMonsterSpawnEffect } from "../private-monster-spawn-effects.js";
 
 const RECONNECTION_SECONDS = 30;
+
 
 function randomShuffleIndexes(length: number): number[] {
   return Array.from({ length: Math.max(0, length - 1) }, (_, offset) => randomInt(length - offset));
@@ -25,8 +27,9 @@ function randomShuffleIndexes(length: number): number[] {
 const baseGameContent: GameContent = {
   gates: baseGameGates.map(({ id, omenSymbol, locationId }) => ({ id, omenSymbol, locationId })),
   conditions: baseGameConditions.map(({ id, kind }) => ({ id, kind, backEffect: privateConditionBackEffectById[id] })),
-  monsters: baseGameMonsters.map(({ id, type, count, horrorCheck, damageCheck, toughness, specialEffect }) => ({
+  monsters: baseGameMonsters.map(({ id, type, count, horrorCheck, damageCheck, toughness, specialEffect, spawnEffect }) => ({
     id, type, count, horrorCheck, damageCheck, toughness, specialEffect,
+    spawnEffect: typedMonsterSpawnEffect(id, Boolean(spawnEffect)),
   })),
   ancientOnes: Object.fromEntries(baseGameAncientOnes.map(ancient => [ancient.id, {
     startingDoom: ancient.startingDoom,
