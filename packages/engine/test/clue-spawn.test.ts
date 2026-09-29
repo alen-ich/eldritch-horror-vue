@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { collectBoardClue, createDeterministicEngineContext, gainCluesFromPool, projectPublicState, spawnClueFromPool, spawnMythosClues, type GameContent, type GameState } from "../src/index.js";
+import { collectBoardClue, createDeterministicEngineContext, drawMythosCard, gainCluesFromPool, projectPublicState, spawnClueFromPool, spawnMythosClues, type GameContent, type GameState } from "../src/index.js";
 
 const content: GameContent = {
   clues: [{ id: "clue_arkham", locationId: "arkham" }, { id: "clue_london", locationId: "london" }],
@@ -135,6 +135,23 @@ describe("Mythos Clue icon", () => {
     expect(result.events.map(event => event.type)).toEqual(["CLUE_SPAWNED", "CLUE_SPAWNED"]);
     expect(spawnMythosClues(result.state, mythosContent, createDeterministicEngineContext({}))).toMatchObject({ ok: false, error: { code: "MYTHOS_CARD_ACTIVE" } });
     expect(before.boardClues).toEqual([]);
+  });
+
+  it("resolves a blue card's first Clue icon atomically with its draw", () => {
+    const before = state();
+    before.players = ["a", "b", "c"].map(id => ({ id, clues: 0, assetIds: [], skillImprovements: {} }));
+    before.privateState.deckOrderById.mythos = ["mythos_blue_01"];
+    expect(drawMythosCard(before, mythosContent)).toMatchObject({ ok: false, error: { code: "RANDOM_INPUT_REQUIRED" } });
+    const result = drawMythosCard(before, mythosContent, createDeterministicEngineContext({ tokenIndexes: [0, 0], ids: ["marker-1", "marker-2"] }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.events.map(event => event.type)).toEqual(["MYTHOS_CARD_REVEALED", "CLUE_SPAWNED", "CLUE_SPAWNED"]);
+    expect(result.state.currentMythosCardId).toBe("mythos_blue_01");
+    expect(result.state.resolvedMythosClueCardId).toBe("mythos_blue_01");
+    expect(result.state.privateState.deckOrderById.mythos).toEqual([]);
+    expect(result.state.stateVersion).toBe(before.stateVersion + 1);
+    expect(before.privateState.deckOrderById.mythos).toEqual(["mythos_blue_01"]);
+    expect(drawMythosCard(result.state, mythosContent)).toMatchObject({ ok: false, error: { code: "MYTHOS_CARD_ACTIVE" } });
   });
 
   it("stops at the physical component limit without manufacturing tokens", () => {

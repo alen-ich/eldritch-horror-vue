@@ -840,8 +840,8 @@ export function openReplacementWindow(state: GameState, content?: GameContent): 
   return success(next, []);
 }
 
-/** Draws the top private card, revealing only that card. Its icons and text must be resolved separately. */
-export function drawMythosCard(state: GameState, content: GameContent): CommandResult {
+/** Draws the top private card; a blue card's first printed Clue icon resolves immediately. */
+export function drawMythosCard(state: GameState, content: GameContent, context?: EngineContext): CommandResult {
   if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
   if (state.phase !== "mythos" || state.pendingDecision || state.activeTest || state.pendingDefeat || state.replacementWindow) {
     return failure("WRONG_PHASE", "Finish the current resolution before drawing Mythos.");
@@ -855,9 +855,18 @@ export function drawMythosCard(state: GameState, content: GameContent): CommandR
     return success(next, [{ type: "GAME_ENDED", result: "investigators_lose", reason: "mythos_deck_exhausted" }]);
   }
   const topId = deck[0]!;
-  if (!content.mythosCards?.some(card => card.id === topId)) return failure("MYTHOS_CONTENT_MISSING", "The next Mythos card is missing from content.");
+  const card = content.mythosCards?.find(candidate => candidate.id === topId);
+  if (!card) return failure("MYTHOS_CONTENT_MISSING", "The next Mythos card is missing from content.");
+  if (card.color === "blue" && card.icons?.[0]?.type !== "spawn_clues") return failure("MYTHOS_CONTENT_MISSING", "The blue card's first Clue icon is missing.");
+  if (card.color === "blue" && !context) return failure("RANDOM_INPUT_REQUIRED", "The Clue icon requires server randomness.");
   const next = structuredClone(state);
   next.currentMythosCardId = next.privateState.deckOrderById.mythos!.shift();
+  if (card.color === "blue") {
+    const spawned = spawnMythosClues(next, content, context!);
+    if (!spawned.ok) return spawned;
+    spawned.state.stateVersion = state.stateVersion;
+    return success(spawned.state, [{ type: "MYTHOS_CARD_REVEALED", cardId: topId }, ...spawned.events]);
+  }
   return success(next, [{ type: "MYTHOS_CARD_REVEALED", cardId: topId }]);
 }
 
