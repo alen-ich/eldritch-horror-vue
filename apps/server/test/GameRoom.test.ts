@@ -87,6 +87,7 @@ describe("authoritative game room", () => {
     sendCommand(room, host, { type: "RESOLVE_LOCATION_ENCOUNTER", deck: "general" });
     await room.waitForMessage(commandMessageType);
     assert.equal(room.state.activePlayerId, state.players[1]!.id);
+    assert.equal(room.state.lastLocationEncounterCardId, "encounter_general_08");
     assert.deepEqual(internal.toEngineState().privateState.deckOrderById["encounter:general"], ["encounter_general_01", "encounter_general_08"]);
     assert.ok(!JSON.stringify(room.state).includes("encounter_general_01"));
     const unsupported = guest.waitForMessage(commandErrorMessageType);

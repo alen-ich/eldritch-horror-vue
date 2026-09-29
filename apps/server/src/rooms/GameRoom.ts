@@ -228,6 +228,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       ancientOneId: (this.state.ancientOneId || undefined) as AncientOneId | undefined,
       currentMythosCardId: this.state.currentMythosCardId || undefined,
       currentMythosIconIndex: this.state.currentMythosIconIndex,
+      lastLocationEncounterCardId: this.state.lastLocationEncounterCardId || undefined,
       resolvedMythosClueCardId: this.state.resolvedMythosClueCardId || undefined,
       activeMysteryId: this.state.activeMysteryId || undefined,
       mysteryProgress: this.state.mysteryProgress,
@@ -295,6 +296,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     this.state.ancientOneId = engineState.ancientOneId ?? "";
     this.state.currentMythosCardId = engineState.currentMythosCardId ?? "";
     this.state.currentMythosIconIndex = engineState.currentMythosIconIndex ?? 0;
+    this.state.lastLocationEncounterCardId = engineState.lastLocationEncounterCardId ?? "";
     this.state.resolvedMythosClueCardId = engineState.resolvedMythosClueCardId ?? "";
     this.state.activeMysteryId = engineState.activeMysteryId ?? "";
     this.state.mysteryProgress = engineState.mysteryProgress;

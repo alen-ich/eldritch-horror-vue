@@ -196,6 +196,7 @@ export interface PublicGameState {
   turnNumber: number;
   ancientOneId?: AncientOneId;
   currentMythosCardId?: string;
+  lastLocationEncounterCardId?: string;
   activeMysteryId?: string;
   mysteryProgress: number;
   mysteryTarget: number;

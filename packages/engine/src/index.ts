@@ -157,6 +157,7 @@ export interface GameState {
   ancientOneId?: AncientOneId;
   currentMythosCardId?: string;
   currentMythosIconIndex?: number;
+  lastLocationEncounterCardId?: string;
   resolvedMythosClueCardId?: string;
   activeMysteryId?: string;
   mysteryProgress: number;
@@ -1140,6 +1141,7 @@ export function resolveLocationEncounter(state: GameState, playerId: string, dec
     events.push(...gained.events);
   }
   next.privateState.deckOrderById[`encounter:${deck}`] = [...order.slice(1), cardId];
+  next.lastLocationEncounterCardId = cardId;
   const advanced = advanceEncounterInvestigator(next, playerId);
   if (!advanced.ok) return advanced;
   advanced.state.stateVersion = state.stateVersion;

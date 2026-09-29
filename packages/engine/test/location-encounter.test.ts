@@ -31,7 +31,7 @@ describe("guarded location encounter", () => {
     const before = state();
     const result = executeCommand(before, "host", { type: "RESOLVE_LOCATION_ENCOUNTER", deck: "general" }, content,
       createDeterministicEngineContext({ dice: [1, 5], tokenIndexes: [0] }));
-    expect(result).toMatchObject({ ok: true, state: { stateVersion: 3, phase: "encounter", activePlayerId: "guest" } });
+    expect(result).toMatchObject({ ok: true, state: { stateVersion: 3, phase: "encounter", activePlayerId: "guest", lastLocationEncounterCardId: "encounter_general_08" } });
     if (!result.ok) return;
     expect(result.state.players[0]?.clues).toBe(1);
     expect(result.state.privateState.tokenPoolById["held_clues:host"]).toEqual(["clue_arkham"]);

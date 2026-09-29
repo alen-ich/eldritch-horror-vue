@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { baseGameAncientOnes, baseGameAssets, baseGameBoardDimensions, baseGameConditions, baseGameInvestigators, baseGameLocations, baseGameMap, baseGameMysteries, baseGameRoutes, skillNames } from '@eldritch/content'
+import { baseGameAncientOnes, baseGameAssets, baseGameBoardDimensions, baseGameConditions, baseGameInvestigators, baseGameLocations, baseGameMap, baseGameMysteries, baseGameRoutes, baseGameScannedLocationEncounters, skillNames } from '@eldritch/content'
 import type { AssetCardData, ConditionCard } from '@eldritch/content'
 import type { AncientOneId, InvestigatorId, LocationId } from '@eldritch/protocol'
 
@@ -38,6 +38,17 @@ const selectedByInvestigator = computed(() => new Map(game.players.value
   .filter((player) => player.investigatorId)
   .map((player) => [player.investigatorId, player])))
 const isMyTurn = computed(() => game.phase.value === 'action' && game.activePlayerId.value === game.playerId.value && !game.pendingDecision.value && !game.gameResult.value)
+const isMyEncounter = computed(() => game.phase.value === 'encounter' && game.activePlayerId.value === game.playerId.value && !game.pendingDecision.value && !game.gameResult.value)
+const encounterDecks = computed(() => {
+  const location = me.value?.locationId as LocationId | undefined
+  if (!location || !locationById[location]) return [] as { id: 'general' | 'america' | 'europe' | 'asia_australia'; label: string }[]
+  const regional: 'america' | 'europe' | 'asia_australia' | undefined = location === 'arkham' || location === 'san_francisco' || location === 'buenos_aires' ? 'america'
+    : location === 'london' || location === 'rome' || location === 'istanbul' ? 'europe'
+      : location === 'shanghai' || location === 'tokyo' || location === 'sydney' ? 'asia_australia' : undefined
+  return regional ? [{ id: 'general' as const, label: 'General' }, { id: regional, label: regional === 'asia_australia' ? 'Asia / Australia' : regional[0]!.toUpperCase() + regional.slice(1) }]
+    : [{ id: 'general' as const, label: 'General' }]
+})
+const latestEncounterCard = computed(() => baseGameScannedLocationEncounters.find(card => card.id === game.lastLocationEncounterCardId.value))
 const isDetained = computed(() => (me.value?.conditionIds?.split(',') ?? []).some(id => conditionById[id]?.kind === 'detained'))
 const canUseNormalActions = computed(() => isMyTurn.value && !isDetained.value)
 const localConditionActions = computed(() => game.players.value.flatMap(player => (player.conditionIds ? player.conditionIds.split(',') : [])
@@ -345,11 +356,18 @@ async function copyInvite() {
           <div class="game-hud__turn"><span>{{ game.phase.value }} phase · Round {{ game.turnNumber.value }}</span><strong>{{ isMyTurn ? `Your action · ${game.actionsRemaining.value} remaining` : `${game.players.value.find(p => p.id === game.activePlayerId.value)?.displayName ?? 'Lead investigator'} resolving` }}</strong></div>
           <div class="game-hud__room"><span class="presence online"></span><code>{{ game.roomId.value }}</code><button class="hud-button" @click="copyInvite">Invite</button></div>
         </header>
+        <p v-if="game.errorMessage.value" class="error game-error" role="alert">{{ game.errorMessage.value }}</p>
         <div class="game-workspace" :class="{ 'dock-expanded': dockExpanded }">
         <div class="board-stage">
           <div class="doom-display">Doom {{ game.doom.value }} · Omen {{ ['Green', 'Blue', 'Red', 'Blue'][game.omen.value] }}</div>
           <TradePanel />
           <DefeatPanel />
+          <section v-if="game.phase.value === 'encounter'" class="encounter-panel" aria-label="Location encounter">
+            <div><strong>Encounter phase</strong><small v-if="isMyEncounter">Choose a location deck. Monsters on your space must be resolved first; many card effects remain unsupported.</small><small v-else>Waiting for the active investigator.</small></div>
+            <template v-if="isMyEncounter"><button v-for="deck in encounterDecks" :key="deck.id" @click="game.send({ type: 'RESOLVE_LOCATION_ENCOUNTER', deck: deck.id })">{{ deck.label }}</button></template>
+            <img v-if="latestEncounterCard" :src="latestEncounterCard.imageUrl" :alt="`Last resolved encounter: ${latestEncounterCard.id}`" />
+          </section>
+          <section v-if="game.phase.value === 'mythos' && game.activePlayerId.value === game.playerId.value" class="encounter-panel" aria-label="Mythos resolution"><strong>Mythos phase</strong><button @click="game.send({ type: 'ADVANCE_MYTHOS' })">Resolve next printed icon</button><small>Unimplemented card text will stop resolution safely.</small></section>
           <section v-if="me?.delayed" class="travel-planner" aria-label="Delayed investigator">
             <strong>You are Delayed</strong><small>Your next action turn is spent standing up.</small>
             <button v-if="isMyTurn" @click="game.send({ type: 'END_ACTIONS' })">Stand up and end actions</button>
@@ -530,6 +548,7 @@ input:focus { border-color: #d5aa63; box-shadow: 0 0 0 3px #d5aa6322; }
 .board-stage { position: relative; min-width: 0; min-height: 0; display: grid; place-items: center; overflow: hidden; padding: 10px; background: radial-gradient(circle at 50% 45%, #18333a, #050f12 75%); }
 .doom-display { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 5; background: #07171cf2; padding: 8px; border-radius: 8px; color: #d5aa63; }
 .travel-planner { position: absolute; z-index: 7; top: 70px; left: 50%; transform: translateX(-50%); width: min(480px, calc(100% - 32px)); display: grid; gap: 9px; padding: 14px; background: #07171cf2; border: 1px solid #d5aa63; border-radius: 10px; box-shadow: 0 10px 30px #0009; }.travel-planner small { color: #c9d5d1; }.travel-planner div { display: flex; gap: 8px; }.travel-planner button { padding: 8px 12px; border: 1px solid #647e86; border-radius: 6px; color: #edf0df; background: #29464e; }.travel-planner button:last-child { background: #d5aa63; color: #142127; }
+.encounter-panel { position: absolute; z-index: 7; top: 70px; left: 18px; width: min(300px, calc(100% - 36px)); display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px; color: #edf0df; background: #07171cf2; border: 1px solid #d5aa63; border-radius: 10px; box-shadow: 0 10px 30px #0009; }.encounter-panel div { width: 100%; display: grid; gap: 4px; }.encounter-panel small { color: #c9d5d1; }.encounter-panel button { padding: 8px 12px; border: 1px solid #647e86; border-radius: 6px; color: #edf0df; background: #29464e; cursor: pointer; }.encounter-panel img { width: 90px; max-height: 130px; object-fit: contain; }.game-error { position: absolute; z-index: 12; top: 58px; left: 50%; transform: translateX(-50%); max-width: min(600px, calc(100vw - 24px)); padding: 8px 12px; background: #36191dec; border: 1px solid #ad6268; border-radius: 8px; }
 .board-stage .board { display: block; width: 100%; height: 100%; max-height: 100%; border-radius: 12px; }
 .active-mystery { position: absolute; z-index: 5; top: 60px; right: 18px; min-width: 180px; padding: 10px 12px; color: #edf0df; background: #07171cee; border: 1px solid #6e5a36; border-radius: 10px; box-shadow: 0 8px 28px #0009; backdrop-filter: blur(10px); }.active-mystery div { display: grid; gap: 3px; }.active-mystery strong { font: 600 .78rem/1.15 Georgia, serif; }.active-mystery small { color: #91a7a8; font-size: .6rem; }
 .game-result { position: absolute; z-index: 8; top: 18px; left: 50%; min-width: 220px; display: grid; gap: 3px; padding: 11px 22px; transform: translateX(-50%); color: #f7efd8; background: #1b1510ee; border: 1px solid #d5aa63; border-radius: 10px; box-shadow: 0 10px 35px #000b, 0 0 24px #d5aa6330; text-align: center; backdrop-filter: blur(10px); }.game-result strong { color: #e9ce8b; font: 600 1.1rem Georgia, serif; }
