@@ -142,6 +142,8 @@ export type GameEvent =
   | { type: "MONSTER_SPAWNED"; monsterInstanceId: string; monsterId: string; locationId: LocationId; spawnLocationId: LocationId }
   | { type: "GATE_OPENED"; gateId: string; locationId: LocationId }
   | { type: "CLUE_SPAWNED"; clueId: string; locationId: LocationId }
+  | { type: "CLUE_GAINED"; playerId: string; amount: number }
+  | { type: "CLUE_COLLECTED"; clueId: string; playerId: string; locationId: LocationId }
   | { type: "OMEN_ADVANCED"; position: number; symbol: "comet" | "constellation" | "eclipse"; doomAdvance: number }
   | { type: "INVESTIGATOR_DAMAGED"; playerId: string; healthLost: number; sanityLost: number }
   | { type: "INVESTIGATOR_DEFEATED" | "INVESTIGATOR_REPLACED"; playerId: string; investigatorId: InvestigatorId }

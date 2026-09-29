@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createDeterministicEngineContext, projectPublicState, spawnClueFromPool, type GameContent, type GameState } from "../src/index.js";
+import { collectBoardClue, createDeterministicEngineContext, gainCluesFromPool, projectPublicState, spawnClueFromPool, type GameContent, type GameState } from "../src/index.js";
 
 const content: GameContent = {
   clues: [{ id: "clue_arkham", locationId: "arkham" }, { id: "clue_london", locationId: "london" }],
@@ -65,5 +65,54 @@ describe("internal Clue spawn", () => {
     duplicate.boardClues = [{ id: "marker-1", locationId: "london" }];
     expect(spawnClueFromPool(duplicate, content, createDeterministicEngineContext({ tokenIndexes: [0], ids: ["marker-1"] }))).toMatchObject({ ok: false, error: { code: "CLUE_CONTENT_MISSING" } });
     expect(duplicate.boardClues).toHaveLength(1);
+  });
+});
+
+describe("internal Clue gain and collection", () => {
+  it("gains only available physical Clues and recycles discards when needed", () => {
+    const before = state(["clue_arkham"]);
+    before.players = [{ id: "host", locationId: "arkham", clues: 0, assetIds: [], skillImprovements: {} }];
+    before.privateState.tokenPoolById["held_clues:host"] = [];
+    before.privateState.tokenPoolById.clue_discard = ["clue_london"];
+    const result = gainCluesFromPool(before, "host", 3, content, createDeterministicEngineContext({ tokenIndexes: [0, 0] }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.players[0]?.clues).toBe(2);
+    expect(result.state.privateState.tokenPoolById["held_clues:host"]).toEqual(["clue_arkham", "clue_london"]);
+    expect(result.state.privateState.tokenPoolById.clue_discard).toEqual([]);
+    expect(before.players[0]?.clues).toBe(0);
+  });
+
+  it("collects an opaque marker only at the investigator's location during encounters", () => {
+    const before = state([]);
+    before.phase = "encounter";
+    before.players = [{ id: "host", locationId: "london", clues: 0, assetIds: [], skillImprovements: {} }];
+    before.privateState.tokenPoolById["held_clues:host"] = [];
+    before.boardClues = [{ id: "marker-1", locationId: "london" }];
+    before.privateState.tokenPoolById["board_clue:marker-1"] = ["clue_arkham"];
+    const result = collectBoardClue(before, "host", "marker-1");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.boardClues).toEqual([]);
+    expect(result.state.players[0]?.clues).toBe(1);
+    expect(result.state.privateState.tokenPoolById["held_clues:host"]).toEqual(["clue_arkham"]);
+    expect(result.state.privateState.tokenPoolById["board_clue:marker-1"]).toBeUndefined();
+    expect(JSON.stringify(projectPublicState(result.state))).not.toContain("clue_arkham");
+    expect(before.boardClues).toHaveLength(1);
+  });
+
+  it("rejects remote, wrong-phase, and inconsistent collections without mutation", () => {
+    const before = state([]);
+    before.players = [{ id: "host", locationId: "arkham", clues: 0, assetIds: [], skillImprovements: {} }];
+    before.privateState.tokenPoolById["held_clues:host"] = [];
+    before.boardClues = [{ id: "marker-1", locationId: "london" }];
+    before.privateState.tokenPoolById["board_clue:marker-1"] = ["clue_london"];
+    expect(collectBoardClue(before, "host", "marker-1")).toMatchObject({ ok: false, error: { code: "WRONG_PHASE" } });
+    before.phase = "encounter";
+    expect(collectBoardClue(before, "host", "marker-1")).toMatchObject({ ok: false, error: { code: "CLUE_UNAVAILABLE" } });
+    before.players[0]!.locationId = "london";
+    delete before.privateState.tokenPoolById["board_clue:marker-1"];
+    expect(collectBoardClue(before, "host", "marker-1")).toMatchObject({ ok: false, error: { code: "CLUE_CONTENT_MISSING" } });
+    expect(before.boardClues).toHaveLength(1);
   });
 });

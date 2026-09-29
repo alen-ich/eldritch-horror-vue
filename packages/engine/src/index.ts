@@ -653,6 +653,56 @@ export function spawnClueFromPool(state: GameState, content: GameContent, contex
   return success(next, [{ type: "CLUE_SPAWNED", clueId: id, locationId }]);
 }
 
+/** Internal effect for gaining Clues from supply; never a client command. */
+export function gainCluesFromPool(state: GameState, playerId: string, amount: number, content: GameContent, context: EngineContext): CommandResult {
+  if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
+  if (state.phase === "lobby") return failure("WRONG_PHASE", "Clues cannot be gained before setup.");
+  const player = state.players.find(candidate => candidate.id === playerId);
+  if (!player) return failure("PLAYER_NOT_FOUND", "Investigator not found.");
+  if (player.defeated || player.eliminated) return failure("INVESTIGATOR_DEFEATED", "No active investigator can gain Clues.");
+  if (!Number.isSafeInteger(amount) || amount < 1) return failure("CLUE_CONTENT_MISSING", "Clue gain must be a positive integer.");
+  const pool = state.privateState.tokenPoolById.clues;
+  const held = state.privateState.tokenPoolById[heldClueKey(playerId)];
+  if (!pool || !held || held.length !== player.clues) return failure("CLUE_CONTENT_MISSING", "Physical Clue holdings are inconsistent.");
+  const next = structuredClone(state);
+  let gained = 0;
+  for (let index = 0; index < amount; index += 1) {
+    const available = next.privateState.tokenPoolById.clues;
+    const discard = next.privateState.tokenPoolById.clue_discard ?? [];
+    if (!available.length && !discard.length) break;
+    const recycled = available.length === 0;
+    const source = recycled ? context.shuffle(discard) : available;
+    const { token, remaining } = context.drawToken(source);
+    if (!content.clues?.some(clue => clue.id === token)) return failure("CLUE_CONTENT_MISSING", "The drawn Clue is missing from content.");
+    next.privateState.tokenPoolById.clues = remaining;
+    if (recycled) next.privateState.tokenPoolById.clue_discard = [];
+    next.privateState.tokenPoolById[heldClueKey(playerId)]!.push(token);
+    gained += 1;
+  }
+  next.players.find(candidate => candidate.id === playerId)!.clues += gained;
+  return success(next, gained ? [{ type: "CLUE_GAINED", playerId, amount: gained }] : []);
+}
+
+/** Internal encounter effect: take one opaque marker at this investigator's space. */
+export function collectBoardClue(state: GameState, playerId: string, markerId: string): CommandResult {
+  if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
+  if (state.phase !== "encounter") return failure("WRONG_PHASE", "Board Clues are collected during encounters.");
+  const player = state.players.find(candidate => candidate.id === playerId);
+  if (!player) return failure("PLAYER_NOT_FOUND", "Investigator not found.");
+  if (player.defeated || player.eliminated) return failure("INVESTIGATOR_DEFEATED", "This investigator cannot collect a Clue.");
+  const marker = state.boardClues?.find(clue => clue.id === markerId);
+  if (!marker || marker.locationId !== player.locationId) return failure("CLUE_UNAVAILABLE", "No Clue is available at this investigator's space.");
+  const physical = state.privateState.tokenPoolById[`board_clue:${markerId}`];
+  const held = state.privateState.tokenPoolById[heldClueKey(playerId)];
+  if (!physical || physical.length !== 1 || !held || held.length !== player.clues) return failure("CLUE_CONTENT_MISSING", "Physical Clue holdings are inconsistent.");
+  const next = structuredClone(state);
+  next.boardClues = next.boardClues!.filter(clue => clue.id !== markerId);
+  next.privateState.tokenPoolById[heldClueKey(playerId)]!.push(physical[0]!);
+  delete next.privateState.tokenPoolById[`board_clue:${markerId}`];
+  next.players.find(candidate => candidate.id === playerId)!.clues += 1;
+  return success(next, [{ type: "CLUE_COLLECTED", clueId: markerId, playerId, locationId: marker.locationId }]);
+}
+
 /** Internal Mythos Omen effect; Ancient One awakening remains explicit, never inferred by the client. */
 export function advanceOmen(state: GameState, content: GameContent): CommandResult {
   if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
