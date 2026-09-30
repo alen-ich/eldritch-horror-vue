@@ -95,6 +95,84 @@ describe("guarded yellow Reckoning", () => {
 });
 
 describe("typed Mythos card text", () => {
+  const heatWaveContent: GameContent = { ...content,
+    investigators: { akachi_onyele: { startingLocationId: "arkham", health: 5, sanity: 7, skills: { lore: 3, influence: 2, observation: 2, strength: 2, will: 4 }, startingAssetIds: [], startingClues: 0 } },
+    mythosCards: [{ id: "mythos_yellow_14", color: "yellow", icons: [{ type: "advance_omen" }, { type: "resolve_reckoning" }, { type: "spawn_gates" }], effect: { type: "each_investigator_choose_heat_wave" } }],
+  };
+
+  function heatWaveReady(): GameState {
+    const before = state();
+    before.currentMythosCardId = "mythos_yellow_14";
+    before.currentMythosIconIndex = 3;
+    before.doom = 8;
+    before.players[1] = { ...before.players[1]!, investigatorId: "jim_culver", locationId: "arkham", health: 4, sanity: 4 };
+    before.players[0] = { ...before.players[0]!, investigatorId: "trish_scarborough", locationId: "arkham", health: 4, sanity: 4 };
+    return before;
+  }
+
+  it("offers Heat Wave choices in Lead order and applies Delay or Health loss", () => {
+    const before = heatWaveReady();
+    const offered = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, heatWaveContent, createDeterministicEngineContext({ ids: ["first-choice"] }));
+    if (!offered.ok) throw new Error(offered.error.message);
+    expect(offered.state.pendingDecision).toMatchObject({ playerId: "guest", kind: "choose_heat_wave", visibility: "owner", optionIds: ["become_delayed", "lose_health"] });
+    expect(executeCommand(offered.state, "host", { type: "RESOLVE_DECISION", decisionId: "first-choice", selectedOptionIds: ["lose_health"] }, heatWaveContent))
+      .toMatchObject({ ok: false, error: { code: "NOT_DECISION_OWNER" } });
+    const first = executeCommand(offered.state, "guest", { type: "RESOLVE_DECISION", decisionId: "first-choice", selectedOptionIds: ["become_delayed"] }, heatWaveContent, createDeterministicEngineContext({ ids: ["second-choice"] }));
+    if (!first.ok) throw new Error(first.error.message);
+    expect(first.state.players[1]?.delayed).toBe(true);
+    expect(first.state.pendingDecision?.playerId).toBe("host");
+    expect(first.state.stateVersion).toBe(offered.state.stateVersion + 1);
+    const second = executeCommand(first.state, "host", { type: "RESOLVE_DECISION", decisionId: "second-choice", selectedOptionIds: ["lose_health"] }, heatWaveContent);
+    if (!second.ok) throw new Error(second.error.message);
+    expect(second.state.players[0]?.health).toBe(1);
+    expect(second.state.pendingHeatWave).toBeUndefined();
+    expect(second.state.replacementWindow).toBe(true);
+    expect(second.state.stateVersion).toBe(first.state.stateVersion + 1);
+  });
+
+  it("does not offer an already Delayed investigator the Delay option", () => {
+    const before = heatWaveReady();
+    before.players[1]!.delayed = true;
+    const offered = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, heatWaveContent, createDeterministicEngineContext({ ids: ["first-choice"] }));
+    if (!offered.ok) throw new Error(offered.error.message);
+    expect(offered.state.pendingDecision?.optionIds).toEqual(["lose_health"]);
+    expect(executeCommand(offered.state, "guest", { type: "RESOLVE_DECISION", decisionId: "first-choice", selectedOptionIds: ["become_delayed"] }, heatWaveContent))
+      .toMatchObject({ ok: false, error: { code: "INVALID_DECISION_SELECTION" } });
+  });
+
+  it("resumes the next Heat Wave choice after a lethal Health loss is resolved", () => {
+    const before = heatWaveReady();
+    before.players[1]!.health = 2;
+    const offered = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, heatWaveContent, createDeterministicEngineContext({ ids: ["first-choice"] }));
+    if (!offered.ok) throw new Error(offered.error.message);
+    const first = executeCommand(offered.state, "guest", { type: "RESOLVE_DECISION", decisionId: "first-choice", selectedOptionIds: ["lose_health"] }, heatWaveContent);
+    if (!first.ok) throw new Error(first.error.message);
+    expect(first.state.pendingDefeat?.playerId).toBe("guest");
+    expect(first.state.pendingHeatWave?.remainingPlayerIds).toEqual(["host"]);
+    expect(first.state.players[0]?.health).toBe(4);
+    const resumed = executeCommand(first.state, "guest", { type: "RESOLVE_DEFEAT", cityId: "arkham", cause: "health", leadPlayerId: "host" }, heatWaveContent, createDeterministicEngineContext({ ids: ["second-choice"] }));
+    if (!resumed.ok) throw new Error(resumed.error.message);
+    expect(resumed.state.pendingDecision?.playerId).toBe("host");
+    expect(resumed.state.pendingHeatWave?.remainingPlayerIds).toEqual([]);
+    const completed = executeCommand(resumed.state, "host", { type: "RESOLVE_DECISION", decisionId: "second-choice", selectedOptionIds: ["become_delayed"] }, heatWaveContent);
+    if (!completed.ok) throw new Error(completed.error.message);
+    expect(completed.state.players[0]?.delayed).toBe(true);
+    expect(completed.state.replacementWindow).toBe(true);
+  });
+
+  it("guards unsupported awakening before a lethal Health choice changes state", () => {
+    const before = heatWaveReady();
+    before.ancientOneId = "cthulhu";
+    before.doom = 1;
+    before.players[1]!.health = 2;
+    const offered = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, heatWaveContent, createDeterministicEngineContext({ ids: ["first-choice"] }));
+    if (!offered.ok) throw new Error(offered.error.message);
+    expect(executeCommand(offered.state, "guest", { type: "RESOLVE_DECISION", decisionId: "first-choice", selectedOptionIds: ["lose_health"] }, heatWaveContent))
+      .toMatchObject({ ok: false, error: { code: "AWAKENING_UNSUPPORTED" } });
+    expect(offered.state.players[1]?.health).toBe(2);
+    expect(offered.state.pendingDecision?.id).toBe("first-choice");
+  });
+
   const tornContent: GameContent = { ...content,
     map: { adjacentLocationIds: {}, routes: [], locationTypes: { arkham: "city", london: "city", rome: "city" } },
     gates: [

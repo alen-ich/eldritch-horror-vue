@@ -144,6 +144,7 @@ export interface GameState {
   defeatedInvestigators?: { investigatorId: InvestigatorId; locationId: LocationId; cause: "health" | "sanity"; assetIds: string[]; clues: number; travelTickets: TravelTicketType[] }[];
   pendingDefeat?: { playerId: string; cityIds: LocationId[]; causes: ("health" | "sanity")[] };
   pendingMythosDamage?: { cardId: string; remainingPlayerIds: string[]; healthLoss: number };
+  pendingHeatWave?: { cardId: string; remainingPlayerIds: string[] };
   replacementWindow?: boolean;
   awakened?: boolean;
   doom?: number;
@@ -223,7 +224,7 @@ export interface GameContent {
   conditions?: readonly { id: string; kind: string; backEffect?: ConditionBackEffect }[];
   monsters?: readonly MonsterCombatDefinition[];
   ancientOnes?: Readonly<Partial<Record<AncientOneId, AncientSetup>>>;
-  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } | { type: "each_investigator_choose_world_fights_back" } | { type: "lead_gain_ally_asset" } | { type: "each_investigator_trade_debt_for_condition" } | { type: "discard_matching_gates_and_advance_doom" } | { type: "doom_two_unless_lead_gains_dark_pact" } | { type: "spawn_monster_on_each_cultist_space" } | { type: "roll_each_investigator_for_bermuda_triangle" } | { type: "group_discard_gate_then_advance_doom_if_nonmatching" } | { type: "torn_asunder" } }[];
+  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } | { type: "each_investigator_choose_world_fights_back" } | { type: "lead_gain_ally_asset" } | { type: "each_investigator_trade_debt_for_condition" } | { type: "discard_matching_gates_and_advance_doom" } | { type: "doom_two_unless_lead_gains_dark_pact" } | { type: "spawn_monster_on_each_cultist_space" } | { type: "roll_each_investigator_for_bermuda_triangle" } | { type: "group_discard_gate_then_advance_doom_if_nonmatching" } | { type: "torn_asunder" } | { type: "each_investigator_choose_heat_wave" } }[];
   referenceCards?: readonly { playerCount: number; spawnClues: number; monsterSurge?: number; spawnGates?: number }[];
   map: GameMap;
   investigators: Readonly<Partial<Record<InvestigatorId, InvestigatorSetup>>>;
@@ -1126,6 +1127,14 @@ export function advanceMythosIcon(state: GameState, content: GameContent, contex
       return success(next, []);
     }
     if (card.effect.type === "torn_asunder") return resolveTornAsunder(state, content);
+    if (card.effect.type === "each_investigator_choose_heat_wave") {
+      const ordered = mythosInvestigatorOrder(state);
+      if (!ordered.length) return finishMythosEvent(state, structuredClone(state), [], content);
+      const next = structuredClone(state);
+      next.pendingHeatWave = { cardId: state.currentMythosCardId, remainingPlayerIds: ordered.slice(1) };
+      next.pendingDecision = heatWaveDecision(next, ordered[0]!, context);
+      return success(next, []);
+    }
     const resolved = card.effect.type === "lead_gain_condition"
       ? gainCondition(state, state.leadInvestigatorId, card.effect.kind, content, context)
       : resolveCounterclockwiseOmenCard(state, content);
@@ -1138,6 +1147,34 @@ export function advanceMythosIcon(state: GameState, content: GameContent, contex
   if (icon.type === "spawn_clues") return spawnMythosClues(state, content, context);
   if (icon.type === "spawn_gates") return resolveMythosSpawnGates(state, content, context);
   return failure("MYTHOS_EFFECT_UNSUPPORTED", "This printed Mythos icon is not executable yet.");
+}
+
+function heatWaveDecision(state: GameState, playerId: string, context: EngineContext): PendingDecision {
+  const player = state.players.find(candidate => candidate.id === playerId)!;
+  return {
+    id: context.createId(), kind: "choose_heat_wave", playerId, visibility: "owner",
+    prompt: "Heat Wave Singes the Globe: lose 3 Health unless you become Delayed.",
+    optionIds: player.delayed ? ["lose_health"] : ["become_delayed", "lose_health"],
+    minSelections: 1, maxSelections: 1, continuation: "mythos_heat_wave",
+  };
+}
+
+function continueHeatWave(state: GameState, content: GameContent, context?: EngineContext): CommandResult {
+  const pending = state.pendingHeatWave;
+  const card = content.mythosCards?.find(candidate => candidate.id === state.currentMythosCardId);
+  if (state.phase !== "mythos" || state.pendingDefeat || state.pendingDecision || !pending || pending.cardId !== state.currentMythosCardId
+    || card?.effect?.type !== "each_investigator_choose_heat_wave" || state.currentMythosIconIndex !== card.icons?.length) {
+    return failure("MYTHOS_CONTENT_MISSING", "The remaining choices are no longer attached to Heat Wave.");
+  }
+  const next = structuredClone(state);
+  const following = next.pendingHeatWave!.remainingPlayerIds.shift();
+  if (following) {
+    if (!context) return failure("RANDOM_INPUT_REQUIRED", "The next Heat Wave choice requires a server-generated ID.");
+    next.pendingDecision = heatWaveDecision(next, following, context);
+    return success(next, []);
+  }
+  next.pendingHeatWave = undefined;
+  return finishMythosEvent(state, next, [], content);
 }
 
 function resolveTornAsunder(state: GameState, content: GameContent): CommandResult {
@@ -1861,6 +1898,12 @@ export function executeCommand(
       if (!continued.ok) return continued;
       return { ...continued, events: [...events, ...continued.events] };
     }
+    if (next.pendingHeatWave) {
+      next.stateVersion = state.stateVersion;
+      const continued = continueHeatWave(next, content, context);
+      if (!continued.ok) return continued;
+      return { ...continued, events: [...events, ...continued.events] };
+    }
     return success(next, events);
   }
   if (state.pendingDefeat) return failure("INVALID_DEFEAT", "Resolve the pending defeat first.");
@@ -2093,6 +2136,31 @@ export function executeCommand(
         }
       }
       return finishMythosEvent(state, next, events, content);
+    }
+    if (decision.continuation === "mythos_heat_wave") {
+      const card = content.mythosCards?.find(candidate => candidate.id === state.currentMythosCardId);
+      if (state.phase !== "mythos" || card?.effect?.type !== "each_investigator_choose_heat_wave"
+        || state.currentMythosIconIndex !== card.icons?.length || state.pendingHeatWave?.cardId !== state.currentMythosCardId) {
+        return failure("MYTHOS_CONTENT_MISSING", "The choice is no longer attached to Heat Wave.");
+      }
+      const choice = selections[0]!;
+      if (choice === "become_delayed" && actor.delayed) return failure("INVALID_DECISION_SELECTION", "An already Delayed investigator cannot choose to become Delayed again.");
+      if (choice === "lose_health" && !actor.investigatorId) return failure("INVESTIGATOR_CONTENT_MISSING", "The investigator's Health setup is missing.");
+      if (choice === "lose_health" && (actor.health ?? 0) <= 3 && (state.doom ?? 0) <= 1 && state.ancientOneId !== "azathoth") {
+        return failure("AWAKENING_UNSUPPORTED", "Ancient One awakening is not implemented yet.");
+      }
+      const resolved = choice === "become_delayed" ? delayInvestigator(next, actorPlayerId)
+        : choice === "lose_health" ? damageInvestigator(next, actorPlayerId, 3, 0, content)
+          : failure("INVALID_DECISION_SELECTION", "That Heat Wave choice is invalid.");
+      if (!resolved.ok) return resolved;
+      resolved.state.pendingDecision = undefined;
+      resolved.state.stateVersion = state.stateVersion;
+      const events: GameEvent[] = [{ type: "DECISION_RESOLVED", decisionId: decision.id, playerId: actorPlayerId, selectedOptionIds: [choice] }, ...resolved.events];
+      if (resolved.state.pendingDefeat || resolved.state.gameResult) return success(resolved.state, events);
+      const continued = continueHeatWave(resolved.state, content, context);
+      if (!continued.ok) return continued;
+      continued.state.stateVersion = state.stateVersion + 1;
+      return { ...continued, events: [...events, ...continued.events] };
     }
     if (decision.continuation === "test_reroll") {
       const test = state.activeTest;

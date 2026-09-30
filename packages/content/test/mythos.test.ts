@@ -32,7 +32,8 @@ describe("base-game Mythos cards", () => {
     expect(baseGameMythosCards.find(card => card.id === "mythos_yellow_20")?.effect).toEqual({ type: "roll_each_investigator_for_bermuda_triangle" });
     expect(baseGameMythosCards.find(card => card.id === "mythos_green_03")?.effect).toEqual({ type: "group_discard_gate_then_advance_doom_if_nonmatching" });
     expect(baseGameMythosCards.find(card => card.id === "mythos_green_08")?.effect).toEqual({ type: "torn_asunder" });
-    expect(baseGameMythosCards.filter(card => card.effectModelStatus === "typed")).toHaveLength(12);
+    expect(baseGameMythosCards.find(card => card.id === "mythos_yellow_14")?.effect).toEqual({ type: "each_investigator_choose_heat_wave" });
+    expect(baseGameMythosCards.filter(card => card.effectModelStatus === "typed")).toHaveLength(13);
   });
 
   it("records the printed left-to-right icon sequence and blue-card token operands", () => {

@@ -322,6 +322,57 @@ describe("authoritative game room", () => {
     assert.equal(room.state.currentMythosCardId, "");
   });
 
+  it("keeps Heat Wave choices private and resumes after a lethal Health loss", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "mythos";
+    state.leadInvestigatorId = state.activePlayerId = state.players[0]!.id;
+    state.ancientOneId = "azathoth";
+    state.doom = 8;
+    state.currentMythosCardId = "mythos_yellow_14";
+    state.currentMythosIconIndex = 3;
+    state.players[0] = { ...state.players[0]!, investigatorId: "jim_culver", locationId: "arkham", health: 2, sanity: 4, clues: 0 };
+    state.players[1] = { ...state.players[1]!, investigatorId: "trish_scarborough", locationId: "london", health: 4, sanity: 4, clues: 0 };
+    delete state.privateState.tokenPoolById.clues;
+    internal.applyEngineState(state);
+
+    const hostChoiceMessage = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "ADVANCE_MYTHOS" });
+    await room.waitForMessage(commandMessageType);
+    const hostChoice = await hostChoiceMessage as PendingDecision;
+    assert.equal(hostChoice.kind, "choose_heat_wave");
+    assert.deepEqual(hostChoice.optionIds, ["become_delayed", "lose_health"]);
+    assert.equal(room.state.pendingDecision?.optionCount, 2);
+    assert.equal(JSON.stringify(room.state).includes("become_delayed"), false);
+    const denied = guest.waitForMessage(commandErrorMessageType);
+    sendCommand(room, guest, { type: "RESOLVE_DECISION", decisionId: hostChoice.id, selectedOptionIds: ["lose_health"] });
+    assert.equal((await denied as { code: string }).code, "NOT_DECISION_OWNER");
+
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: hostChoice.id, selectedOptionIds: ["lose_health"] });
+    await room.waitForMessage(commandMessageType);
+    const paused = internal.toEngineState();
+    assert.equal(paused.pendingDefeat?.playerId, state.players[0]!.id);
+    assert.deepEqual(paused.pendingHeatWave?.remainingPlayerIds, [state.players[1]!.id]);
+    assert.equal(paused.players[1]?.health, 4);
+
+    const guestChoiceMessage = guest.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "RESOLVE_DEFEAT", cityId: "arkham", cause: "health", leadPlayerId: state.players[1]!.id });
+    await room.waitForMessage(commandMessageType);
+    const guestChoice = await guestChoiceMessage as PendingDecision;
+    assert.equal(guestChoice.kind, "choose_heat_wave");
+    assert.equal(guestChoice.playerId, state.players[1]!.id);
+    sendCommand(room, guest, { type: "RESOLVE_DECISION", decisionId: guestChoice.id, selectedOptionIds: ["become_delayed"] });
+    await room.waitForMessage(commandMessageType);
+    const resolved = internal.toEngineState();
+    assert.equal(resolved.players[1]?.delayed, true);
+    assert.equal(resolved.pendingHeatWave, undefined);
+    assert.equal(resolved.replacementWindow, true);
+    assert.equal(room.state.currentMythosCardId, "");
+  });
+
   it("restores the Lead's private Omen of Good Fortune choice after reconnect", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });

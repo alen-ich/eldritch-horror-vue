@@ -129,6 +129,11 @@ const privateThatWhichConsumesDecision = computed(() => {
   return decision && decision.playerId === game.playerId.value && 'optionIds' in decision
     && decision.kind === 'choose_that_which_consumes_gate' ? decision : undefined
 })
+const privateHeatWaveDecision = computed(() => {
+  const decision = game.pendingDecision.value
+  return decision && decision.playerId === game.playerId.value && 'optionIds' in decision
+    && decision.kind === 'choose_heat_wave' ? decision : undefined
+})
 const selectedReserveValue = computed(() => selectedReserveAssetIds.value.reduce((total, id) => total + (assetById[id]?.value ?? 0), 0))
 const inspectedRoutes = computed(() => inspectedLocationId.value
   ? baseGameRoutes.filter((route) => route.source === inspectedLocationId.value || route.target === inspectedLocationId.value)
@@ -303,6 +308,11 @@ function resolveDesperateTimesChoice(optionId: string) {
 function resolveThatWhichConsumesChoice(gateId: string) {
   const decision = privateThatWhichConsumesDecision.value
   if (decision?.optionIds.includes(gateId)) game.send({ type: 'RESOLVE_DECISION', decisionId: decision.id, selectedOptionIds: [gateId] })
+}
+
+function resolveHeatWaveChoice(optionId: string) {
+  const decision = privateHeatWaveDecision.value
+  if (decision?.optionIds.includes(optionId)) game.send({ type: 'RESOLVE_DECISION', decisionId: decision.id, selectedOptionIds: [optionId] })
 }
 
 function worldFightsBackOptionLabel(optionId: string): string {
@@ -517,6 +527,15 @@ async function copyInvite() {
             <div class="test-dice omen-choices" role="group" aria-label="Active Gates">
               <button v-for="gateId in privateThatWhichConsumesDecision.optionIds" :key="gateId"
                 @click="resolveThatWhichConsumesChoice(gateId)">Discard {{ gateById[gateId]?.name ?? gateId }} Gate · {{ gateById[gateId]?.omenSymbol ?? 'unknown' }}</button>
+            </div>
+          </section>
+          <section v-if="privateHeatWaveDecision" class="test-dialog" role="dialog" aria-modal="true" aria-labelledby="heat-wave-title">
+            <p class="chapter">Mythos choice</p>
+            <h2 id="heat-wave-title">Heat Wave Singes the Globe</h2>
+            <p>{{ privateHeatWaveDecision.prompt }}</p>
+            <div class="test-dice omen-choices" role="group" aria-label="Heat Wave choices">
+              <button v-for="optionId in privateHeatWaveDecision.optionIds" :key="optionId"
+                @click="resolveHeatWaveChoice(optionId)">{{ optionId === 'become_delayed' ? 'Become Delayed' : 'Lose 3 Health' }}</button>
             </div>
           </section>
           <div v-if="game.gameResult.value" class="game-result" role="status">
