@@ -95,6 +95,44 @@ describe("guarded yellow Reckoning", () => {
 });
 
 describe("typed Mythos card text", () => {
+  const bermudaContent: GameContent = { ...content,
+    map: { adjacentLocationIds: {}, routes: [], locationTypes: { arkham: "city", space_8: "sea" } },
+    mythosCards: [{ id: "mythos_yellow_20", color: "yellow", icons: [{ type: "advance_omen" }, { type: "resolve_reckoning" }, { type: "spawn_gates" }], effect: { type: "roll_each_investigator_for_bermuda_triangle" } }],
+  };
+
+  function bermudaReady(): GameState {
+    const before = state();
+    before.currentMythosCardId = "mythos_yellow_20";
+    before.currentMythosIconIndex = 3;
+    before.players.forEach(player => { player.locationId = "arkham"; player.delayed = false; });
+    return before;
+  }
+
+  it("rolls in Lead order and moves only investigators who roll one or two", () => {
+    const before = bermudaReady();
+    const result = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, bermudaContent, createDeterministicEngineContext({ dice: [2, 5] }));
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.events.filter(event => event.type === "BERMUDA_TRIANGLE_ROLLED"))
+      .toEqual([{ type: "BERMUDA_TRIANGLE_ROLLED", playerId: "guest", die: 2, moved: true }, { type: "BERMUDA_TRIANGLE_ROLLED", playerId: "host", die: 5, moved: false }]);
+    expect(result.state.players[1]).toMatchObject({ locationId: "space_8", delayed: true });
+    expect(result.state.players[0]).toMatchObject({ locationId: "arkham", delayed: false });
+    expect(result.state.replacementWindow).toBe(true);
+    expect(result.state.stateVersion).toBe(before.stateVersion + 1);
+    expect(before.players.every(player => player.locationId === "arkham")).toBe(true);
+  });
+
+  it("skips defeated investigators and refuses a missing board destination", () => {
+    const before = bermudaReady();
+    before.players[0]!.defeated = true;
+    const result = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, bermudaContent, createDeterministicEngineContext({ dice: [1] }));
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.events.filter(event => event.type === "BERMUDA_TRIANGLE_ROLLED")).toHaveLength(1);
+    expect(result.state.players[0]?.locationId).toBe("arkham");
+    const missing: GameContent = { ...bermudaContent, map: content.map };
+    expect(executeCommand(bermudaReady(), "guest", { type: "ADVANCE_MYTHOS" }, missing, createDeterministicEngineContext({})))
+      .toMatchObject({ ok: false, error: { code: "MYTHOS_CONTENT_MISSING" } });
+  });
+
   const elderThingsContent: GameContent = { ...content,
     map: { adjacentLocationIds: {}, routes: [], locationTypes: { arkham: "city", london: "city" } },
     monsters: [

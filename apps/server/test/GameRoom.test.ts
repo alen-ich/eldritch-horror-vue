@@ -219,6 +219,34 @@ describe("authoritative game room", () => {
     assert.equal(JSON.stringify(room.state).includes(resolved.privateState.tokenPoolById.monsters![0]!), false);
   });
 
+  it("resolves The Bermuda Triangle with server-owned rolls and public movement", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "mythos";
+    state.leadInvestigatorId = state.activePlayerId = state.players[0]!.id;
+    state.ancientOneId = "azathoth";
+    state.currentMythosCardId = "mythos_yellow_20";
+    state.currentMythosIconIndex = 3;
+    state.players.forEach(player => { player.locationId = "arkham"; player.delayed = false; });
+    internal.applyEngineState(state);
+    const denied = guest.waitForMessage(commandErrorMessageType);
+    sendCommand(room, guest, { type: "ADVANCE_MYTHOS" });
+    assert.equal((await denied as { code: string }).code, "WRONG_PHASE");
+    sendCommand(room, host, { type: "ADVANCE_MYTHOS" });
+    await room.waitForMessage(commandMessageType);
+    const resolved = internal.toEngineState();
+    assert.equal(resolved.stateVersion, state.stateVersion + 1);
+    for (const player of resolved.players) {
+      assert.ok(player.locationId === "arkham" || player.locationId === "space_8");
+      assert.equal(Boolean(player.delayed), player.locationId === "space_8");
+    }
+    assert.equal(resolved.replacementWindow, true);
+    assert.equal(room.state.currentMythosCardId, "");
+  });
+
   it("restores the Lead's private Omen of Good Fortune choice after reconnect", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });

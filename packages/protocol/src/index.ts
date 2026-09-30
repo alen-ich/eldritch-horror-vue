@@ -143,6 +143,7 @@ export type GameCommandMessage = z.infer<typeof gameCommandMessageSchema>;
 export type GameEvent =
   | { type: "LOCATION_ENCOUNTER_RESOLVED"; playerId: string; cardId: string; deck: "general" | "america" | "europe" | "asia_australia"; dice: number[]; successes: number }
   | { type: "MYTHOS_CARD_REVEALED"; cardId: string }
+  | { type: "BERMUDA_TRIANGLE_ROLLED"; playerId: string; die: number; moved: boolean }
   | { type: "CONDITION_BACK_RESOLVED"; playerId: string; conditionId: string; effect: "discard" | "recover_health_and_sanity_then_flip_front" | "gain_clues_then_flip_front" | "become_delayed_then_flip_front" | "discard_all_clues_then_discard" }
   | { type: "CONDITION_RECKONING_ROLLED"; playerId: string; conditionId: string; die: number; discarded: boolean }
   | { type: "CONDITION_RECOVERY_ROLLED"; playerId: string; conditionId: string; die: number; discarded: boolean }

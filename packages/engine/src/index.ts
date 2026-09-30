@@ -222,7 +222,7 @@ export interface GameContent {
   conditions?: readonly { id: string; kind: string; backEffect?: ConditionBackEffect }[];
   monsters?: readonly MonsterCombatDefinition[];
   ancientOnes?: Readonly<Partial<Record<AncientOneId, AncientSetup>>>;
-  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } | { type: "each_investigator_choose_world_fights_back" } | { type: "lead_gain_ally_asset" } | { type: "each_investigator_trade_debt_for_condition" } | { type: "discard_matching_gates_and_advance_doom" } | { type: "doom_two_unless_lead_gains_dark_pact" } | { type: "spawn_monster_on_each_cultist_space" } }[];
+  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } | { type: "each_investigator_choose_world_fights_back" } | { type: "lead_gain_ally_asset" } | { type: "each_investigator_trade_debt_for_condition" } | { type: "discard_matching_gates_and_advance_doom" } | { type: "doom_two_unless_lead_gains_dark_pact" } | { type: "spawn_monster_on_each_cultist_space" } | { type: "roll_each_investigator_for_bermuda_triangle" } }[];
   referenceCards?: readonly { playerCount: number; spawnClues: number; monsterSurge?: number; spawnGates?: number }[];
   map: GameMap;
   investigators: Readonly<Partial<Record<InvestigatorId, InvestigatorSetup>>>;
@@ -1103,6 +1103,11 @@ export function advanceMythosIcon(state: GameState, content: GameContent, contex
       if (!resolved.ok) return resolved;
       return finishMythosEvent(state, resolved.state, resolved.events, content);
     }
+    if (card.effect.type === "roll_each_investigator_for_bermuda_triangle") {
+      const resolved = resolveBermudaTriangle(state, content, context);
+      if (!resolved.ok) return resolved;
+      return finishMythosEvent(state, resolved.state, resolved.events, content);
+    }
     const resolved = card.effect.type === "lead_gain_condition"
       ? gainCondition(state, state.leadInvestigatorId, card.effect.kind, content, context)
       : resolveCounterclockwiseOmenCard(state, content);
@@ -1115,6 +1120,25 @@ export function advanceMythosIcon(state: GameState, content: GameContent, contex
   if (icon.type === "spawn_clues") return spawnMythosClues(state, content, context);
   if (icon.type === "spawn_gates") return resolveMythosSpawnGates(state, content, context);
   return failure("MYTHOS_EFFECT_UNSUPPORTED", "This printed Mythos icon is not executable yet.");
+}
+
+function resolveBermudaTriangle(state: GameState, content: GameContent, context: EngineContext): CommandResult {
+  if (!content.map.locationTypes.space_8) return failure("MYTHOS_CONTENT_MISSING", "The Bermuda Triangle destination is missing from the map.");
+  const next = structuredClone(state);
+  const events: GameEvent[] = [];
+  for (const playerId of mythosInvestigatorOrder(state)) {
+    const die = context.rollDie();
+    const moved = die <= 2;
+    events.push({ type: "BERMUDA_TRIANGLE_ROLLED", playerId, die, moved });
+    if (moved) {
+      const player = next.players.find(candidate => candidate.id === playerId)!;
+      player.locationId = "space_8";
+      player.delayed = true;
+      events.push({ type: "INVESTIGATOR_DELAYED", playerId });
+    }
+  }
+  next.stateVersion = state.stateVersion;
+  return success(next, events);
 }
 
 function resolveCallingTheElderThings(state: GameState, content: GameContent, context: EngineContext): CommandResult {
