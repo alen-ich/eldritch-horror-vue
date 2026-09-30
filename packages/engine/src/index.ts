@@ -222,7 +222,7 @@ export interface GameContent {
   conditions?: readonly { id: string; kind: string; backEffect?: ConditionBackEffect }[];
   monsters?: readonly MonsterCombatDefinition[];
   ancientOnes?: Readonly<Partial<Record<AncientOneId, AncientSetup>>>;
-  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } | { type: "each_investigator_choose_world_fights_back" } | { type: "lead_gain_ally_asset" } | { type: "each_investigator_trade_debt_for_condition" } | { type: "discard_matching_gates_and_advance_doom" } | { type: "doom_two_unless_lead_gains_dark_pact" } }[];
+  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } | { type: "each_investigator_choose_world_fights_back" } | { type: "lead_gain_ally_asset" } | { type: "each_investigator_trade_debt_for_condition" } | { type: "discard_matching_gates_and_advance_doom" } | { type: "doom_two_unless_lead_gains_dark_pact" } | { type: "spawn_monster_on_each_cultist_space" } }[];
   referenceCards?: readonly { playerCount: number; spawnClues: number; monsterSurge?: number; spawnGates?: number }[];
   map: GameMap;
   investigators: Readonly<Partial<Record<InvestigatorId, InvestigatorSetup>>>;
@@ -1098,6 +1098,11 @@ export function advanceMythosIcon(state: GameState, content: GameContent, contex
       };
       return success(next, []);
     }
+    if (card.effect.type === "spawn_monster_on_each_cultist_space") {
+      const resolved = resolveCallingTheElderThings(state, content, context);
+      if (!resolved.ok) return resolved;
+      return finishMythosEvent(state, resolved.state, resolved.events, content);
+    }
     const resolved = card.effect.type === "lead_gain_condition"
       ? gainCondition(state, state.leadInvestigatorId, card.effect.kind, content, context)
       : resolveCounterclockwiseOmenCard(state, content);
@@ -1110,6 +1115,23 @@ export function advanceMythosIcon(state: GameState, content: GameContent, contex
   if (icon.type === "spawn_clues") return spawnMythosClues(state, content, context);
   if (icon.type === "spawn_gates") return resolveMythosSpawnGates(state, content, context);
   return failure("MYTHOS_EFFECT_UNSUPPORTED", "This printed Mythos icon is not executable yet.");
+}
+
+function resolveCallingTheElderThings(state: GameState, content: GameContent, context: EngineContext): CommandResult {
+  const cultistSpaces = [...new Set((state.monsters ?? [])
+    .filter(monster => monster.monsterId === "monster_cultist")
+    .map(monster => monster.locationId))];
+  let next = structuredClone(state);
+  const events: GameEvent[] = [];
+  for (const locationId of cultistSpaces) {
+    if (!next.privateState.tokenPoolById.monsters?.length) break;
+    const spawned = spawnMonsterFromCup(next, locationId, content, context);
+    if (!spawned.ok) return spawned;
+    next = spawned.state;
+    events.push(...spawned.events);
+  }
+  next.stateVersion = state.stateVersion;
+  return success(next, events);
 }
 
 function canLeadGainDarkPact(state: GameState, content: GameContent): boolean {

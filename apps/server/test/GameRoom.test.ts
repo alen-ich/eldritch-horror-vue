@@ -190,6 +190,35 @@ describe("authoritative game room", () => {
     assert.equal(JSON.stringify(room.state).includes("gate_arkham"), false);
   });
 
+  it("spawns Calling the Elder Things Monsters without publishing the remaining cup", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "mythos";
+    state.leadInvestigatorId = state.activePlayerId = state.players[0]!.id;
+    state.ancientOneId = "azathoth";
+    state.currentMythosCardId = "mythos_green_18";
+    state.currentMythosIconIndex = 3;
+    state.monsters = [{ id: "cultist-one", monsterId: "monster_cultist", locationId: "arkham", damage: 0 }];
+    state.monsterLocationIds = ["arkham"];
+    state.privateState.tokenPoolById.monsters = ["monster_ghoul", "monster_deep_one"];
+    internal.applyEngineState(state);
+    const denied = guest.waitForMessage(commandErrorMessageType);
+    sendCommand(room, guest, { type: "ADVANCE_MYTHOS" });
+    assert.equal((await denied as { code: string }).code, "WRONG_PHASE");
+    sendCommand(room, host, { type: "ADVANCE_MYTHOS" });
+    await room.waitForMessage(commandMessageType);
+    const resolved = internal.toEngineState();
+    assert.equal(resolved.monsters?.length, 2);
+    assert.equal(resolved.monsters?.[1]?.locationId, "arkham");
+    assert.equal(resolved.privateState.tokenPoolById.monsters?.length, 1);
+    assert.equal(resolved.replacementWindow, true);
+    assert.equal(room.state.currentMythosCardId, "");
+    assert.equal(JSON.stringify(room.state).includes(resolved.privateState.tokenPoolById.monsters![0]!), false);
+  });
+
   it("restores the Lead's private Omen of Good Fortune choice after reconnect", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });

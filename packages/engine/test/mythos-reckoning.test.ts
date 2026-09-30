@@ -95,6 +95,64 @@ describe("guarded yellow Reckoning", () => {
 });
 
 describe("typed Mythos card text", () => {
+  const elderThingsContent: GameContent = { ...content,
+    map: { adjacentLocationIds: {}, routes: [], locationTypes: { arkham: "city", london: "city" } },
+    monsters: [
+      { id: "monster_cultist", type: "normal", horrorCheck: null, damageCheck: null, toughness: { base: 1, perInvestigator: 0 } },
+      { id: "monster_ghoul", type: "normal", horrorCheck: null, damageCheck: null, toughness: { base: 1, perInvestigator: 0 } },
+      { id: "monster_wraith", type: "normal", horrorCheck: null, damageCheck: null, toughness: { base: 1, perInvestigator: 0 }, spawnEffect: { type: "unsupported" } },
+    ],
+    mythosCards: [{ id: "mythos_green_18", color: "green", icons: [{ type: "advance_omen" }, { type: "monster_surge" }, { type: "spawn_clues" }], effect: { type: "spawn_monster_on_each_cultist_space" } }],
+  };
+
+  function elderThingsReady(): GameState {
+    const before = state();
+    before.currentMythosCardId = "mythos_green_18";
+    before.currentMythosIconIndex = 3;
+    before.monsters = [
+      { id: "cultist-a", monsterId: "monster_cultist", locationId: "arkham", damage: 0 },
+      { id: "cultist-b", monsterId: "monster_cultist", locationId: "arkham", damage: 0 },
+      { id: "cultist-c", monsterId: "monster_cultist", locationId: "london", damage: 0 },
+    ];
+    before.monsterLocationIds = ["arkham", "london"];
+    before.privateState.tokenPoolById.monsters = ["monster_ghoul", "monster_ghoul"];
+    return before;
+  }
+
+  it("spawns one Monster on each distinct Cultist space from the private cup", () => {
+    const before = elderThingsReady();
+    const result = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, elderThingsContent, createDeterministicEngineContext({ tokenIndexes: [0, 0], ids: ["spawn-a", "spawn-b"] }));
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.events.filter(event => event.type === "MONSTER_SPAWNED").map(event => event.spawnLocationId)).toEqual(["arkham", "london"]);
+    expect(result.state.monsters).toHaveLength(5);
+    expect(result.state.privateState.tokenPoolById.monsters).toEqual([]);
+    expect(result.state.replacementWindow).toBe(true);
+    expect(result.state.stateVersion).toBe(before.stateVersion + 1);
+    expect(before.monsters).toHaveLength(3);
+  });
+
+  it("resolves with no Cultists or an exhausted cup, without fabricating Monsters", () => {
+    const noCultists = elderThingsReady();
+    noCultists.monsters = [];
+    const emptyCup = elderThingsReady();
+    emptyCup.privateState.tokenPoolById.monsters = [];
+    for (const before of [noCultists, emptyCup]) {
+      const result = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, elderThingsContent, createDeterministicEngineContext({}));
+      if (!result.ok) throw new Error(result.error.message);
+      expect(result.events.some(event => event.type === "MONSTER_SPAWNED")).toBe(false);
+      expect(result.state.replacementWindow).toBe(true);
+    }
+  });
+
+  it("rejects an unsupported drawn spawn effect atomically", () => {
+    const before = elderThingsReady();
+    before.privateState.tokenPoolById.monsters = ["monster_ghoul", "monster_wraith"];
+    const result = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, elderThingsContent, createDeterministicEngineContext({ tokenIndexes: [0, 0], ids: ["spawn-a", "spawn-b"] }));
+    expect(result).toMatchObject({ ok: false, error: { code: "MONSTER_EFFECT_UNSUPPORTED" } });
+    expect(before.monsters).toHaveLength(3);
+    expect(before.privateState.tokenPoolById.monsters).toEqual(["monster_ghoul", "monster_wraith"]);
+  });
+
   const rallyContent: GameContent = { ...content,
     assets: [
       { id: "item", value: 1, traits: ["item"], engineEffects: [] },
