@@ -49,4 +49,6 @@ A guarded internal Reckoning step now advances the yellow icon cursor only when 
 
 An authenticated Lead Investigator may send `ADVANCE_MYTHOS` in Mythos. The server supplies randomness and resolves one verified icon per command, preserving the cursor across reconnects and rejecting stale state versions. Once the icons are complete, the command refuses unimplemented printed card text; the three typed Event cards above open replacement timing after their effects or owner choice. Encounter enters Mythos, but most printed Mythos text remains unimplemented.
 
+The web panel now displays the currently revealed public Mythos front, title, and resolved-icon count to all players. The Lead's next-step button is disabled while an owner choice is pending; the Omen choice itself appears in a reconnect-safe dialog. Private remaining deck order is never sent to the browser.
+
 A Mythos-only Omen transition reads the public active Gates, moves one space clockwise, and reduces Doom for matching symbols. Azathoth's Eldritch tokens on green also advance Doom, with its immediate loss at zero. Awakening for the other three Ancient Ones remains explicitly unsupported, so their Doom cannot silently cross zero. The transition resolves as the first icon of a green or yellow revealed Mythos card.

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { baseGameAncientOnes, baseGameAssets, baseGameBoardDimensions, baseGameConditions, baseGameInvestigators, baseGameLocations, baseGameMap, baseGameMonsters, baseGameMysteries, baseGameRoutes, baseGameScannedLocationEncounters, skillNames } from '@eldritch/content'
+import { baseGameAncientOnes, baseGameAssets, baseGameBoardDimensions, baseGameConditions, baseGameInvestigators, baseGameLocations, baseGameMap, baseGameMonsters, baseGameMythosCards, baseGameMysteries, baseGameRoutes, baseGameScannedLocationEncounters, skillNames } from '@eldritch/content'
 import type { AssetCardData, ConditionCard } from '@eldritch/content'
 import type { AncientOneId, InvestigatorId, LocationId } from '@eldritch/protocol'
 
@@ -35,6 +35,7 @@ const me = computed(() => game.players.value.find((player) => player.id === game
 const displayedPlayer = computed(() => game.players.value.find((player) => player.id === selectedPlayerId.value) ?? me.value ?? game.players.value[0])
 const displayedInvestigator = computed(() => displayedPlayer.value?.investigatorId ? investigatorById[displayedPlayer.value.investigatorId] : undefined)
 const activeMystery = computed(() => baseGameMysteries.find((mystery) => mystery.id === game.activeMysteryId.value))
+const currentMythosCard = computed(() => baseGameMythosCards.find(card => card.id === game.currentMythosCardId.value))
 const selectedByInvestigator = computed(() => new Map(game.players.value
   .filter((player) => player.investigatorId)
   .map((player) => [player.investigatorId, player])))
@@ -380,7 +381,12 @@ async function copyInvite() {
             <template v-if="isMyEncounter && !myEncounterMonsters.length"><button v-for="deck in encounterDecks" :key="deck.id" @click="game.send({ type: 'RESOLVE_LOCATION_ENCOUNTER', deck: deck.id })">{{ deck.label }}</button></template>
             <img v-if="latestEncounterCard" :src="latestEncounterCard.imageUrl" :alt="`${game.currentLocationEncounterCardId.value ? 'Active' : 'Last resolved'} encounter: ${latestEncounterCard.id}`" />
           </section>
-          <section v-if="game.phase.value === 'mythos' && game.activePlayerId.value === game.playerId.value" class="encounter-panel" aria-label="Mythos resolution"><strong>Mythos phase</strong><button v-if="game.investigatorLifecycle.value.replacementWindow" @click="game.send({ type: 'BEGIN_NEXT_ROUND' })">Begin next round</button><button v-else :disabled="Boolean(game.pendingDecision.value)" @click="game.send({ type: 'ADVANCE_MYTHOS' })">Resolve next printed icon</button><small>{{ game.investigatorLifecycle.value.replacementWindow ? 'Finish investigator replacement choices first.' : 'Unimplemented card text will stop resolution safely.' }}</small></section>
+          <section v-if="game.phase.value === 'mythos'" class="encounter-panel mythos-panel" aria-label="Mythos resolution">
+            <div><strong>Mythos phase</strong><small v-if="currentMythosCard">{{ currentMythosCard.title }} · {{ game.currentMythosIconIndex.value }}/{{ currentMythosCard.icons.length }} icons resolved</small><small v-else>{{ game.investigatorLifecycle.value.replacementWindow ? 'Card resolved. Finish any investigator replacements.' : 'Waiting for the Lead Investigator to reveal the next card.' }}</small></div>
+            <img v-if="currentMythosCard" :src="currentMythosCard.imageUrl" :alt="`Revealed Mythos card: ${currentMythosCard.title}`" />
+            <template v-if="game.activePlayerId.value === game.playerId.value"><button v-if="game.investigatorLifecycle.value.replacementWindow" @click="game.send({ type: 'BEGIN_NEXT_ROUND' })">Begin next round</button><button v-else :disabled="Boolean(game.pendingDecision.value)" @click="game.send({ type: 'ADVANCE_MYTHOS' })">{{ currentMythosCard && game.currentMythosIconIndex.value >= currentMythosCard.icons.length ? 'Resolve card text' : 'Resolve next printed icon' }}</button></template>
+            <small v-if="currentMythosCard && game.currentMythosIconIndex.value >= currentMythosCard.icons.length && currentMythosCard.effectModelStatus !== 'typed'">This card's printed effect is not implemented yet.</small>
+          </section>
           <section v-if="me?.delayed" class="travel-planner" aria-label="Delayed investigator">
             <strong>You are Delayed</strong><small>Your next action turn is spent standing up.</small>
             <button v-if="isMyTurn" @click="game.send({ type: 'END_ACTIONS' })">Stand up and end actions</button>
@@ -572,6 +578,7 @@ input:focus { border-color: #d5aa63; box-shadow: 0 0 0 3px #d5aa6322; }
 .doom-display { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 5; background: #07171cf2; padding: 8px; border-radius: 8px; color: #d5aa63; }
 .travel-planner { position: absolute; z-index: 7; top: 70px; left: 50%; transform: translateX(-50%); width: min(480px, calc(100% - 32px)); display: grid; gap: 9px; padding: 14px; background: #07171cf2; border: 1px solid #d5aa63; border-radius: 10px; box-shadow: 0 10px 30px #0009; }.travel-planner small { color: #c9d5d1; }.travel-planner div { display: flex; gap: 8px; }.travel-planner button { padding: 8px 12px; border: 1px solid #647e86; border-radius: 6px; color: #edf0df; background: #29464e; }.travel-planner button:last-child { background: #d5aa63; color: #142127; }
 .encounter-panel { position: absolute; z-index: 7; top: 70px; left: 18px; width: min(300px, calc(100% - 36px)); display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px; color: #edf0df; background: #07171cf2; border: 1px solid #d5aa63; border-radius: 10px; box-shadow: 0 10px 30px #0009; }.encounter-panel div { width: 100%; display: grid; gap: 4px; }.encounter-panel small { color: #c9d5d1; }.encounter-panel button { padding: 8px 12px; border: 1px solid #647e86; border-radius: 6px; color: #edf0df; background: #29464e; cursor: pointer; }.encounter-panel img { width: 90px; max-height: 130px; object-fit: contain; }.game-error { position: absolute; z-index: 12; top: 58px; left: 50%; transform: translateX(-50%); max-width: min(600px, calc(100vw - 24px)); padding: 8px 12px; background: #36191dec; border: 1px solid #ad6268; border-radius: 8px; }
+.mythos-panel { width: min(350px, calc(100% - 36px)); }.mythos-panel img { width: 160px; max-height: 250px; }
 .board-stage .board { display: block; width: 100%; height: 100%; max-height: 100%; border-radius: 12px; }
 .active-mystery { position: absolute; z-index: 5; top: 60px; right: 18px; min-width: 180px; padding: 10px 12px; color: #edf0df; background: #07171cee; border: 1px solid #6e5a36; border-radius: 10px; box-shadow: 0 8px 28px #0009; backdrop-filter: blur(10px); }.active-mystery div { display: grid; gap: 3px; }.active-mystery strong { font: 600 .78rem/1.15 Georgia, serif; }.active-mystery small { color: #91a7a8; font-size: .6rem; }
 .game-result { position: absolute; z-index: 8; top: 18px; left: 50%; min-width: 220px; display: grid; gap: 3px; padding: 11px 22px; transform: translateX(-50%); color: #f7efd8; background: #1b1510ee; border: 1px solid #d5aa63; border-radius: 10px; box-shadow: 0 10px 35px #000b, 0 0 24px #d5aa6330; text-align: center; backdrop-filter: blur(10px); }.game-result strong { color: #e9ce8b; font: 600 1.1rem Georgia, serif; }
