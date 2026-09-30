@@ -230,3 +230,64 @@ describe("Omen of Good Fortune owner choice", () => {
     expect(declined.events.some(event => event.type === "OMEN_MOVED")).toBe(false);
   });
 });
+
+describe("The World Fights Back", () => {
+  const cardContent: GameContent = { ...content, mythosCards: [{
+    id: "mythos_yellow_07", color: "yellow", icons: [{ type: "advance_omen" }, { type: "resolve_reckoning" }, { type: "spawn_gates" }],
+    effect: { type: "each_investigator_choose_world_fights_back" },
+  }], monsters: [...content.monsters!, { ...content.monsters![0]!, id: "monster_epic", type: "epic" }] };
+
+  function readyCard(): GameState {
+    const before = state();
+    before.currentMythosCardId = "mythos_yellow_07";
+    before.currentMythosIconIndex = 3;
+    before.players[0]!.locationId = "arkham";
+    before.players[0]!.health = 1;
+    before.players[0]!.maxHealth = 4;
+    before.players[1]!.locationId = "arkham";
+    before.players[1]!.sanity = 2;
+    before.players[1]!.maxSanity = 5;
+    before.monsters = [
+      { id: "normal-1", monsterId: "monster_ghoul", locationId: "arkham", damage: 0 },
+      { id: "epic-1", monsterId: "monster_epic", locationId: "arkham", damage: 0 },
+    ];
+    before.monsterLocationIds = ["arkham"];
+    return before;
+  }
+
+  it("offers private choices in Lead order and excludes Epic Monsters", () => {
+    const before = readyCard();
+    const offered = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, cardContent, createDeterministicEngineContext({ ids: ["choice-1"] }));
+    if (!offered.ok) throw new Error(offered.error.message);
+    expect(offered.state.pendingDecision).toMatchObject({ id: "choice-1", kind: "choose_world_fights_back", playerId: "guest", visibility: "owner", optionIds: ["recover_health", "recover_sanity", "monster:normal-1", "skip"] });
+    expect(executeCommand(offered.state, "host", { type: "RESOLVE_DECISION", decisionId: "choice-1", selectedOptionIds: ["skip"] }, cardContent))
+      .toMatchObject({ ok: false, error: { code: "NOT_DECISION_OWNER" } });
+    const recovered = executeCommand(offered.state, "guest", { type: "RESOLVE_DECISION", decisionId: "choice-1", selectedOptionIds: ["recover_sanity"] }, cardContent, createDeterministicEngineContext({ ids: ["choice-2"] }));
+    if (!recovered.ok) throw new Error(recovered.error.message);
+    expect(recovered.state.players[1]?.sanity).toBe(4);
+    expect(recovered.state.pendingDecision).toMatchObject({ id: "choice-2", playerId: "host" });
+    expect(recovered.state.currentMythosCardId).toBe("mythos_yellow_07");
+    expect(executeCommand(recovered.state, "guest", { type: "RESOLVE_DECISION", decisionId: "choice-1", selectedOptionIds: ["skip"] }, cardContent))
+      .toMatchObject({ ok: false, error: { code: "DECISION_ID_MISMATCH" } });
+    const discarded = executeCommand(recovered.state, "host", { type: "RESOLVE_DECISION", decisionId: "choice-2", selectedOptionIds: ["monster:normal-1"] }, cardContent, createDeterministicEngineContext({}));
+    if (!discarded.ok) throw new Error(discarded.error.message);
+    expect(discarded.state.monsters?.map(monster => monster.id)).toEqual(["epic-1"]);
+    expect(discarded.state.privateState.tokenPoolById.monsters).toEqual(["monster_ghoul"]);
+    expect(discarded.state.replacementWindow).toBe(true);
+    expect(discarded.state.currentMythosCardId).toBeUndefined();
+    expect(discarded.events).toContainEqual({ type: "MONSTER_DISCARDED", monsterInstanceId: "normal-1", monsterId: "monster_ghoul" });
+    expect(before.monsters).toHaveLength(2);
+  });
+
+  it("supports skipping and caps recovery at maximum", () => {
+    const before = readyCard();
+    const offered = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, cardContent, createDeterministicEngineContext({ ids: ["one"] }));
+    if (!offered.ok) throw new Error(offered.error.message);
+    const skipped = executeCommand(offered.state, "guest", { type: "RESOLVE_DECISION", decisionId: "one", selectedOptionIds: ["skip"] }, cardContent, createDeterministicEngineContext({ ids: ["two"] }));
+    if (!skipped.ok) throw new Error(skipped.error.message);
+    const healed = executeCommand(skipped.state, "host", { type: "RESOLVE_DECISION", decisionId: "two", selectedOptionIds: ["recover_health"] }, cardContent, createDeterministicEngineContext({}));
+    if (!healed.ok) throw new Error(healed.error.message);
+    expect(healed.state.players[0]?.health).toBe(3);
+    expect(healed.state.monsters).toHaveLength(2);
+  });
+});

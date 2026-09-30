@@ -221,7 +221,7 @@ export interface GameContent {
   conditions?: readonly { id: string; kind: string; backEffect?: ConditionBackEffect }[];
   monsters?: readonly MonsterCombatDefinition[];
   ancientOnes?: Readonly<Partial<Record<AncientOneId, AncientSetup>>>;
-  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } }[];
+  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } | { type: "each_investigator_choose_world_fights_back" } }[];
   referenceCards?: readonly { playerCount: number; spawnClues: number; monsterSurge?: number; spawnGates?: number }[];
   map: GameMap;
   investigators: Readonly<Partial<Record<InvestigatorId, InvestigatorSetup>>>;
@@ -1044,6 +1044,13 @@ export function advanceMythosIcon(state: GameState, content: GameContent, contex
       };
       return success(next, []);
     }
+    if (card.effect.type === "each_investigator_choose_world_fights_back") {
+      const ordered = mythosInvestigatorOrder(state);
+      if (!ordered.length) return finishMythosEvent(state, structuredClone(state), [], content);
+      const next = structuredClone(state);
+      next.pendingDecision = worldFightsBackDecision(next, ordered[0]!, content, context);
+      return success(next, []);
+    }
     const resolved = card.effect.type === "lead_gain_condition"
       ? gainCondition(state, state.leadInvestigatorId, card.effect.kind, content, context)
       : resolveCounterclockwiseOmenCard(state, content);
@@ -1056,6 +1063,25 @@ export function advanceMythosIcon(state: GameState, content: GameContent, contex
   if (icon.type === "spawn_clues") return spawnMythosClues(state, content, context);
   if (icon.type === "spawn_gates") return resolveMythosSpawnGates(state, content, context);
   return failure("MYTHOS_EFFECT_UNSUPPORTED", "This printed Mythos icon is not executable yet.");
+}
+
+function mythosInvestigatorOrder(state: GameState): string[] {
+  const leadIndex = state.players.findIndex(player => player.id === state.leadInvestigatorId);
+  if (leadIndex < 0) return [];
+  return [...state.players.slice(leadIndex), ...state.players.slice(0, leadIndex)]
+    .filter(player => !player.defeated && !player.eliminated).map(player => player.id);
+}
+
+function worldFightsBackDecision(state: GameState, playerId: string, content: GameContent, context: EngineContext): PendingDecision {
+  const player = state.players.find(candidate => candidate.id === playerId)!;
+  const discardable = (state.monsters ?? []).filter(instance => instance.locationId === player.locationId
+    && content.monsters?.some(monster => monster.id === instance.monsterId && monster.type === "normal"));
+  return {
+    id: context.createId(), kind: "choose_world_fights_back", playerId, visibility: "owner",
+    prompt: "The World Fights Back: recover 2 Health, recover 2 Sanity, discard one non-Epic Monster on your space, or skip.",
+    optionIds: ["recover_health", "recover_sanity", ...discardable.map(instance => `monster:${instance.id}`), "skip"],
+    minSelections: 1, maxSelections: 1, continuation: "mythos_world_fights_back",
+  };
 }
 
 function finishMythosEvent(previous: GameState, resolved: GameState, events: GameEvent[], content: GameContent): CommandResult {
@@ -1688,6 +1714,43 @@ export function executeCommand(
       if (position !== state.omen) {
         next.omen = position;
         events.push({ type: "OMEN_MOVED", position, symbol: omenTrack[position]!, direction: "chosen", doomAdvance: 0 });
+      }
+      return finishMythosEvent(state, next, events, content);
+    }
+    if (decision.continuation === "mythos_world_fights_back") {
+      const card = content.mythosCards?.find(candidate => candidate.id === state.currentMythosCardId);
+      const order = mythosInvestigatorOrder(state);
+      const position = order.indexOf(actorPlayerId);
+      if (state.phase !== "mythos" || card?.effect?.type !== "each_investigator_choose_world_fights_back"
+        || state.currentMythosIconIndex !== card.icons?.length || position < 0 || !context) {
+        return failure("MYTHOS_CONTENT_MISSING", "The choice is no longer attached to its Mythos card.");
+      }
+      const choice = selections[0]!;
+      const events: GameEvent[] = [{ type: "DECISION_RESOLVED", decisionId: decision.id, playerId: actorPlayerId, selectedOptionIds: [choice] }];
+      if (choice === "recover_health" || choice === "recover_sanity") {
+        const resource = choice === "recover_health" ? "health" : "sanity";
+        const maximum = actor[resource === "health" ? "maxHealth" : "maxSanity"] ?? actor[resource] ?? 0;
+        const recovered = recoverResource(actor[resource] ?? 0, maximum, 2);
+        actor[resource] = recovered.value;
+        events.push({ type: "INVESTIGATOR_RECOVERED", playerId: actorPlayerId, healthRecovered: resource === "health" ? recovered.amount : 0, sanityRecovered: resource === "sanity" ? recovered.amount : 0 });
+      } else if (choice.startsWith("monster:")) {
+        const monsterInstanceId = choice.slice("monster:".length);
+        const instance = next.monsters?.find(candidate => candidate.id === monsterInstanceId && candidate.locationId === actor.locationId);
+        const definition = content.monsters?.find(candidate => candidate.id === instance?.monsterId);
+        if (!instance || definition?.type !== "normal") return failure("INVALID_DECISION_SELECTION", "That Monster cannot be discarded from this space.");
+        const poolKey = instance.setAside ? `set_aside:${instance.monsterId}` : "monsters";
+        if (!next.privateState.tokenPoolById[poolKey]) return failure("MONSTER_CONTENT_MISSING", "The Monster token pool is unavailable.");
+        next.monsters = next.monsters!.filter(candidate => candidate.id !== instance.id);
+        next.monsterLocationIds = [...new Set(next.monsters.map(candidate => candidate.locationId))];
+        const pool = [...next.privateState.tokenPoolById[poolKey]!, instance.monsterId];
+        next.privateState.tokenPoolById[poolKey] = instance.setAside ? pool : context.shuffle(pool);
+        events.push({ type: "MONSTER_DISCARDED", monsterInstanceId: instance.id, monsterId: instance.monsterId });
+      } else if (choice !== "skip") return failure("INVALID_DECISION_SELECTION", "That Mythos choice is invalid.");
+      next.pendingDecision = undefined;
+      const followingPlayerId = order[position + 1];
+      if (followingPlayerId) {
+        next.pendingDecision = worldFightsBackDecision(next, followingPlayerId, content, context);
+        return success(next, events);
       }
       return finishMythosEvent(state, next, events, content);
     }

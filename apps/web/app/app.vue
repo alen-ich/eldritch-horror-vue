@@ -108,6 +108,11 @@ const privateOmenDecision = computed(() => {
   return decision && decision.playerId === game.playerId.value && 'optionIds' in decision
     && decision.kind === 'choose_omen_space' ? decision : undefined
 })
+const privateWorldFightsBackDecision = computed(() => {
+  const decision = game.pendingDecision.value
+  return decision && decision.playerId === game.playerId.value && 'optionIds' in decision
+    && decision.kind === 'choose_world_fights_back' ? decision : undefined
+})
 const selectedReserveValue = computed(() => selectedReserveAssetIds.value.reduce((total, id) => total + (assetById[id]?.value ?? 0), 0))
 const inspectedRoutes = computed(() => inspectedLocationId.value
   ? baseGameRoutes.filter((route) => route.source === inspectedLocationId.value || route.target === inspectedLocationId.value)
@@ -262,6 +267,19 @@ function resolveConditionRecovery() {
 function resolveOmenChoice(optionId: string) {
   const decision = privateOmenDecision.value
   if (decision?.optionIds.includes(optionId)) game.send({ type: 'RESOLVE_DECISION', decisionId: decision.id, selectedOptionIds: [optionId] })
+}
+
+function resolveWorldFightsBackChoice(optionId: string) {
+  const decision = privateWorldFightsBackDecision.value
+  if (decision?.optionIds.includes(optionId)) game.send({ type: 'RESOLVE_DECISION', decisionId: decision.id, selectedOptionIds: [optionId] })
+}
+
+function worldFightsBackOptionLabel(optionId: string): string {
+  if (optionId === 'recover_health') return 'Recover 2 Health'
+  if (optionId === 'recover_sanity') return 'Recover 2 Sanity'
+  if (optionId === 'skip') return 'Skip'
+  const instance = game.monsters.value.find(monster => monster.id === optionId.slice('monster:'.length))
+  return `Discard ${monsterById[instance?.monsterId ?? '']?.name ?? 'Monster'}`
 }
 
 async function copyInvite() {
@@ -432,6 +450,15 @@ async function copyInvite() {
               <button v-for="optionId in privateOmenDecision.optionIds" :key="optionId"
                 :aria-label="optionId === 'stay' ? 'Leave Omen where it is' : `Move Omen to ${['Green', 'Blue (first)', 'Red', 'Blue (second)'][Number(optionId.slice(5))]}`"
                 @click="resolveOmenChoice(optionId)">{{ optionId === 'stay' ? 'Stay' : `${Number(optionId.slice(5)) + 1}: ${['Green', 'Blue', 'Red', 'Blue'][Number(optionId.slice(5))]}` }}</button>
+            </div>
+          </section>
+          <section v-if="privateWorldFightsBackDecision" class="test-dialog" role="dialog" aria-modal="true" aria-labelledby="world-fights-back-title">
+            <p class="chapter">Mythos choice</p>
+            <h2 id="world-fights-back-title">The World Fights Back</h2>
+            <p>{{ privateWorldFightsBackDecision.prompt }}</p>
+            <div class="test-dice omen-choices" role="group" aria-label="Mythos choices">
+              <button v-for="optionId in privateWorldFightsBackDecision.optionIds" :key="optionId"
+                @click="resolveWorldFightsBackChoice(optionId)">{{ worldFightsBackOptionLabel(optionId) }}</button>
             </div>
           </section>
           <div v-if="game.gameResult.value" class="game-result" role="status">

@@ -177,7 +177,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       return;
     }
     const context = parsed.data.command.type === "ADVANCE_MYTHOS" || parsed.data.command.type === "RESOLVE_LOCATION_ENCOUNTER" || parsed.data.command.type === "FIGHT_MONSTER"
-      || (parsed.data.command.type === "RESOLVE_DECISION" && this.activeTest?.continuation === "location_encounter")
+      || (parsed.data.command.type === "RESOLVE_DECISION" && (this.activeTest?.continuation === "location_encounter" || this.pendingDecision?.continuation === "mythos_world_fights_back"))
       ? serverMythosContext()
       : parsed.data.command.type === "START_GAME"
       ? createDeterministicEngineContext({

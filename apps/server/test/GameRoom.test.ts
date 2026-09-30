@@ -181,6 +181,45 @@ describe("authoritative game room", () => {
     assert.equal(internal.toEngineState().replacementWindow, true);
   });
 
+  it("passes The World Fights Back choices between owners without exposing private options", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "mythos";
+    state.leadInvestigatorId = state.activePlayerId = state.players[0]!.id;
+    state.ancientOneId = "azathoth";
+    state.currentMythosCardId = "mythos_yellow_07";
+    state.currentMythosIconIndex = 3;
+    state.players[0]!.health = 1;
+    state.players[0]!.maxHealth = 4;
+    state.players[1]!.sanity = 1;
+    state.players[1]!.maxSanity = 4;
+    internal.applyEngineState(state);
+    const hostDecisionMessage = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "ADVANCE_MYTHOS" });
+    await room.waitForMessage(commandMessageType);
+    const first = await hostDecisionMessage as PendingDecision;
+    assert.equal(first.kind, "choose_world_fights_back");
+    assert.equal(first.playerId, state.players[0]!.id);
+    assert.equal(JSON.stringify(room.state).includes("recover_health"), false);
+    const denied = guest.waitForMessage(commandErrorMessageType);
+    sendCommand(room, guest, { type: "RESOLVE_DECISION", decisionId: first.id, selectedOptionIds: ["recover_health"] });
+    assert.equal((await denied as { code: string }).code, "NOT_DECISION_OWNER");
+    const guestDecisionMessage = guest.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: first.id, selectedOptionIds: ["recover_health"] });
+    await room.waitForMessage(commandMessageType);
+    const second = await guestDecisionMessage as PendingDecision;
+    assert.equal(second.playerId, state.players[1]!.id);
+    assert.equal(internal.toEngineState().players[0]!.health, 3);
+    sendCommand(room, guest, { type: "RESOLVE_DECISION", decisionId: second.id, selectedOptionIds: ["recover_sanity"] });
+    await room.waitForMessage(commandMessageType);
+    assert.equal(internal.toEngineState().players[1]!.sanity, 3);
+    assert.equal(room.state.currentMythosCardId, "");
+    assert.equal(internal.toEngineState().replacementWindow, true);
+  });
+
   it("resolves a supported location encounter through the room and leaves unsupported cards private", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });

@@ -23,7 +23,8 @@ describe("base-game Mythos cards", () => {
     expect(baseGameMythosCards.find(card => card.id === "mythos_green_04")?.effect).toEqual({ type: "lead_gain_condition", kind: "blessed" });
     expect(baseGameMythosCards.find(card => card.id === "mythos_yellow_13")?.effect).toEqual({ type: "move_omen_counterclockwise_then_advance_doom_for_gates" });
     expect(baseGameMythosCards.find(card => card.id === "mythos_yellow_08")?.effect).toEqual({ type: "lead_choose_omen_without_doom" });
-    expect(baseGameMythosCards.filter(card => card.effectModelStatus === "typed")).toHaveLength(3);
+    expect(baseGameMythosCards.find(card => card.id === "mythos_yellow_07")?.effect).toEqual({ type: "each_investigator_choose_world_fights_back" });
+    expect(baseGameMythosCards.filter(card => card.effectModelStatus === "typed")).toHaveLength(4);
   });
 
   it("records the printed left-to-right icon sequence and blue-card token operands", () => {
