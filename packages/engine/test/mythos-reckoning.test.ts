@@ -95,6 +95,64 @@ describe("guarded yellow Reckoning", () => {
 });
 
 describe("typed Mythos card text", () => {
+  const rallyContent: GameContent = { ...content,
+    assets: [
+      { id: "item", value: 1, traits: ["item"], engineEffects: [] },
+      { id: "ally_first", value: 1, traits: ["ally"], engineEffects: [] },
+      { id: "ally_second", value: 2, traits: ["ally"], engineEffects: [] },
+    ],
+    mythosCards: [{ id: "mythos_yellow_05", color: "yellow", icons: [{ type: "advance_omen" }, { type: "resolve_reckoning" }, { type: "spawn_gates" }], effect: { type: "lead_gain_ally_asset" } }],
+  };
+
+  function rallyReady(): GameState {
+    const before = state();
+    before.currentMythosCardId = "mythos_yellow_05";
+    before.currentMythosIconIndex = 3;
+    before.privateState.deckOrderById.assets = ["item", "ally_first", "ally_second"];
+    return before;
+  }
+
+  it("grants the first shuffled Ally in the private deck, removes its physical copy, and reshuffles", () => {
+    const before = rallyReady();
+    const result = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, rallyContent, createDeterministicEngineContext({ shuffleIndexes: [0] }));
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.state.players[1]?.assetIds).toEqual(["ally_first"]);
+    expect(result.state.players[0]?.assetIds).toEqual([]);
+    expect(result.state.privateState.deckOrderById.assets).toEqual(["ally_second", "item"]);
+    expect(result.events).toContainEqual({ type: "ASSET_GAINED", playerId: "guest", assetId: "ally_first", source: "mythos" });
+    expect(result.state.currentMythosCardId).toBeUndefined();
+    expect(result.state.replacementWindow).toBe(true);
+    expect(before.privateState.deckOrderById.assets).toEqual(["item", "ally_first", "ally_second"]);
+  });
+
+  it("searches the discard pile only after the deck and resolves if all Allies are unavailable", () => {
+    const fromDiscard = rallyReady();
+    fromDiscard.privateState.deckOrderById.assets = ["item"];
+    fromDiscard.assetDiscardIds = ["ally_second", "ally_first"];
+    const gained = executeCommand(fromDiscard, "guest", { type: "ADVANCE_MYTHOS" }, rallyContent, createDeterministicEngineContext({}));
+    if (!gained.ok) throw new Error(gained.error.message);
+    expect(gained.state.players[1]?.assetIds).toEqual(["ally_second"]);
+    expect(gained.state.assetDiscardIds).toEqual(["ally_first"]);
+    const unavailable = rallyReady();
+    unavailable.privateState.deckOrderById.assets = ["item"];
+    unavailable.players[0]!.assetIds = ["ally_first", "ally_second"];
+    const empty = executeCommand(unavailable, "guest", { type: "ADVANCE_MYTHOS" }, rallyContent, createDeterministicEngineContext({}));
+    if (!empty.ok) throw new Error(empty.error.message);
+    expect(empty.events.some(event => event.type === "ASSET_GAINED")).toBe(false);
+    expect(empty.state.replacementWindow).toBe(true);
+  });
+
+  it("fails without initialized Asset deck or trait metadata, keeping the card in play", () => {
+    const before = rallyReady();
+    delete before.privateState.deckOrderById.assets;
+    expect(executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, rallyContent, createDeterministicEngineContext({})))
+      .toMatchObject({ ok: false, error: { code: "ASSET_CONTENT_MISSING" } });
+    const incomplete: GameContent = { ...rallyContent, assets: rallyContent.assets.map(asset => ({ ...asset, traits: undefined })) };
+    const ready = rallyReady();
+    expect(executeCommand(ready, "guest", { type: "ADVANCE_MYTHOS" }, incomplete, createDeterministicEngineContext({})))
+      .toMatchObject({ ok: false, error: { code: "ASSET_CONTENT_MISSING" } });
+    expect(ready.currentMythosCardId).toBe("mythos_yellow_05");
+  });
   it("grants the Lead a physical Blessed Condition, closes the card, and opens replacement timing", () => {
     const before = state();
     before.currentMythosCardId = "mythos_green_04";

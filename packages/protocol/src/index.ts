@@ -164,7 +164,7 @@ export type GameEvent =
   | { type: "INVESTIGATOR_SELECTED"; playerId: string; investigatorId: InvestigatorId }
   | { type: "ANCIENT_ONE_SELECTED"; ancientOneId: AncientOneId }
   | { type: "GAME_STARTED"; activePlayerId: string }
-  | { type: "ASSET_GAINED"; playerId: string; assetId: string; source: "setup" | "reserve" }
+  | { type: "ASSET_GAINED"; playerId: string; assetId: string; source: "setup" | "reserve" | "mythos" }
   | { type: "ASSET_DISCARDED"; playerId: string; assetId: string; reason: "on_gain_effect" }
   | { type: "TEST_ROLLED"; testId: string; playerId: string; skill: SkillId; modifier: number; dice: number[]; successes: number }
   | { type: "CLUE_SPENT_FOR_REROLL"; testId: string; playerId: string; dieIndex: number }

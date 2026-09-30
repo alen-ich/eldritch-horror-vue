@@ -24,4 +24,6 @@ Four cards have explicit typed effect nodes and executable tests:
 
 The engine never parses `effectText`. Cards without typed nodes remain display-only until their prerequisites and verified handlers are present.
 
+The scanned **Rally the People** Mythos Event now grants the Lead the first Ally in the private shuffled Asset deck, falling back to the discard pile if necessary and reshuffling the deck after a gain. The granted physical card leaves its source pile and becomes the Lead's possession; if no Ally remains in either pile, no card is gained. The remaining deck order is never synchronized to clients.
+
 Run `pnpm assets:generate` to reproduce the 40 WebP fronts and shared back under `apps/web/public/cards/assets` from the committed sources.

@@ -221,11 +221,11 @@ export interface GameContent {
   conditions?: readonly { id: string; kind: string; backEffect?: ConditionBackEffect }[];
   monsters?: readonly MonsterCombatDefinition[];
   ancientOnes?: Readonly<Partial<Record<AncientOneId, AncientSetup>>>;
-  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } | { type: "each_investigator_choose_world_fights_back" } }[];
+  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } | { type: "each_investigator_choose_world_fights_back" } | { type: "lead_gain_ally_asset" } }[];
   referenceCards?: readonly { playerCount: number; spawnClues: number; monsterSurge?: number; spawnGates?: number }[];
   map: GameMap;
   investigators: Readonly<Partial<Record<InvestigatorId, InvestigatorSetup>>>;
-  assets: readonly { id: string; value: number; engineEffects: readonly AssetEngineEffect[] }[];
+  assets: readonly { id: string; value: number; traits?: readonly string[]; engineEffects: readonly AssetEngineEffect[] }[];
   mysteryIdsByAncientOne: Readonly<Partial<Record<AncientOneId, readonly string[]>>>;
   mysteryTargetsById: Readonly<Record<string, "investigator_count" | "half_investigator_count" | "twice_investigator_count" | "one">>;
 }
@@ -1051,6 +1051,11 @@ export function advanceMythosIcon(state: GameState, content: GameContent, contex
       next.pendingDecision = worldFightsBackDecision(next, ordered[0]!, content, context);
       return success(next, []);
     }
+    if (card.effect.type === "lead_gain_ally_asset") {
+      const gained = gainAllyAssetFromDeck(state, state.leadInvestigatorId, content, context);
+      if (!gained.ok) return gained;
+      return finishMythosEvent(state, gained.state, gained.events, content);
+    }
     const resolved = card.effect.type === "lead_gain_condition"
       ? gainCondition(state, state.leadInvestigatorId, card.effect.kind, content, context)
       : resolveCounterclockwiseOmenCard(state, content);
@@ -1063,6 +1068,26 @@ export function advanceMythosIcon(state: GameState, content: GameContent, contex
   if (icon.type === "spawn_clues") return spawnMythosClues(state, content, context);
   if (icon.type === "spawn_gates") return resolveMythosSpawnGates(state, content, context);
   return failure("MYTHOS_EFFECT_UNSUPPORTED", "This printed Mythos icon is not executable yet.");
+}
+
+function gainAllyAssetFromDeck(state: GameState, playerId: string, content: GameContent, context: EngineContext): CommandResult {
+  const lead = state.players.find(player => player.id === playerId && !player.defeated && !player.eliminated);
+  if (!lead) return failure("INVESTIGATOR_DEFEATED", "The Lead Investigator is unavailable to gain an Ally.");
+  const deck = state.privateState.deckOrderById.assets;
+  if (!deck) return failure("ASSET_CONTENT_MISSING", "The Asset deck is not initialized.");
+  const isAlly = (id: string) => content.assets.find(asset => asset.id === id)?.traits?.includes("ally") ?? false;
+  if ([...deck, ...state.assetDiscardIds].some(id => !content.assets.some(asset => asset.id === id && asset.traits))) {
+    return failure("ASSET_CONTENT_MISSING", "An Asset in the deck or discard pile lacks trait content.");
+  }
+  const deckIndex = deck.findIndex(isAlly);
+  const discardIndex = state.assetDiscardIds.findIndex(isAlly);
+  const next = structuredClone(state);
+  const assetId = deckIndex >= 0 ? next.privateState.deckOrderById.assets!.splice(deckIndex, 1)[0]
+    : discardIndex >= 0 ? next.assetDiscardIds.splice(discardIndex, 1)[0] : undefined;
+  if (!assetId) return success(next, []);
+  next.privateState.deckOrderById.assets = context.shuffle(next.privateState.deckOrderById.assets!);
+  next.players.find(player => player.id === playerId)!.assetIds.push(assetId);
+  return success(next, [{ type: "ASSET_GAINED", playerId, assetId, source: "mythos" }]);
 }
 
 function mythosInvestigatorOrder(state: GameState): string[] {

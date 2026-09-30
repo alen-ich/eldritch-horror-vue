@@ -71,7 +71,7 @@ const baseGameContent: GameContent = {
     startingAssetIds: investigator.startingAssetIds,
     startingClues: investigator.startingClues,
   }])),
-  assets: baseGameAssets.map(({ id, value, engineEffects }) => ({ id, value, engineEffects })),
+  assets: baseGameAssets.map(({ id, value, traits, engineEffects }) => ({ id, value, traits, engineEffects })),
   mysteryIdsByAncientOne: Object.fromEntries(
     ["cthulhu", "shub_niggurath", "yog_sothoth", "azathoth"].map((ancientOneId) => [
       ancientOneId,

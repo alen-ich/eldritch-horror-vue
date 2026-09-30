@@ -114,6 +114,31 @@ describe("authoritative game room", () => {
     assert.equal(internal.toEngineState().replacementWindow, false);
   });
 
+  it("grants Rally the People's Ally from the private Asset deck to the Lead only", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    const hostId = state.players[0]!.id;
+    state.phase = "mythos";
+    state.activePlayerId = state.leadInvestigatorId = hostId;
+    state.currentMythosCardId = "mythos_yellow_05";
+    state.currentMythosIconIndex = 3;
+    state.privateState.deckOrderById.assets = ["asset_axe", "asset_personal_assistant"];
+    internal.applyEngineState(state);
+    assert.equal(JSON.stringify(room.state).includes("asset_axe"), false);
+    sendCommand(room, host, { type: "ADVANCE_MYTHOS" });
+    await room.waitForMessage(commandMessageType);
+    const resolved = internal.toEngineState();
+    assert.deepEqual(resolved.players[0]!.assetIds, ["asset_personal_assistant"]);
+    assert.deepEqual(resolved.players[1]!.assetIds, []);
+    assert.deepEqual(resolved.privateState.deckOrderById.assets, ["asset_axe"]);
+    assert.equal(room.state.currentMythosCardId, "");
+    assert.equal(resolved.replacementWindow, true);
+    assert.equal(JSON.stringify(room.state).includes("asset_axe"), false);
+  });
+
   it("resolves Perplexing Stars from the public Gate symbols without exposing deck order", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
