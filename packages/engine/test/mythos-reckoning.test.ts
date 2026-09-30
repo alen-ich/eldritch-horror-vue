@@ -95,6 +95,81 @@ describe("guarded yellow Reckoning", () => {
 });
 
 describe("typed Mythos card text", () => {
+  const consumesContent: GameContent = { ...content,
+    map: { adjacentLocationIds: {}, routes: [], locationTypes: { arkham: "city", london: "city" } },
+    gates: [{ id: "gate_arkham", locationId: "arkham", omenSymbol: "eclipse" }, { id: "gate_london", locationId: "london", omenSymbol: "constellation" }],
+    mythosCards: [{ id: "mythos_green_03", color: "green", icons: [{ type: "advance_omen" }, { type: "monster_surge" }, { type: "spawn_clues" }], effect: { type: "group_discard_gate_then_advance_doom_if_nonmatching" } }],
+  };
+
+  function consumesReady(): GameState {
+    const before = state();
+    before.currentMythosCardId = "mythos_green_03";
+    before.currentMythosIconIndex = 3;
+    before.omen = 2;
+    before.doom = 8;
+    before.activeGateIds = ["gate_arkham", "gate_london"];
+    before.privateState.deckOrderById.gates = ["gate_other"];
+    return before;
+  }
+
+  it("lets the Lead choose an active matching Gate for discard without advancing Doom", () => {
+    const before = consumesReady();
+    const offered = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, consumesContent, createDeterministicEngineContext({ ids: ["gate-choice"] }));
+    if (!offered.ok) throw new Error(offered.error.message);
+    expect(offered.state.pendingDecision).toMatchObject({ kind: "choose_that_which_consumes_gate", playerId: "guest", visibility: "owner", optionIds: ["gate_arkham", "gate_london"] });
+    expect(executeCommand(offered.state, "host", { type: "RESOLVE_DECISION", decisionId: "gate-choice", selectedOptionIds: ["gate_arkham"] }, consumesContent))
+      .toMatchObject({ ok: false, error: { code: "NOT_DECISION_OWNER" } });
+    const resolved = executeCommand(offered.state, "guest", { type: "RESOLVE_DECISION", decisionId: "gate-choice", selectedOptionIds: ["gate_arkham"] }, consumesContent, createDeterministicEngineContext({}));
+    if (!resolved.ok) throw new Error(resolved.error.message);
+    expect(resolved.state.activeGateIds).toEqual(["gate_london"]);
+    expect(resolved.state.discardedGateIds).toEqual(["gate_arkham"]);
+    expect(resolved.state.doom).toBe(8);
+    expect(resolved.events).toContainEqual({ type: "GATE_DISCARDED", gateId: "gate_arkham", locationId: "arkham" });
+    expect(resolved.state.replacementWindow).toBe(true);
+    expect(before.activeGateIds).toEqual(["gate_arkham", "gate_london"]);
+  });
+
+  it("advances Doom for a nonmatching Gate and recycles discard when the stack is empty", () => {
+    const before = consumesReady();
+    before.privateState.deckOrderById.gates = [];
+    const offered = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, consumesContent, createDeterministicEngineContext({ ids: ["gate-choice"] }));
+    if (!offered.ok) throw new Error(offered.error.message);
+    const resolved = executeCommand(offered.state, "guest", { type: "RESOLVE_DECISION", decisionId: "gate-choice", selectedOptionIds: ["gate_london"] }, consumesContent, createDeterministicEngineContext({}));
+    if (!resolved.ok) throw new Error(resolved.error.message);
+    expect(resolved.state.doom).toBe(7);
+    expect(resolved.state.privateState.deckOrderById.gates).toEqual(["gate_london"]);
+    expect(resolved.state.discardedGateIds).toEqual([]);
+    expect(resolved.events).toContainEqual({ type: "DOOM_ADVANCED", amount: 1, newDoom: 7 });
+  });
+
+  it("resolves without Gates and guards unsupported awakening", () => {
+    const empty = consumesReady();
+    empty.activeGateIds = [];
+    const resolved = executeCommand(empty, "guest", { type: "ADVANCE_MYTHOS" }, consumesContent, createDeterministicEngineContext({}));
+    if (!resolved.ok) throw new Error(resolved.error.message);
+    expect(resolved.state.replacementWindow).toBe(true);
+    const before = consumesReady();
+    before.ancientOneId = "cthulhu";
+    before.doom = 1;
+    const offered = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, consumesContent, createDeterministicEngineContext({ ids: ["gate-choice"] }));
+    if (!offered.ok) throw new Error(offered.error.message);
+    expect(executeCommand(offered.state, "guest", { type: "RESOLVE_DECISION", decisionId: "gate-choice", selectedOptionIds: ["gate_london"] }, consumesContent, createDeterministicEngineContext({})))
+      .toMatchObject({ ok: false, error: { code: "AWAKENING_UNSUPPORTED" } });
+    expect(offered.state.activeGateIds).toEqual(["gate_arkham", "gate_london"]);
+  });
+
+  it("ends Azathoth at zero Doom after discarding a nonmatching Gate", () => {
+    const before = consumesReady();
+    before.doom = 1;
+    const offered = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, consumesContent, createDeterministicEngineContext({ ids: ["gate-choice"] }));
+    if (!offered.ok) throw new Error(offered.error.message);
+    const resolved = executeCommand(offered.state, "guest", { type: "RESOLVE_DECISION", decisionId: "gate-choice", selectedOptionIds: ["gate_london"] }, consumesContent, createDeterministicEngineContext({}));
+    if (!resolved.ok) throw new Error(resolved.error.message);
+    expect(resolved.state.gameResult).toBe("investigators_lose");
+    expect(resolved.state.stateVersion).toBe(offered.state.stateVersion + 1);
+    expect(resolved.state.activeGateIds).toEqual(["gate_arkham"]);
+  });
+
   const bermudaContent: GameContent = { ...content,
     map: { adjacentLocationIds: {}, routes: [], locationTypes: { arkham: "city", space_8: "sea" } },
     mythosCards: [{ id: "mythos_yellow_20", color: "yellow", icons: [{ type: "advance_omen" }, { type: "resolve_reckoning" }, { type: "spawn_gates" }], effect: { type: "roll_each_investigator_for_bermuda_triangle" } }],

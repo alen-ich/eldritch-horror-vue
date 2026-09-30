@@ -30,7 +30,8 @@ describe("base-game Mythos cards", () => {
     expect(baseGameMythosCards.find(card => card.id === "mythos_yellow_10")?.effect).toEqual({ type: "doom_two_unless_lead_gains_dark_pact" });
     expect(baseGameMythosCards.find(card => card.id === "mythos_green_18")?.effect).toEqual({ type: "spawn_monster_on_each_cultist_space" });
     expect(baseGameMythosCards.find(card => card.id === "mythos_yellow_20")?.effect).toEqual({ type: "roll_each_investigator_for_bermuda_triangle" });
-    expect(baseGameMythosCards.filter(card => card.effectModelStatus === "typed")).toHaveLength(10);
+    expect(baseGameMythosCards.find(card => card.id === "mythos_green_03")?.effect).toEqual({ type: "group_discard_gate_then_advance_doom_if_nonmatching" });
+    expect(baseGameMythosCards.filter(card => card.effectModelStatus === "typed")).toHaveLength(11);
   });
 
   it("records the printed left-to-right icon sequence and blue-card token operands", () => {

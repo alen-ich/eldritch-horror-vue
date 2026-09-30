@@ -247,6 +247,43 @@ describe("authoritative game room", () => {
     assert.equal(room.state.currentMythosCardId, "");
   });
 
+  it("keeps That Which Consumes Gate choices owner-only and discards the selected Gate", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "mythos";
+    state.leadInvestigatorId = state.activePlayerId = state.players[0]!.id;
+    state.ancientOneId = "azathoth";
+    state.omen = 2;
+    state.doom = 8;
+    state.currentMythosCardId = "mythos_green_03";
+    state.currentMythosIconIndex = 3;
+    state.activeGateIds = ["gate_arkham", "gate_london"];
+    state.privateState.deckOrderById.gates = ["gate_tokyo"];
+    internal.applyEngineState(state);
+    const ownerOptions = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "ADVANCE_MYTHOS" });
+    await room.waitForMessage(commandMessageType);
+    const choice = await ownerOptions as PendingDecision;
+    assert.equal(choice.kind, "choose_that_which_consumes_gate");
+    assert.deepEqual(choice.optionIds, ["gate_arkham", "gate_london"]);
+    assert.equal(room.state.pendingDecision?.optionCount, 2);
+    const denied = guest.waitForMessage(commandErrorMessageType);
+    sendCommand(room, guest, { type: "RESOLVE_DECISION", decisionId: choice.id, selectedOptionIds: ["gate_london"] });
+    assert.equal((await denied as { code: string }).code, "NOT_DECISION_OWNER");
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: choice.id, selectedOptionIds: ["gate_london"] });
+    await room.waitForMessage(commandMessageType);
+    const resolved = internal.toEngineState();
+    assert.deepEqual(resolved.activeGateIds, ["gate_arkham"]);
+    assert.deepEqual(resolved.discardedGateIds, ["gate_london"]);
+    assert.equal(resolved.doom, 7);
+    assert.equal(resolved.replacementWindow, true);
+    assert.deepEqual(resolved.privateState.deckOrderById.gates, ["gate_tokyo"]);
+    assert.equal(JSON.stringify(room.state).includes("gate_tokyo"), false);
+  });
+
   it("restores the Lead's private Omen of Good Fortune choice after reconnect", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });

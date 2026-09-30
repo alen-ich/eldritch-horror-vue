@@ -222,7 +222,7 @@ export interface GameContent {
   conditions?: readonly { id: string; kind: string; backEffect?: ConditionBackEffect }[];
   monsters?: readonly MonsterCombatDefinition[];
   ancientOnes?: Readonly<Partial<Record<AncientOneId, AncientSetup>>>;
-  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } | { type: "each_investigator_choose_world_fights_back" } | { type: "lead_gain_ally_asset" } | { type: "each_investigator_trade_debt_for_condition" } | { type: "discard_matching_gates_and_advance_doom" } | { type: "doom_two_unless_lead_gains_dark_pact" } | { type: "spawn_monster_on_each_cultist_space" } | { type: "roll_each_investigator_for_bermuda_triangle" } }[];
+  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } | { type: "each_investigator_choose_world_fights_back" } | { type: "lead_gain_ally_asset" } | { type: "each_investigator_trade_debt_for_condition" } | { type: "discard_matching_gates_and_advance_doom" } | { type: "doom_two_unless_lead_gains_dark_pact" } | { type: "spawn_monster_on_each_cultist_space" } | { type: "roll_each_investigator_for_bermuda_triangle" } | { type: "group_discard_gate_then_advance_doom_if_nonmatching" } }[];
   referenceCards?: readonly { playerCount: number; spawnClues: number; monsterSurge?: number; spawnGates?: number }[];
   map: GameMap;
   investigators: Readonly<Partial<Record<InvestigatorId, InvestigatorSetup>>>;
@@ -1108,6 +1108,22 @@ export function advanceMythosIcon(state: GameState, content: GameContent, contex
       if (!resolved.ok) return resolved;
       return finishMythosEvent(state, resolved.state, resolved.events, content);
     }
+    if (card.effect.type === "group_discard_gate_then_advance_doom_if_nonmatching") {
+      if (state.omen === undefined || !Number.isInteger(state.omen) || state.omen < 0 || state.omen >= omenTrack.length
+        || state.doom === undefined || !state.ancientOneId) return failure("OMEN_CONTENT_MISSING", "Omen, Doom, or Ancient One setup is missing.");
+      if (!state.privateState.deckOrderById.gates) return failure("GATE_CONTENT_MISSING", "The Gate stack is not initialized.");
+      if ((state.activeGateIds ?? []).some(id => !content.gates?.some(gate => gate.id === id && content.map.locationTypes[gate.locationId]))) {
+        return failure("GATE_CONTENT_MISSING", "An active Gate is missing from content.");
+      }
+      if (!state.activeGateIds?.length) return finishMythosEvent(state, structuredClone(state), [], content);
+      const next = structuredClone(state);
+      next.pendingDecision = {
+        id: context.createId(), kind: "choose_that_which_consumes_gate", playerId: state.leadInvestigatorId, visibility: "owner",
+        prompt: "That Which Consumes: agree as a group on one Gate to discard. A Gate not matching the current Omen advances Doom by 1.",
+        optionIds: [...state.activeGateIds], minSelections: 1, maxSelections: 1, continuation: "mythos_that_which_consumes",
+      };
+      return success(next, []);
+    }
     const resolved = card.effect.type === "lead_gain_condition"
       ? gainCondition(state, state.leadInvestigatorId, card.effect.kind, content, context)
       : resolveCounterclockwiseOmenCard(state, content);
@@ -1982,6 +1998,47 @@ export function executeCommand(
         return success(resolved.state, events);
       }
       return finishMythosEvent(state, resolved.state, events, content);
+    }
+    if (decision.continuation === "mythos_that_which_consumes") {
+      const card = content.mythosCards?.find(candidate => candidate.id === state.currentMythosCardId);
+      if (state.phase !== "mythos" || card?.effect?.type !== "group_discard_gate_then_advance_doom_if_nonmatching"
+        || state.currentMythosIconIndex !== card.icons?.length || state.leadInvestigatorId !== actorPlayerId || !context
+        || state.omen === undefined || !Number.isInteger(state.omen) || state.omen < 0 || state.omen >= omenTrack.length
+        || state.doom === undefined || !state.ancientOneId) {
+        return failure("MYTHOS_CONTENT_MISSING", "The Gate choice is no longer attached to its Mythos card.");
+      }
+      const gateId = selections[0]!;
+      const gate = content.gates?.find(candidate => candidate.id === gateId);
+      if (!state.activeGateIds?.includes(gateId) || !gate || !content.map.locationTypes[gate.locationId]) {
+        return failure("GATE_CONTENT_MISSING", "The chosen Gate is no longer active or is missing from content.");
+      }
+      if (!next.privateState.deckOrderById.gates) return failure("GATE_CONTENT_MISSING", "The Gate stack is not initialized.");
+      const advancesDoom = gate.omenSymbol !== omenTrack[state.omen];
+      if (advancesDoom && state.doom <= 1 && state.ancientOneId !== "azathoth") {
+        return failure("AWAKENING_UNSUPPORTED", "Ancient One awakening is not implemented yet.");
+      }
+      next.activeGateIds = next.activeGateIds!.filter(id => id !== gateId);
+      next.discardedGateIds = [...(next.discardedGateIds ?? []), gateId];
+      const events: GameEvent[] = [
+        { type: "DECISION_RESOLVED", decisionId: decision.id, playerId: actorPlayerId, selectedOptionIds: [gateId] },
+        { type: "GATE_DISCARDED", gateId, locationId: gate.locationId },
+      ];
+      if (!next.privateState.deckOrderById.gates.length) {
+        next.privateState.deckOrderById.gates = context.shuffle(next.discardedGateIds);
+        next.discardedGateIds = [];
+      }
+      next.pendingDecision = undefined;
+      if (advancesDoom) {
+        next.doom = Math.max(0, state.doom - 1);
+        events.push({ type: "DOOM_ADVANCED", amount: 1, newDoom: next.doom });
+        if (next.doom === 0 && state.ancientOneId === "azathoth") {
+          next.gameResult = "investigators_lose";
+          events.push({ type: "GAME_ENDED", result: "investigators_lose", reason: "azathoth_awakened" });
+          next.stateVersion = state.stateVersion;
+          return success(next, events);
+        }
+      }
+      return finishMythosEvent(state, next, events, content);
     }
     if (decision.continuation === "test_reroll") {
       const test = state.activeTest;

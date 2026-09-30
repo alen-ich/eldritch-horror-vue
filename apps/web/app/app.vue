@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { baseGameAncientOnes, baseGameAssets, baseGameBoardDimensions, baseGameConditions, baseGameInvestigators, baseGameLocations, baseGameMap, baseGameMonsters, baseGameMythosCards, baseGameMysteries, baseGameRoutes, baseGameScannedLocationEncounters, skillNames } from '@eldritch/content'
+import { baseGameAncientOnes, baseGameAssets, baseGameBoardDimensions, baseGameConditions, baseGameGates, baseGameInvestigators, baseGameLocations, baseGameMap, baseGameMonsters, baseGameMythosCards, baseGameMysteries, baseGameRoutes, baseGameScannedLocationEncounters, skillNames } from '@eldritch/content'
 import type { AssetCardData, ConditionCard } from '@eldritch/content'
 import type { AncientOneId, InvestigatorId, LocationId } from '@eldritch/protocol'
 
@@ -31,6 +31,7 @@ const investigatorById = Object.fromEntries(baseGameInvestigators.map((investiga
 const assetById = Object.fromEntries(baseGameAssets.map((asset) => [asset.id, asset]))
 const conditionById = Object.fromEntries(baseGameConditions.flatMap((card) => [[card.id, card], [`condition_${card.kind}`, card]]))
 const monsterById = Object.fromEntries(baseGameMonsters.map(monster => [monster.id, monster]))
+const gateById = Object.fromEntries(baseGameGates.map(gate => [gate.id, gate]))
 const me = computed(() => game.players.value.find((player) => player.id === game.playerId.value))
 const displayedPlayer = computed(() => game.players.value.find((player) => player.id === selectedPlayerId.value) ?? me.value ?? game.players.value[0])
 const displayedInvestigator = computed(() => displayedPlayer.value?.investigatorId ? investigatorById[displayedPlayer.value.investigatorId] : undefined)
@@ -122,6 +123,11 @@ const privateDesperateTimesDecision = computed(() => {
   const decision = game.pendingDecision.value
   return decision && decision.playerId === game.playerId.value && 'optionIds' in decision
     && decision.kind === 'choose_desperate_times' ? decision : undefined
+})
+const privateThatWhichConsumesDecision = computed(() => {
+  const decision = game.pendingDecision.value
+  return decision && decision.playerId === game.playerId.value && 'optionIds' in decision
+    && decision.kind === 'choose_that_which_consumes_gate' ? decision : undefined
 })
 const selectedReserveValue = computed(() => selectedReserveAssetIds.value.reduce((total, id) => total + (assetById[id]?.value ?? 0), 0))
 const inspectedRoutes = computed(() => inspectedLocationId.value
@@ -292,6 +298,11 @@ function resolveDebtTradeChoice(optionId: string) {
 function resolveDesperateTimesChoice(optionId: string) {
   const decision = privateDesperateTimesDecision.value
   if (decision?.optionIds.includes(optionId)) game.send({ type: 'RESOLVE_DECISION', decisionId: decision.id, selectedOptionIds: [optionId] })
+}
+
+function resolveThatWhichConsumesChoice(gateId: string) {
+  const decision = privateThatWhichConsumesDecision.value
+  if (decision?.optionIds.includes(gateId)) game.send({ type: 'RESOLVE_DECISION', decisionId: decision.id, selectedOptionIds: [gateId] })
 }
 
 function worldFightsBackOptionLabel(optionId: string): string {
@@ -497,6 +508,15 @@ async function copyInvite() {
             <div class="test-dice omen-choices" role="group" aria-label="Desperate Times choices">
               <button v-for="optionId in privateDesperateTimesDecision.optionIds" :key="optionId"
                 @click="resolveDesperateTimesChoice(optionId)">{{ optionId === 'gain_dark_pact' ? 'Gain a Dark Pact' : 'Advance Doom by 2' }}</button>
+            </div>
+          </section>
+          <section v-if="privateThatWhichConsumesDecision" class="test-dialog" role="dialog" aria-modal="true" aria-labelledby="that-which-consumes-title">
+            <p class="chapter">Group Mythos choice</p>
+            <h2 id="that-which-consumes-title">That Which Consumes</h2>
+            <p>{{ privateThatWhichConsumesDecision.prompt }}</p>
+            <div class="test-dice omen-choices" role="group" aria-label="Active Gates">
+              <button v-for="gateId in privateThatWhichConsumesDecision.optionIds" :key="gateId"
+                @click="resolveThatWhichConsumesChoice(gateId)">Discard {{ gateById[gateId]?.name ?? gateId }} Gate · {{ gateById[gateId]?.omenSymbol ?? 'unknown' }}</button>
             </div>
           </section>
           <div v-if="game.gameResult.value" class="game-result" role="status">
