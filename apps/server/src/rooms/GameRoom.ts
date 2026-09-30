@@ -217,7 +217,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
   private toEngineState(): GameState {
     const monsters = JSON.parse(this.state.monsters) as NonNullable<GameState["monsters"]>;
     return {
-      ...JSON.parse(this.state.investigatorLifecycle) as Pick<GameState, "pendingDefeat" | "defeatedInvestigators" | "replacementWindow" | "awakened">,
+      ...JSON.parse(this.state.investigatorLifecycle) as Pick<GameState, "pendingDefeat" | "pendingMythosDamage" | "defeatedInvestigators" | "replacementWindow" | "awakened">,
       doom: this.state.doom,
       omen: this.state.omen,
       greenOmenTokens: this.state.greenOmenTokens,
@@ -283,7 +283,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
 
   private applyEngineState(engineState: GameState): void {
     if (engineState.phase !== "lobby") this.autoDispose = false;
-    this.state.investigatorLifecycle = JSON.stringify({ pendingDefeat: engineState.pendingDefeat, defeatedInvestigators: engineState.defeatedInvestigators, replacementWindow: engineState.replacementWindow, awakened: engineState.awakened });
+    this.state.investigatorLifecycle = JSON.stringify({ pendingDefeat: engineState.pendingDefeat, pendingMythosDamage: engineState.pendingMythosDamage, defeatedInvestigators: engineState.defeatedInvestigators, replacementWindow: engineState.replacementWindow, awakened: engineState.awakened });
     this.state.doom = engineState.doom ?? 0;
     this.state.omen = engineState.omen ?? 0;
     this.state.greenOmenTokens = engineState.greenOmenTokens ?? 0;

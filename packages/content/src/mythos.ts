@@ -19,7 +19,7 @@ export interface MythosCardData {
   source: { sheet: string; row: number; column: number };
   verification: "verified_from_scan";
   effectModelStatus: "transcription_pending" | "typed";
-  effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } | { type: "each_investigator_choose_world_fights_back" } | { type: "lead_gain_ally_asset" } | { type: "each_investigator_trade_debt_for_condition" } | { type: "discard_matching_gates_and_advance_doom" } | { type: "doom_two_unless_lead_gains_dark_pact" } | { type: "spawn_monster_on_each_cultist_space" } | { type: "roll_each_investigator_for_bermuda_triangle" } | { type: "group_discard_gate_then_advance_doom_if_nonmatching" };
+  effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } | { type: "each_investigator_choose_world_fights_back" } | { type: "lead_gain_ally_asset" } | { type: "each_investigator_trade_debt_for_condition" } | { type: "discard_matching_gates_and_advance_doom" } | { type: "doom_two_unless_lead_gains_dark_pact" } | { type: "spawn_monster_on_each_cultist_space" } | { type: "roll_each_investigator_for_bermuda_triangle" } | { type: "group_discard_gate_then_advance_doom_if_nonmatching" } | { type: "torn_asunder" };
 }
 
 const blueTitles = [
@@ -83,6 +83,7 @@ function scanCard(
       : id === "mythos_green_18" ? { type: "spawn_monster_on_each_cultist_space" as const }
       : id === "mythos_yellow_20" ? { type: "roll_each_investigator_for_bermuda_triangle" as const }
       : id === "mythos_green_03" ? { type: "group_discard_gate_then_advance_doom_if_nonmatching" as const }
+      : id === "mythos_green_08" ? { type: "torn_asunder" as const }
       : undefined;
   return { id, color, title, kind, icons: iconsFor(color, index), imageUrl: `/cards/mythos/${id}.webp`, source, verification: "verified_from_scan", effectModelStatus: effect ? "typed" : "transcription_pending", ...(effect ? { effect } : {}) };
 }
@@ -125,6 +126,7 @@ const mythosCardSchema = z.object({
     z.object({ type: z.literal("spawn_monster_on_each_cultist_space") }).strict(),
     z.object({ type: z.literal("roll_each_investigator_for_bermuda_triangle") }).strict(),
     z.object({ type: z.literal("group_discard_gate_then_advance_doom_if_nonmatching") }).strict(),
+    z.object({ type: z.literal("torn_asunder") }).strict(),
   ]).optional(),
 }).strict();
 
@@ -152,7 +154,8 @@ export function validateMythosContent(cards: readonly MythosCardData[]): void {
     if (card.id === "mythos_green_18" && card.effect?.type !== "spawn_monster_on_each_cultist_space") throw new Error(`Invalid Mythos effect for ${card.id}.`);
     if (card.id === "mythos_yellow_20" && card.effect?.type !== "roll_each_investigator_for_bermuda_triangle") throw new Error(`Invalid Mythos effect for ${card.id}.`);
     if (card.id === "mythos_green_03" && card.effect?.type !== "group_discard_gate_then_advance_doom_if_nonmatching") throw new Error(`Invalid Mythos effect for ${card.id}.`);
-    if (!(["mythos_green_03", "mythos_green_04", "mythos_green_14", "mythos_green_18", "mythos_yellow_05", "mythos_yellow_06", "mythos_yellow_07", "mythos_yellow_08", "mythos_yellow_10", "mythos_yellow_13", "mythos_yellow_20"].includes(card.id)) && card.effect) throw new Error(`Unexpected Mythos effect transcription for ${card.id}.`);
+    if (card.id === "mythos_green_08" && card.effect?.type !== "torn_asunder") throw new Error(`Invalid Mythos effect for ${card.id}.`);
+    if (!(["mythos_green_03", "mythos_green_04", "mythos_green_08", "mythos_green_14", "mythos_green_18", "mythos_yellow_05", "mythos_yellow_06", "mythos_yellow_07", "mythos_yellow_08", "mythos_yellow_10", "mythos_yellow_13", "mythos_yellow_20"].includes(card.id)) && card.effect) throw new Error(`Unexpected Mythos effect transcription for ${card.id}.`);
     const colorIndex = Number.parseInt(card.id.slice(`mythos_${card.color}_`.length), 10) - 1;
     if (JSON.stringify(card.icons) !== JSON.stringify(iconsFor(card.color, colorIndex))) {
       throw new Error(`Invalid icon sequence for ${card.id}.`);

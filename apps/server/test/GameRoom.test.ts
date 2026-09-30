@@ -284,6 +284,44 @@ describe("authoritative game room", () => {
     assert.equal(JSON.stringify(room.state).includes("gate_tokyo"), false);
   });
 
+  it("resumes Torn Asunder damage after the first investigator resolves defeat", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "mythos";
+    state.leadInvestigatorId = state.activePlayerId = state.players[0]!.id;
+    state.ancientOneId = "azathoth";
+    state.omen = 2;
+    state.doom = 8;
+    state.currentMythosCardId = "mythos_green_08";
+    state.currentMythosIconIndex = 3;
+    state.activeGateIds = ["gate_arkham", "gate_rome"];
+    state.players[0] = { ...state.players[0]!, investigatorId: "jim_culver", locationId: "arkham", health: 1, sanity: 4, clues: 0 };
+    state.players[1] = { ...state.players[1]!, investigatorId: "trish_scarborough", locationId: "london", health: 4, sanity: 4, clues: 0 };
+    delete state.privateState.tokenPoolById.clues;
+    internal.applyEngineState(state);
+    sendCommand(room, host, { type: "ADVANCE_MYTHOS" });
+    await room.waitForMessage(commandMessageType);
+    const paused = internal.toEngineState();
+    assert.equal(paused.pendingDefeat?.playerId, state.players[0]?.id);
+    assert.deepEqual(paused.pendingMythosDamage?.remainingPlayerIds, [state.players[1]?.id]);
+    assert.equal(paused.players[1]?.health, 4);
+    assert.equal(room.state.currentMythosCardId, "mythos_green_08");
+    const denied = guest.waitForMessage(commandErrorMessageType);
+    sendCommand(room, guest, { type: "ADVANCE_MYTHOS" });
+    assert.equal((await denied as { code: string }).code, "WRONG_PHASE");
+    sendCommand(room, host, { type: "RESOLVE_DEFEAT", cityId: "arkham", cause: "health", leadPlayerId: state.players[1]!.id });
+    await room.waitForMessage(commandMessageType);
+    const resolved = internal.toEngineState();
+    assert.equal(resolved.players[1]?.health, 2);
+    assert.equal(resolved.pendingDefeat, undefined);
+    assert.equal(resolved.pendingMythosDamage, undefined);
+    assert.equal(resolved.replacementWindow, true);
+    assert.equal(room.state.currentMythosCardId, "");
+  });
+
   it("restores the Lead's private Omen of Good Fortune choice after reconnect", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });

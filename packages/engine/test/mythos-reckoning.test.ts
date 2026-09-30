@@ -95,6 +95,99 @@ describe("guarded yellow Reckoning", () => {
 });
 
 describe("typed Mythos card text", () => {
+  const tornContent: GameContent = { ...content,
+    map: { adjacentLocationIds: {}, routes: [], locationTypes: { arkham: "city", london: "city", rome: "city" } },
+    gates: [
+      { id: "gate_arkham", locationId: "arkham", omenSymbol: "eclipse" },
+      { id: "gate_rome", locationId: "rome", omenSymbol: "eclipse" },
+      { id: "gate_london", locationId: "london", omenSymbol: "constellation" },
+    ],
+    investigators: { akachi_onyele: { startingLocationId: "arkham", health: 5, sanity: 7, skills: { lore: 3, influence: 2, observation: 2, strength: 2, will: 4 }, startingAssetIds: [], startingClues: 0 } },
+    mythosCards: [{ id: "mythos_green_08", color: "green", icons: [{ type: "advance_omen" }, { type: "monster_surge" }, { type: "spawn_clues" }], effect: { type: "torn_asunder" } }],
+  };
+
+  function tornReady(): GameState {
+    const before = state();
+    before.currentMythosCardId = "mythos_green_08";
+    before.currentMythosIconIndex = 3;
+    before.omen = 2;
+    before.doom = 8;
+    before.activeGateIds = ["gate_arkham", "gate_rome"];
+    before.players[1] = { ...before.players[1]!, investigatorId: "jim_culver", locationId: "arkham", health: 4, sanity: 4 };
+    before.players[0] = { ...before.players[0]!, investigatorId: "trish_scarborough", locationId: "london", health: 4, sanity: 4 };
+    return before;
+  }
+
+  it("loses Health equal to matching Gates and closes after nonlethal losses", () => {
+    const before = tornReady();
+    const resolved = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, tornContent, createDeterministicEngineContext({}));
+    if (!resolved.ok) throw new Error(resolved.error.message);
+    expect(resolved.state.players.map(player => player.health)).toEqual([2, 2]);
+    expect(resolved.events.filter(event => event.type === "INVESTIGATOR_DAMAGED").map(event => event.playerId)).toEqual(["guest", "host"]);
+    expect(resolved.state.pendingMythosDamage).toBeUndefined();
+    expect(resolved.state.replacementWindow).toBe(true);
+    expect(resolved.state.stateVersion).toBe(before.stateVersion + 1);
+  });
+
+  it("advances Omen rather than Doom when no Gate matches", () => {
+    const before = tornReady();
+    before.omen = 0;
+    const resolved = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, tornContent, createDeterministicEngineContext({}));
+    if (!resolved.ok) throw new Error(resolved.error.message);
+    expect(resolved.state.omen).toBe(1);
+    expect(resolved.state.doom).toBe(8);
+    expect(resolved.state.players.map(player => player.health)).toEqual([4, 4]);
+    expect(resolved.state.replacementWindow).toBe(true);
+  });
+
+  it("persists the remaining damage through one defeat choice before finishing the card", () => {
+    const before = tornReady();
+    before.players[1]!.health = 1;
+    const first = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, tornContent, createDeterministicEngineContext({}));
+    if (!first.ok) throw new Error(first.error.message);
+    expect(first.state.pendingDefeat?.playerId).toBe("guest");
+    expect(first.state.pendingMythosDamage?.remainingPlayerIds).toEqual(["host"]);
+    expect(first.state.players[0]?.health).toBe(4);
+    expect(first.state.currentMythosCardId).toBe("mythos_green_08");
+    expect(executeCommand(first.state, "host", { type: "RESOLVE_DEFEAT", cityId: "arkham", cause: "health" }, tornContent))
+      .toMatchObject({ ok: false, error: { code: "INVALID_DEFEAT" } });
+    const second = executeCommand(first.state, "guest", { type: "RESOLVE_DEFEAT", cityId: "arkham", cause: "health", leadPlayerId: "host" }, tornContent);
+    if (!second.ok) throw new Error(second.error.message);
+    expect(second.state.players[0]?.health).toBe(2);
+    expect(second.state.pendingDefeat).toBeUndefined();
+    expect(second.state.pendingMythosDamage).toBeUndefined();
+    expect(second.state.replacementWindow).toBe(true);
+    expect(second.state.stateVersion).toBe(first.state.stateVersion + 1);
+    expect(second.state.leadInvestigatorId).toBe("host");
+  });
+
+  it("queues two defeats and preserves a Lead seat for replacement", () => {
+    const before = tornReady();
+    before.players.forEach(player => { player.health = 1; });
+    const first = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, tornContent, createDeterministicEngineContext({}));
+    if (!first.ok) throw new Error(first.error.message);
+    const second = executeCommand(first.state, "guest", { type: "RESOLVE_DEFEAT", cityId: "arkham", cause: "health", leadPlayerId: "host" }, tornContent);
+    if (!second.ok) throw new Error(second.error.message);
+    expect(second.state.pendingDefeat?.playerId).toBe("host");
+    expect(second.state.pendingMythosDamage?.remainingPlayerIds).toEqual([]);
+    const completed = executeCommand(second.state, "host", { type: "RESOLVE_DEFEAT", cityId: "london", cause: "health" }, tornContent);
+    if (!completed.ok) throw new Error(completed.error.message);
+    expect(completed.state.pendingDefeat).toBeUndefined();
+    expect(completed.state.leadInvestigatorId).toBe("host");
+    expect(completed.state.replacementWindow).toBe(true);
+  });
+
+  it("rejects unsupported awakening before applying any group damage", () => {
+    const before = tornReady();
+    before.ancientOneId = "cthulhu";
+    before.doom = 1;
+    before.players[1]!.health = 1;
+    expect(executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, tornContent, createDeterministicEngineContext({})))
+      .toMatchObject({ ok: false, error: { code: "AWAKENING_UNSUPPORTED" } });
+    expect(before.players[1]?.health).toBe(1);
+    expect(before.pendingMythosDamage).toBeUndefined();
+  });
+
   const consumesContent: GameContent = { ...content,
     map: { adjacentLocationIds: {}, routes: [], locationTypes: { arkham: "city", london: "city" } },
     gates: [{ id: "gate_arkham", locationId: "arkham", omenSymbol: "eclipse" }, { id: "gate_london", locationId: "london", omenSymbol: "constellation" }],

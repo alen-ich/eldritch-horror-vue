@@ -143,6 +143,7 @@ export interface MonsterCombatDefinition {
 export interface GameState {
   defeatedInvestigators?: { investigatorId: InvestigatorId; locationId: LocationId; cause: "health" | "sanity"; assetIds: string[]; clues: number; travelTickets: TravelTicketType[] }[];
   pendingDefeat?: { playerId: string; cityIds: LocationId[]; causes: ("health" | "sanity")[] };
+  pendingMythosDamage?: { cardId: string; remainingPlayerIds: string[]; healthLoss: number };
   replacementWindow?: boolean;
   awakened?: boolean;
   doom?: number;
@@ -222,7 +223,7 @@ export interface GameContent {
   conditions?: readonly { id: string; kind: string; backEffect?: ConditionBackEffect }[];
   monsters?: readonly MonsterCombatDefinition[];
   ancientOnes?: Readonly<Partial<Record<AncientOneId, AncientSetup>>>;
-  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } | { type: "each_investigator_choose_world_fights_back" } | { type: "lead_gain_ally_asset" } | { type: "each_investigator_trade_debt_for_condition" } | { type: "discard_matching_gates_and_advance_doom" } | { type: "doom_two_unless_lead_gains_dark_pact" } | { type: "spawn_monster_on_each_cultist_space" } | { type: "roll_each_investigator_for_bermuda_triangle" } | { type: "group_discard_gate_then_advance_doom_if_nonmatching" } }[];
+  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } | { type: "each_investigator_choose_world_fights_back" } | { type: "lead_gain_ally_asset" } | { type: "each_investigator_trade_debt_for_condition" } | { type: "discard_matching_gates_and_advance_doom" } | { type: "doom_two_unless_lead_gains_dark_pact" } | { type: "spawn_monster_on_each_cultist_space" } | { type: "roll_each_investigator_for_bermuda_triangle" } | { type: "group_discard_gate_then_advance_doom_if_nonmatching" } | { type: "torn_asunder" } }[];
   referenceCards?: readonly { playerCount: number; spawnClues: number; monsterSurge?: number; spawnGates?: number }[];
   map: GameMap;
   investigators: Readonly<Partial<Record<InvestigatorId, InvestigatorSetup>>>;
@@ -1124,6 +1125,7 @@ export function advanceMythosIcon(state: GameState, content: GameContent, contex
       };
       return success(next, []);
     }
+    if (card.effect.type === "torn_asunder") return resolveTornAsunder(state, content);
     const resolved = card.effect.type === "lead_gain_condition"
       ? gainCondition(state, state.leadInvestigatorId, card.effect.kind, content, context)
       : resolveCounterclockwiseOmenCard(state, content);
@@ -1136,6 +1138,52 @@ export function advanceMythosIcon(state: GameState, content: GameContent, contex
   if (icon.type === "spawn_clues") return spawnMythosClues(state, content, context);
   if (icon.type === "spawn_gates") return resolveMythosSpawnGates(state, content, context);
   return failure("MYTHOS_EFFECT_UNSUPPORTED", "This printed Mythos icon is not executable yet.");
+}
+
+function resolveTornAsunder(state: GameState, content: GameContent): CommandResult {
+  if (state.omen === undefined || !Number.isInteger(state.omen) || state.omen < 0 || state.omen >= omenTrack.length
+    || state.doom === undefined || !state.ancientOneId) return failure("OMEN_CONTENT_MISSING", "Omen, Doom, or Ancient One setup is missing.");
+  const activeGates = (state.activeGateIds ?? []).map(id => content.gates?.find(gate => gate.id === id));
+  if (activeGates.some(gate => !gate || !content.map.locationTypes[gate.locationId])) return failure("GATE_CONTENT_MISSING", "An active Gate is missing from content.");
+  const healthLoss = activeGates.filter(gate => gate?.omenSymbol === omenTrack[state.omen!]).length;
+  if (healthLoss === 0) {
+    const advanced = advanceOmen(state, content);
+    if (!advanced.ok || advanced.state.gameResult) return advanced;
+    return finishMythosEvent(state, advanced.state, advanced.events, content);
+  }
+  const ordered = mythosInvestigatorOrder(state);
+  const affected = ordered.map(id => state.players.find(player => player.id === id)!);
+  if (affected.some(player => !player.investigatorId || !player.locationId || player.health === undefined || player.sanity === undefined)) {
+    return failure("INVESTIGATOR_CONTENT_MISSING", "An affected investigator is missing Health or location setup.");
+  }
+  if (state.ancientOneId !== "azathoth" && affected.filter(player => player.health! <= healthLoss).length >= state.doom) {
+    return failure("AWAKENING_UNSUPPORTED", "Ancient One awakening is not implemented yet.");
+  }
+  const next = structuredClone(state);
+  next.pendingMythosDamage = { cardId: state.currentMythosCardId!, remainingPlayerIds: ordered, healthLoss };
+  return continueMythosDamage(next, content);
+}
+
+function continueMythosDamage(state: GameState, content: GameContent): CommandResult {
+  const pending = state.pendingMythosDamage;
+  const card = content.mythosCards?.find(candidate => candidate.id === state.currentMythosCardId);
+  if (state.phase !== "mythos" || state.pendingDefeat || !pending || pending.cardId !== state.currentMythosCardId
+    || card?.effect?.type !== "torn_asunder" || state.currentMythosIconIndex !== card.icons?.length) {
+    return failure("MYTHOS_CONTENT_MISSING", "The remaining damage is no longer attached to Torn Asunder.");
+  }
+  let next = structuredClone(state);
+  const events: GameEvent[] = [];
+  while (next.pendingMythosDamage?.remainingPlayerIds.length) {
+    const playerId = next.pendingMythosDamage.remainingPlayerIds.shift()!;
+    const damaged = damageInvestigator(next, playerId, pending.healthLoss, 0, content);
+    if (!damaged.ok) return damaged;
+    next = damaged.state;
+    next.stateVersion = state.stateVersion;
+    events.push(...damaged.events);
+    if (next.pendingDefeat || next.gameResult) return success(next, events);
+  }
+  next.pendingMythosDamage = undefined;
+  return finishMythosEvent(state, next, events, content);
 }
 
 function resolveBermudaTriangle(state: GameState, content: GameContent, context: EngineContext): CommandResult {
@@ -1793,7 +1841,7 @@ export function executeCommand(
     actor.sanity = 0;
     actor.locationId = command.cityId;
     next.pendingDefeat = undefined;
-    const newLeadInvestigatorId = state.leadInvestigatorId === actorPlayerId ? command.leadPlayerId ?? survivors[0]?.id : next.leadInvestigatorId;
+    const newLeadInvestigatorId = state.leadInvestigatorId === actorPlayerId ? command.leadPlayerId ?? survivors[0]?.id ?? state.leadInvestigatorId : next.leadInvestigatorId;
     const events: GameEvent[] = [];
     if (state.phase === "encounter" && state.activePlayerId === actorPlayerId) {
       const advanced = advanceEncounterInvestigator(next, actorPlayerId);
@@ -1807,6 +1855,12 @@ export function executeCommand(
       advanceActionInvestigator(next, actorIndex, events);
     } else if (state.activePlayerId === actorPlayerId) next.activePlayerId = newLeadInvestigatorId;
     next.leadInvestigatorId = newLeadInvestigatorId;
+    if (next.pendingMythosDamage) {
+      next.stateVersion = state.stateVersion;
+      const continued = continueMythosDamage(next, content);
+      if (!continued.ok) return continued;
+      return { ...continued, events: [...events, ...continued.events] };
+    }
     return success(next, events);
   }
   if (state.pendingDefeat) return failure("INVALID_DEFEAT", "Resolve the pending defeat first.");
