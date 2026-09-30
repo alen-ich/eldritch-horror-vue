@@ -35,6 +35,7 @@ export const pendingDecisionKinds = [
   "choose_omen_space",
   "choose_world_fights_back",
   "trade_debt_for_condition",
+  "choose_desperate_times",
 ] as const;
 export type PendingDecisionKind = (typeof pendingDecisionKinds)[number];
 
@@ -48,7 +49,7 @@ export const pendingDecisionSchema = z.object({
   minSelections: z.number().int().nonnegative(),
   maxSelections: z.number().int().positive(),
   selectionBudget: z.number().int().nonnegative().optional(),
-  continuation: z.enum(["test_reroll", "acquire_assets_purchase", "acquire_assets_discard", "condition_rest_recovery", "mythos_omen_choice", "mythos_world_fights_back", "mythos_debt_trade"]).optional(),
+  continuation: z.enum(["test_reroll", "acquire_assets_purchase", "acquire_assets_discard", "condition_rest_recovery", "mythos_omen_choice", "mythos_world_fights_back", "mythos_debt_trade", "mythos_desperate_times"]).optional(),
 }).strict().superRefine((decision, context) => {
   if (new Set(decision.optionIds).size !== decision.optionIds.length) {
     context.addIssue({ code: "custom", message: "Decision option IDs must be unique.", path: ["optionIds"] });
@@ -153,6 +154,7 @@ export type GameEvent =
   | { type: "MONSTER_SPAWNED"; monsterInstanceId: string; monsterId: string; locationId: LocationId; spawnLocationId: LocationId }
   | { type: "GATE_OPENED"; gateId: string; locationId: LocationId }
   | { type: "GATE_DISCARDED"; gateId: string; locationId: LocationId }
+  | { type: "DOOM_ADVANCED"; amount: number; newDoom: number }
   | { type: "CLUE_SPAWNED"; clueId: string; locationId: LocationId }
   | { type: "CLUE_GAINED"; playerId: string; amount: number }
   | { type: "CLUE_COLLECTED"; clueId: string; playerId: string; locationId: LocationId }

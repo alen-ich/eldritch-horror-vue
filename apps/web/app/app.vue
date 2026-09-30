@@ -118,6 +118,11 @@ const privateDebtTradeDecision = computed(() => {
   return decision && decision.playerId === game.playerId.value && 'optionIds' in decision
     && decision.kind === 'trade_debt_for_condition' ? decision : undefined
 })
+const privateDesperateTimesDecision = computed(() => {
+  const decision = game.pendingDecision.value
+  return decision && decision.playerId === game.playerId.value && 'optionIds' in decision
+    && decision.kind === 'choose_desperate_times' ? decision : undefined
+})
 const selectedReserveValue = computed(() => selectedReserveAssetIds.value.reduce((total, id) => total + (assetById[id]?.value ?? 0), 0))
 const inspectedRoutes = computed(() => inspectedLocationId.value
   ? baseGameRoutes.filter((route) => route.source === inspectedLocationId.value || route.target === inspectedLocationId.value)
@@ -281,6 +286,11 @@ function resolveWorldFightsBackChoice(optionId: string) {
 
 function resolveDebtTradeChoice(optionId: string) {
   const decision = privateDebtTradeDecision.value
+  if (decision?.optionIds.includes(optionId)) game.send({ type: 'RESOLVE_DECISION', decisionId: decision.id, selectedOptionIds: [optionId] })
+}
+
+function resolveDesperateTimesChoice(optionId: string) {
+  const decision = privateDesperateTimesDecision.value
   if (decision?.optionIds.includes(optionId)) game.send({ type: 'RESOLVE_DECISION', decisionId: decision.id, selectedOptionIds: [optionId] })
 }
 
@@ -478,6 +488,15 @@ async function copyInvite() {
             <div class="test-dice omen-choices" role="group" aria-label="Debt exchange choices">
               <button v-for="optionId in privateDebtTradeDecision.optionIds" :key="optionId"
                 @click="resolveDebtTradeChoice(optionId)">{{ optionId === 'skip' ? 'Skip' : `Gain Debt to discard ${conditionById[optionId]?.name ?? 'Condition'}` }}</button>
+            </div>
+          </section>
+          <section v-if="privateDesperateTimesDecision" class="test-dialog" role="dialog" aria-modal="true" aria-labelledby="desperate-times-title">
+            <p class="chapter">Mythos choice</p>
+            <h2 id="desperate-times-title">Desperate Times</h2>
+            <p>{{ privateDesperateTimesDecision.prompt }}</p>
+            <div class="test-dice omen-choices" role="group" aria-label="Desperate Times choices">
+              <button v-for="optionId in privateDesperateTimesDecision.optionIds" :key="optionId"
+                @click="resolveDesperateTimesChoice(optionId)">{{ optionId === 'gain_dark_pact' ? 'Gain a Dark Pact' : 'Advance Doom by 2' }}</button>
             </div>
           </section>
           <div v-if="game.gameResult.value" class="game-result" role="status">

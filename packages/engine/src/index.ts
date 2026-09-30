@@ -222,7 +222,7 @@ export interface GameContent {
   conditions?: readonly { id: string; kind: string; backEffect?: ConditionBackEffect }[];
   monsters?: readonly MonsterCombatDefinition[];
   ancientOnes?: Readonly<Partial<Record<AncientOneId, AncientSetup>>>;
-  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } | { type: "each_investigator_choose_world_fights_back" } | { type: "lead_gain_ally_asset" } | { type: "each_investigator_trade_debt_for_condition" } | { type: "discard_matching_gates_and_advance_doom" } }[];
+  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } | { type: "each_investigator_choose_world_fights_back" } | { type: "lead_gain_ally_asset" } | { type: "each_investigator_trade_debt_for_condition" } | { type: "discard_matching_gates_and_advance_doom" } | { type: "doom_two_unless_lead_gains_dark_pact" } }[];
   referenceCards?: readonly { playerCount: number; spawnClues: number; monsterSurge?: number; spawnGates?: number }[];
   map: GameMap;
   investigators: Readonly<Partial<Record<InvestigatorId, InvestigatorSetup>>>;
@@ -1082,6 +1082,22 @@ export function advanceMythosIcon(state: GameState, content: GameContent, contex
       if (!resolved.ok || resolved.state.gameResult) return resolved;
       return finishMythosEvent(state, resolved.state, resolved.events, content);
     }
+    if (card.effect.type === "doom_two_unless_lead_gains_dark_pact") {
+      if (state.doom === undefined || !state.ancientOneId) return failure("OMEN_CONTENT_MISSING", "Doom or Ancient One setup is missing.");
+      if (!canLeadGainDarkPact(state, content)) {
+        const advanced = advanceDesperateTimesDoom(state);
+        if (!advanced.ok || advanced.state.gameResult) return advanced;
+        return finishMythosEvent(state, advanced.state, advanced.events, content);
+      }
+      const next = structuredClone(state);
+      next.pendingDecision = {
+        id: context.createId(), kind: "choose_desperate_times", playerId: state.leadInvestigatorId, visibility: "owner",
+        prompt: "Desperate Times: gain a Dark Pact Condition, or advance Doom by 2.",
+        optionIds: ["gain_dark_pact", "advance_doom"], minSelections: 1, maxSelections: 1,
+        continuation: "mythos_desperate_times",
+      };
+      return success(next, []);
+    }
     const resolved = card.effect.type === "lead_gain_condition"
       ? gainCondition(state, state.leadInvestigatorId, card.effect.kind, content, context)
       : resolveCounterclockwiseOmenCard(state, content);
@@ -1094,6 +1110,26 @@ export function advanceMythosIcon(state: GameState, content: GameContent, contex
   if (icon.type === "spawn_clues") return spawnMythosClues(state, content, context);
   if (icon.type === "spawn_gates") return resolveMythosSpawnGates(state, content, context);
   return failure("MYTHOS_EFFECT_UNSUPPORTED", "This printed Mythos icon is not executable yet.");
+}
+
+function canLeadGainDarkPact(state: GameState, content: GameContent): boolean {
+  const lead = state.players.find(player => player.id === state.leadInvestigatorId && !player.defeated && !player.eliminated);
+  return Boolean(lead && content.conditions?.some(condition => condition.kind === "dark_pact")
+    && state.privateState.tokenPoolById[conditionPoolKey("dark_pact")]?.length
+    && !(lead.conditionIds ?? []).some(id => content.conditions?.find(condition => condition.id === id)?.kind === "dark_pact"));
+}
+
+function advanceDesperateTimesDoom(state: GameState): CommandResult {
+  if (state.doom === undefined || !state.ancientOneId) return failure("OMEN_CONTENT_MISSING", "Doom or Ancient One setup is missing.");
+  if (state.doom <= 2 && state.ancientOneId !== "azathoth") return failure("AWAKENING_UNSUPPORTED", "Ancient One awakening is not implemented yet.");
+  const next = structuredClone(state);
+  next.doom = Math.max(0, state.doom - 2);
+  const events: GameEvent[] = [{ type: "DOOM_ADVANCED", amount: 2, newDoom: next.doom }];
+  if (next.doom === 0 && state.ancientOneId === "azathoth") {
+    next.gameResult = "investigators_lose";
+    events.push({ type: "GAME_ENDED", result: "investigators_lose", reason: "azathoth_awakened" });
+  }
+  return success(next, events);
 }
 
 function resolveDimensionalInstability(state: GameState, content: GameContent, context: EngineContext): CommandResult {
@@ -1877,6 +1913,29 @@ export function executeCommand(
         return success(next, events);
       }
       return finishMythosEvent(state, next, events, content);
+    }
+    if (decision.continuation === "mythos_desperate_times") {
+      const card = content.mythosCards?.find(candidate => candidate.id === state.currentMythosCardId);
+      if (state.phase !== "mythos" || card?.effect?.type !== "doom_two_unless_lead_gains_dark_pact"
+        || state.currentMythosIconIndex !== card.icons?.length || state.leadInvestigatorId !== actorPlayerId || !context) {
+        return failure("MYTHOS_CONTENT_MISSING", "The choice is no longer attached to its Mythos card.");
+      }
+      const choice = selections[0]!;
+      let resolved: CommandResult;
+      if (choice === "gain_dark_pact") {
+        if (!canLeadGainDarkPact(state, content)) return failure("CONDITION_UNAVAILABLE", "The Lead cannot gain a Dark Pact.");
+        resolved = gainCondition(state, actorPlayerId, "dark_pact", content, context);
+      } else if (choice === "advance_doom") {
+        resolved = advanceDesperateTimesDoom(state);
+      } else return failure("INVALID_DECISION_SELECTION", "That Mythos choice is invalid.");
+      if (!resolved.ok) return resolved;
+      resolved.state.pendingDecision = undefined;
+      const events: GameEvent[] = [{ type: "DECISION_RESOLVED", decisionId: decision.id, playerId: actorPlayerId, selectedOptionIds: [choice] }, ...resolved.events];
+      if (resolved.state.gameResult) {
+        resolved.state.stateVersion = state.stateVersion;
+        return success(resolved.state, events);
+      }
+      return finishMythosEvent(state, resolved.state, events, content);
     }
     if (decision.continuation === "test_reroll") {
       const test = state.activeTest;

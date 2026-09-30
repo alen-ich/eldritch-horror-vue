@@ -19,7 +19,7 @@ export interface MythosCardData {
   source: { sheet: string; row: number; column: number };
   verification: "verified_from_scan";
   effectModelStatus: "transcription_pending" | "typed";
-  effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } | { type: "each_investigator_choose_world_fights_back" } | { type: "lead_gain_ally_asset" } | { type: "each_investigator_trade_debt_for_condition" } | { type: "discard_matching_gates_and_advance_doom" };
+  effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } | { type: "each_investigator_choose_world_fights_back" } | { type: "lead_gain_ally_asset" } | { type: "each_investigator_trade_debt_for_condition" } | { type: "discard_matching_gates_and_advance_doom" } | { type: "doom_two_unless_lead_gains_dark_pact" };
 }
 
 const blueTitles = [
@@ -79,6 +79,7 @@ function scanCard(
       : id === "mythos_yellow_05" ? { type: "lead_gain_ally_asset" as const }
       : id === "mythos_yellow_06" ? { type: "each_investigator_trade_debt_for_condition" as const }
       : id === "mythos_green_14" ? { type: "discard_matching_gates_and_advance_doom" as const }
+      : id === "mythos_yellow_10" ? { type: "doom_two_unless_lead_gains_dark_pact" as const }
       : undefined;
   return { id, color, title, kind, icons: iconsFor(color, index), imageUrl: `/cards/mythos/${id}.webp`, source, verification: "verified_from_scan", effectModelStatus: effect ? "typed" : "transcription_pending", ...(effect ? { effect } : {}) };
 }
@@ -117,6 +118,7 @@ const mythosCardSchema = z.object({
     z.object({ type: z.literal("lead_gain_ally_asset") }).strict(),
     z.object({ type: z.literal("each_investigator_trade_debt_for_condition") }).strict(),
     z.object({ type: z.literal("discard_matching_gates_and_advance_doom") }).strict(),
+    z.object({ type: z.literal("doom_two_unless_lead_gains_dark_pact") }).strict(),
   ]).optional(),
 }).strict();
 
@@ -140,7 +142,8 @@ export function validateMythosContent(cards: readonly MythosCardData[]): void {
     if (card.id === "mythos_yellow_05" && card.effect?.type !== "lead_gain_ally_asset") throw new Error(`Invalid Mythos effect for ${card.id}.`);
     if (card.id === "mythos_yellow_06" && card.effect?.type !== "each_investigator_trade_debt_for_condition") throw new Error(`Invalid Mythos effect for ${card.id}.`);
     if (card.id === "mythos_green_14" && card.effect?.type !== "discard_matching_gates_and_advance_doom") throw new Error(`Invalid Mythos effect for ${card.id}.`);
-    if (!(["mythos_green_04", "mythos_green_14", "mythos_yellow_05", "mythos_yellow_06", "mythos_yellow_07", "mythos_yellow_08", "mythos_yellow_13"].includes(card.id)) && card.effect) throw new Error(`Unexpected Mythos effect transcription for ${card.id}.`);
+    if (card.id === "mythos_yellow_10" && card.effect?.type !== "doom_two_unless_lead_gains_dark_pact") throw new Error(`Invalid Mythos effect for ${card.id}.`);
+    if (!(["mythos_green_04", "mythos_green_14", "mythos_yellow_05", "mythos_yellow_06", "mythos_yellow_07", "mythos_yellow_08", "mythos_yellow_10", "mythos_yellow_13"].includes(card.id)) && card.effect) throw new Error(`Unexpected Mythos effect transcription for ${card.id}.`);
     const colorIndex = Number.parseInt(card.id.slice(`mythos_${card.color}_`.length), 10) - 1;
     if (JSON.stringify(card.icons) !== JSON.stringify(iconsFor(card.color, colorIndex))) {
       throw new Error(`Invalid icon sequence for ${card.id}.`);

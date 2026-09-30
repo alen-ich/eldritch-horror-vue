@@ -322,6 +322,39 @@ describe("authoritative game room", () => {
     assert.equal(internal.toEngineState().replacementWindow, true);
   });
 
+  it("keeps Desperate Times private and grants Dark Pact without reducing Doom", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "mythos";
+    state.leadInvestigatorId = state.activePlayerId = state.players[0]!.id;
+    state.ancientOneId = "azathoth";
+    state.doom = 8;
+    state.currentMythosCardId = "mythos_yellow_10";
+    state.currentMythosIconIndex = 3;
+    state.privateState.tokenPoolById["condition:dark_pact"] = ["condition_dark_pact_01"];
+    internal.applyEngineState(state);
+    const ownerOptions = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "ADVANCE_MYTHOS" });
+    await room.waitForMessage(commandMessageType);
+    const choice = await ownerOptions as PendingDecision;
+    assert.deepEqual(choice.optionIds, ["gain_dark_pact", "advance_doom"]);
+    assert.equal(JSON.stringify(room.state).includes("gain_dark_pact"), false);
+    assert.equal(JSON.stringify(room.state).includes("condition_dark_pact_01"), false);
+    const denied = guest.waitForMessage(commandErrorMessageType);
+    sendCommand(room, guest, { type: "RESOLVE_DECISION", decisionId: choice.id, selectedOptionIds: ["gain_dark_pact"] });
+    assert.equal((await denied as { code: string }).code, "NOT_DECISION_OWNER");
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: choice.id, selectedOptionIds: ["gain_dark_pact"] });
+    await room.waitForMessage(commandMessageType);
+    assert.equal(room.state.doom, 8);
+    assert.equal(room.state.currentMythosCardId, "");
+    assert.deepEqual(internal.toEngineState().players[0]!.conditionIds, ["condition_dark_pact_01"]);
+    assert.equal(JSON.stringify(room.state).includes("condition_dark_pact_01"), false);
+    assert.equal(internal.toEngineState().replacementWindow, true);
+  });
+
   it("resolves a supported location encounter through the room and leaves unsupported cards private", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });

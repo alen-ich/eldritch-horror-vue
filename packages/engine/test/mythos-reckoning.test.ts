@@ -483,3 +483,75 @@ describe("Dimensional Instability", () => {
     expect(result.events).toContainEqual({ type: "GAME_ENDED", result: "investigators_lose", reason: "azathoth_awakened" });
   });
 });
+
+describe("Desperate Times", () => {
+  const cardContent: GameContent = { ...content,
+    conditions: [...content.conditions!, { id: "condition_dark_pact_01", kind: "dark_pact" }],
+    mythosCards: [{ id: "mythos_yellow_10", color: "yellow", icons: [{ type: "advance_omen" }, { type: "resolve_reckoning" }, { type: "spawn_gates" }], effect: { type: "doom_two_unless_lead_gains_dark_pact" } }],
+  };
+
+  function readyCard(): GameState {
+    const before = state();
+    before.currentMythosCardId = "mythos_yellow_10";
+    before.currentMythosIconIndex = 3;
+    before.doom = 8;
+    before.privateState.tokenPoolById["condition:dark_pact"] = ["condition_dark_pact_01"];
+    return before;
+  }
+
+  it("offers the Lead a private choice and grants a physical Dark Pact without advancing Doom", () => {
+    const before = readyCard();
+    const offered = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, cardContent, createDeterministicEngineContext({ ids: ["choice"] }));
+    if (!offered.ok) throw new Error(offered.error.message);
+    expect(offered.state.pendingDecision).toMatchObject({ id: "choice", kind: "choose_desperate_times", playerId: "guest", visibility: "owner", optionIds: ["gain_dark_pact", "advance_doom"] });
+    expect(executeCommand(offered.state, "host", { type: "RESOLVE_DECISION", decisionId: "choice", selectedOptionIds: ["gain_dark_pact"] }, cardContent))
+      .toMatchObject({ ok: false, error: { code: "NOT_DECISION_OWNER" } });
+    const chosen = executeCommand(offered.state, "guest", { type: "RESOLVE_DECISION", decisionId: "choice", selectedOptionIds: ["gain_dark_pact"] }, cardContent, createDeterministicEngineContext({ tokenIndexes: [0] }));
+    if (!chosen.ok) throw new Error(chosen.error.message);
+    expect(chosen.state.players[1]?.conditionIds).toContain("condition_dark_pact_01");
+    expect(chosen.state.privateState.tokenPoolById["condition:dark_pact"]).toEqual([]);
+    expect(chosen.state.doom).toBe(8);
+    expect(chosen.state.replacementWindow).toBe(true);
+    expect(chosen.state.stateVersion).toBe(before.stateVersion + 2);
+    expect(chosen.events).toContainEqual({ type: "CONDITION_GAINED", playerId: "guest", conditionId: "condition_dark_pact" });
+  });
+
+  it("advances Doom by two when chosen or when a Dark Pact cannot be gained", () => {
+    const before = readyCard();
+    const offered = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, cardContent, createDeterministicEngineContext({ ids: ["choice"] }));
+    if (!offered.ok) throw new Error(offered.error.message);
+    const declined = executeCommand(offered.state, "guest", { type: "RESOLVE_DECISION", decisionId: "choice", selectedOptionIds: ["advance_doom"] }, cardContent, createDeterministicEngineContext({}));
+    if (!declined.ok) throw new Error(declined.error.message);
+    expect(declined.state.doom).toBe(6);
+    expect(declined.events).toContainEqual({ type: "DOOM_ADVANCED", amount: 2, newDoom: 6 });
+    const alreadyHeld = readyCard();
+    alreadyHeld.players[1]!.conditionIds = ["condition_dark_pact_01"];
+    const automatic = executeCommand(alreadyHeld, "guest", { type: "ADVANCE_MYTHOS" }, cardContent, createDeterministicEngineContext({}));
+    if (!automatic.ok) throw new Error(automatic.error.message);
+    expect(automatic.state.pendingDecision).toBeUndefined();
+    expect(automatic.state.doom).toBe(6);
+    const emptySupply = readyCard();
+    emptySupply.privateState.tokenPoolById["condition:dark_pact"] = [];
+    const exhausted = executeCommand(emptySupply, "guest", { type: "ADVANCE_MYTHOS" }, cardContent, createDeterministicEngineContext({}));
+    if (!exhausted.ok) throw new Error(exhausted.error.message);
+    expect(exhausted.state.doom).toBe(6);
+  });
+
+  it("ends at Azathoth zero Doom and guards unsupported awakening", () => {
+    const azathoth = readyCard();
+    azathoth.doom = 1;
+    azathoth.privateState.tokenPoolById["condition:dark_pact"] = [];
+    const lost = executeCommand(azathoth, "guest", { type: "ADVANCE_MYTHOS" }, cardContent, createDeterministicEngineContext({}));
+    if (!lost.ok) throw new Error(lost.error.message);
+    expect(lost.state.gameResult).toBe("investigators_lose");
+    expect(lost.events).toContainEqual({ type: "GAME_ENDED", result: "investigators_lose", reason: "azathoth_awakened" });
+    const cthulhu = readyCard();
+    cthulhu.ancientOneId = "cthulhu";
+    cthulhu.doom = 2;
+    cthulhu.privateState.tokenPoolById["condition:dark_pact"] = [];
+    expect(executeCommand(cthulhu, "guest", { type: "ADVANCE_MYTHOS" }, cardContent, createDeterministicEngineContext({})))
+      .toMatchObject({ ok: false, error: { code: "AWAKENING_UNSUPPORTED" } });
+    expect(cthulhu.currentMythosCardId).toBe("mythos_yellow_10");
+    expect(cthulhu.doom).toBe(2);
+  });
+});

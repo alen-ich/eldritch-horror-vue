@@ -13,4 +13,6 @@ The same-kind gain path can now resolve three atomic, server-supplied backs: Kar
 
 The scanned **Everyone Has a Price** Mythos Event uses the existing finite Debt supply and discard path. In Lead order, each active investigator may gain a Debt to discard one previously held non-Debt Condition, or skip. An investigator who already holds Debt or cannot draw one cannot use the exchange. Decisions identify Conditions by public front kind only; physical copy IDs and reverse text remain private. The exchange returns the discarded copy to its matching supply and survives reconnection.
 
+The scanned **Desperate Times** Mythos Event offers the Lead a Dark Pact instead of two Doom only if a physical copy is available and the Lead does not already hold one. The choice is owner-only and reconnect-safe. The generic Dark Pact Reckoning/reverse loop is still pending; this event only gains its front-side Condition.
+
 This is **still not a complete Condition implementation**. Other reverse effects still need typed executable handlers and choices. The Mythos/Reckoning and Encounter phase trigger points are not implemented yet, so Debt, Dark Pact, the remaining Injury/Madness backs, and Detained reverse resolution are not in live play. The family remains `needs_review` and `not_executable` until every printed reverse is resolved authoritatively.
