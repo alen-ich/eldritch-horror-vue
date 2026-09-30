@@ -34,6 +34,7 @@ export const pendingDecisionKinds = [
   "recover_conditions",
   "choose_omen_space",
   "choose_world_fights_back",
+  "trade_debt_for_condition",
 ] as const;
 export type PendingDecisionKind = (typeof pendingDecisionKinds)[number];
 
@@ -47,7 +48,7 @@ export const pendingDecisionSchema = z.object({
   minSelections: z.number().int().nonnegative(),
   maxSelections: z.number().int().positive(),
   selectionBudget: z.number().int().nonnegative().optional(),
-  continuation: z.enum(["test_reroll", "acquire_assets_purchase", "acquire_assets_discard", "condition_rest_recovery", "mythos_omen_choice", "mythos_world_fights_back"]).optional(),
+  continuation: z.enum(["test_reroll", "acquire_assets_purchase", "acquire_assets_discard", "condition_rest_recovery", "mythos_omen_choice", "mythos_world_fights_back", "mythos_debt_trade"]).optional(),
 }).strict().superRefine((decision, context) => {
   if (new Set(decision.optionIds).size !== decision.optionIds.length) {
     context.addIssue({ code: "custom", message: "Decision option IDs must be unique.", path: ["optionIds"] });

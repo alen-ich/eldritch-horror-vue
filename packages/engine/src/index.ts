@@ -221,7 +221,7 @@ export interface GameContent {
   conditions?: readonly { id: string; kind: string; backEffect?: ConditionBackEffect }[];
   monsters?: readonly MonsterCombatDefinition[];
   ancientOnes?: Readonly<Partial<Record<AncientOneId, AncientSetup>>>;
-  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } | { type: "each_investigator_choose_world_fights_back" } | { type: "lead_gain_ally_asset" } }[];
+  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } | { type: "each_investigator_choose_world_fights_back" } | { type: "lead_gain_ally_asset" } | { type: "each_investigator_trade_debt_for_condition" } }[];
   referenceCards?: readonly { playerCount: number; spawnClues: number; monsterSurge?: number; spawnGates?: number }[];
   map: GameMap;
   investigators: Readonly<Partial<Record<InvestigatorId, InvestigatorSetup>>>;
@@ -1056,6 +1056,13 @@ export function advanceMythosIcon(state: GameState, content: GameContent, contex
       if (!gained.ok) return gained;
       return finishMythosEvent(state, gained.state, gained.events, content);
     }
+    if (card.effect.type === "each_investigator_trade_debt_for_condition") {
+      const ordered = mythosInvestigatorOrder(state);
+      if (!ordered.length) return finishMythosEvent(state, structuredClone(state), [], content);
+      const next = structuredClone(state);
+      next.pendingDecision = debtTradeDecision(next, ordered[0]!, content, context);
+      return success(next, []);
+    }
     const resolved = card.effect.type === "lead_gain_condition"
       ? gainCondition(state, state.leadInvestigatorId, card.effect.kind, content, context)
       : resolveCounterclockwiseOmenCard(state, content);
@@ -1106,6 +1113,20 @@ function worldFightsBackDecision(state: GameState, playerId: string, content: Ga
     prompt: "The World Fights Back: recover 2 Health, recover 2 Sanity, discard one non-Epic Monster on your space, or skip.",
     optionIds: ["recover_health", "recover_sanity", ...discardable.map(instance => `monster:${instance.id}`), "skip"],
     minSelections: 1, maxSelections: 1, continuation: "mythos_world_fights_back",
+  };
+}
+
+function debtTradeDecision(state: GameState, playerId: string, content: GameContent, context: EngineContext): PendingDecision {
+  const player = state.players.find(candidate => candidate.id === playerId)!;
+  const held = (player.conditionIds ?? []).map(id => ({ id, definition: content.conditions?.find(card => card.id === id) }));
+  const canGainDebt = Boolean(state.privateState.tokenPoolById[conditionPoolKey("debt")]?.length)
+    && !held.some(({ definition }) => definition?.kind === "debt");
+  const discardOptions = canGainDebt
+    ? held.filter(({ definition }) => definition && definition.kind !== "debt").map(({ id }) => publicConditionId(id)) : [];
+  return {
+    id: context.createId(), kind: "trade_debt_for_condition", playerId, visibility: "owner",
+    prompt: "Everyone Has a Price: gain a Debt Condition to discard one of your Conditions, or skip.",
+    optionIds: [...discardOptions, "skip"], minSelections: 1, maxSelections: 1, continuation: "mythos_debt_trade",
   };
 }
 
@@ -1775,6 +1796,38 @@ export function executeCommand(
       const followingPlayerId = order[position + 1];
       if (followingPlayerId) {
         next.pendingDecision = worldFightsBackDecision(next, followingPlayerId, content, context);
+        return success(next, events);
+      }
+      return finishMythosEvent(state, next, events, content);
+    }
+    if (decision.continuation === "mythos_debt_trade") {
+      const card = content.mythosCards?.find(candidate => candidate.id === state.currentMythosCardId);
+      const order = mythosInvestigatorOrder(state);
+      const position = order.indexOf(actorPlayerId);
+      if (state.phase !== "mythos" || card?.effect?.type !== "each_investigator_trade_debt_for_condition"
+        || state.currentMythosIconIndex !== card.icons?.length || position < 0 || !context) {
+        return failure("MYTHOS_CONTENT_MISSING", "The Debt exchange is no longer attached to its Mythos card.");
+      }
+      const choice = selections[0]!;
+      const events: GameEvent[] = [{ type: "DECISION_RESOLVED", decisionId: decision.id, playerId: actorPlayerId, selectedOptionIds: [choice] }];
+      if (choice !== "skip") {
+        const cardId = actor.conditionIds?.find(id => publicConditionId(id) === choice && content.conditions?.find(card => card.id === id)?.kind !== "debt");
+        if (!cardId || actor.conditionIds?.some(id => content.conditions?.find(card => card.id === id)?.kind === "debt")) {
+          return failure("INVALID_DECISION_SELECTION", "That Condition is not eligible for a Debt exchange.");
+        }
+        const gained = gainCondition(next, actorPlayerId, "debt", content, context);
+        if (!gained.ok) return gained;
+        if (!gained.events.some(event => event.type === "CONDITION_GAINED")) return failure("CONDITION_UNAVAILABLE", "A Debt Condition could not be gained.");
+        const discarded = discardCondition(gained.state, actorPlayerId, cardId, content);
+        if (!discarded.ok) return discarded;
+        next.players = discarded.state.players;
+        next.privateState = discarded.state.privateState;
+        events.push(...gained.events, ...discarded.events);
+      }
+      next.pendingDecision = undefined;
+      const followingPlayerId = order[position + 1];
+      if (followingPlayerId) {
+        next.pendingDecision = debtTradeDecision(next, followingPlayerId, content, context);
         return success(next, events);
       }
       return finishMythosEvent(state, next, events, content);

@@ -349,3 +349,58 @@ describe("The World Fights Back", () => {
     expect(healed.state.monsters).toHaveLength(2);
   });
 });
+
+describe("Everyone Has a Price", () => {
+  const cardContent: GameContent = { ...content,
+    conditions: [...content.conditions!, { id: "condition_debt_01", kind: "debt" }, { id: "condition_debt_02", kind: "debt" }],
+    mythosCards: [{ id: "mythos_yellow_06", color: "yellow", icons: [{ type: "advance_omen" }, { type: "resolve_reckoning" }, { type: "spawn_gates" }], effect: { type: "each_investigator_trade_debt_for_condition" } }],
+  };
+
+  function readyCard(): GameState {
+    const before = state();
+    before.currentMythosCardId = "mythos_yellow_06";
+    before.currentMythosIconIndex = 3;
+    before.privateState.tokenPoolById["condition:debt"] = ["condition_debt_01", "condition_debt_02"];
+    return before;
+  }
+
+  it("offers each owner a private exchange in Lead order and returns discarded cards to supply", () => {
+    const before = readyCard();
+    const offered = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, cardContent, createDeterministicEngineContext({ ids: ["debt-1"] }));
+    if (!offered.ok) throw new Error(offered.error.message);
+    expect(offered.state.pendingDecision).toMatchObject({ id: "debt-1", kind: "trade_debt_for_condition", playerId: "guest", visibility: "owner", optionIds: ["condition_cursed", "skip"] });
+    expect(executeCommand(offered.state, "host", { type: "RESOLVE_DECISION", decisionId: "debt-1", selectedOptionIds: ["condition_cursed"] }, cardContent))
+      .toMatchObject({ ok: false, error: { code: "NOT_DECISION_OWNER" } });
+    const traded = executeCommand(offered.state, "guest", { type: "RESOLVE_DECISION", decisionId: "debt-1", selectedOptionIds: ["condition_cursed"] }, cardContent, createDeterministicEngineContext({ tokenIndexes: [0], ids: ["debt-2"] }));
+    if (!traded.ok) throw new Error(traded.error.message);
+    expect(traded.state.players[1]?.conditionIds).toEqual(["condition_debt_01"]);
+    expect(traded.state.privateState.tokenPoolById["condition:cursed"]).toContain("condition_cursed_01");
+    expect(traded.state.privateState.tokenPoolById["condition:debt"]).toEqual(["condition_debt_02"]);
+    expect(traded.state.pendingDecision).toMatchObject({ id: "debt-2", playerId: "host", optionIds: ["condition_blessed", "skip"] });
+    expect(traded.events).toContainEqual({ type: "CONDITION_GAINED", playerId: "guest", conditionId: "condition_debt" });
+    expect(traded.events).toContainEqual({ type: "CONDITION_DISCARDED", playerId: "guest", conditionId: "condition_cursed" });
+    const skipped = executeCommand(traded.state, "host", { type: "RESOLVE_DECISION", decisionId: "debt-2", selectedOptionIds: ["skip"] }, cardContent, createDeterministicEngineContext({}));
+    if (!skipped.ok) throw new Error(skipped.error.message);
+    expect(skipped.state.currentMythosCardId).toBeUndefined();
+    expect(skipped.state.replacementWindow).toBe(true);
+    expect(before.players[1]?.conditionIds).toEqual(["condition_cursed_01"]);
+  });
+
+  it("offers only skip when Debt cannot be gained or no existing Condition can be exchanged", () => {
+    const alreadyInDebt = readyCard();
+    alreadyInDebt.players[1]!.conditionIds = ["condition_debt_01", "condition_cursed_01"];
+    const offered = executeCommand(alreadyInDebt, "guest", { type: "ADVANCE_MYTHOS" }, cardContent, createDeterministicEngineContext({ ids: ["choice"] }));
+    if (!offered.ok) throw new Error(offered.error.message);
+    expect(offered.state.pendingDecision?.optionIds).toEqual(["skip"]);
+    const emptyPool = readyCard();
+    emptyPool.privateState.tokenPoolById["condition:debt"] = [];
+    const noDebt = executeCommand(emptyPool, "guest", { type: "ADVANCE_MYTHOS" }, cardContent, createDeterministicEngineContext({ ids: ["choice"] }));
+    if (!noDebt.ok) throw new Error(noDebt.error.message);
+    expect(noDebt.state.pendingDecision?.optionIds).toEqual(["skip"]);
+    const noCondition = readyCard();
+    noCondition.players[1]!.conditionIds = [];
+    const noTrade = executeCommand(noCondition, "guest", { type: "ADVANCE_MYTHOS" }, cardContent, createDeterministicEngineContext({ ids: ["choice"] }));
+    if (!noTrade.ok) throw new Error(noTrade.error.message);
+    expect(noTrade.state.pendingDecision?.optionIds).toEqual(["skip"]);
+  });
+});

@@ -245,6 +245,54 @@ describe("authoritative game room", () => {
     assert.equal(internal.toEngineState().replacementWindow, true);
   });
 
+  it("keeps Everyone Has a Price decisions owner-only and restores the next choice on reconnect", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "mythos";
+    state.leadInvestigatorId = state.activePlayerId = state.players[0]!.id;
+    state.ancientOneId = "azathoth";
+    state.currentMythosCardId = "mythos_yellow_06";
+    state.currentMythosIconIndex = 3;
+    state.players[0]!.conditionIds = ["condition_blessed_01"];
+    state.players[1]!.conditionIds = ["condition_cursed_01"];
+    state.privateState.tokenPoolById["condition:debt"] = ["condition_debt_01", "condition_debt_02"];
+    internal.applyEngineState(state);
+    const hostOptions = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "ADVANCE_MYTHOS" });
+    await room.waitForMessage(commandMessageType);
+    const first = await hostOptions as PendingDecision;
+    assert.deepEqual(first.optionIds, ["condition_blessed", "skip"]);
+    assert.equal(JSON.stringify(room.state).includes("condition_debt_01"), false);
+    assert.equal(JSON.stringify(room.state).includes("condition_blessed_01"), false);
+    const denied = guest.waitForMessage(commandErrorMessageType);
+    sendCommand(room, guest, { type: "RESOLVE_DECISION", decisionId: first.id, selectedOptionIds: ["condition_blessed"] });
+    assert.equal((await denied as { code: string }).code, "NOT_DECISION_OWNER");
+    const guestOptions = guest.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: first.id, selectedOptionIds: ["condition_blessed"] });
+    await room.waitForMessage(commandMessageType);
+    const second = await guestOptions as PendingDecision;
+    assert.deepEqual(second.optionIds, ["condition_cursed", "skip"]);
+    assert.deepEqual(internal.toEngineState().players[0]!.conditionIds, ["condition_debt_01"]);
+    assert.deepEqual(internal.toEngineState().privateState.tokenPoolById["condition:blessed"], ["condition_blessed_01"]);
+    const token = guest.reconnectionToken;
+    guest.reconnection.enabled = false;
+    guest.connection.close();
+    await eventually(() => ![...room.state.players.values()][1]!.connected);
+    const restored = await colyseus.sdk.reconnect(token);
+    restored.onMessage("seat-token", () => undefined);
+    const restoredOptions = restored.waitForMessage(pendingDecisionMessageType);
+    restored.send("request-seat-token");
+    assert.deepEqual((await restoredOptions as PendingDecision).optionIds, second.optionIds);
+    sendCommand(room, restored, { type: "RESOLVE_DECISION", decisionId: second.id, selectedOptionIds: ["condition_cursed"] });
+    await room.waitForMessage(commandMessageType);
+    assert.deepEqual(internal.toEngineState().players[1]!.conditionIds, ["condition_debt_02"]);
+    assert.equal(room.state.currentMythosCardId, "");
+    assert.equal(internal.toEngineState().replacementWindow, true);
+  });
+
   it("resolves a supported location encounter through the room and leaves unsupported cards private", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });

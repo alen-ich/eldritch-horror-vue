@@ -113,6 +113,11 @@ const privateWorldFightsBackDecision = computed(() => {
   return decision && decision.playerId === game.playerId.value && 'optionIds' in decision
     && decision.kind === 'choose_world_fights_back' ? decision : undefined
 })
+const privateDebtTradeDecision = computed(() => {
+  const decision = game.pendingDecision.value
+  return decision && decision.playerId === game.playerId.value && 'optionIds' in decision
+    && decision.kind === 'trade_debt_for_condition' ? decision : undefined
+})
 const selectedReserveValue = computed(() => selectedReserveAssetIds.value.reduce((total, id) => total + (assetById[id]?.value ?? 0), 0))
 const inspectedRoutes = computed(() => inspectedLocationId.value
   ? baseGameRoutes.filter((route) => route.source === inspectedLocationId.value || route.target === inspectedLocationId.value)
@@ -271,6 +276,11 @@ function resolveOmenChoice(optionId: string) {
 
 function resolveWorldFightsBackChoice(optionId: string) {
   const decision = privateWorldFightsBackDecision.value
+  if (decision?.optionIds.includes(optionId)) game.send({ type: 'RESOLVE_DECISION', decisionId: decision.id, selectedOptionIds: [optionId] })
+}
+
+function resolveDebtTradeChoice(optionId: string) {
+  const decision = privateDebtTradeDecision.value
   if (decision?.optionIds.includes(optionId)) game.send({ type: 'RESOLVE_DECISION', decisionId: decision.id, selectedOptionIds: [optionId] })
 }
 
@@ -459,6 +469,15 @@ async function copyInvite() {
             <div class="test-dice omen-choices" role="group" aria-label="Mythos choices">
               <button v-for="optionId in privateWorldFightsBackDecision.optionIds" :key="optionId"
                 @click="resolveWorldFightsBackChoice(optionId)">{{ worldFightsBackOptionLabel(optionId) }}</button>
+            </div>
+          </section>
+          <section v-if="privateDebtTradeDecision" class="test-dialog" role="dialog" aria-modal="true" aria-labelledby="debt-trade-title">
+            <p class="chapter">Mythos choice</p>
+            <h2 id="debt-trade-title">Everyone Has a Price</h2>
+            <p>{{ privateDebtTradeDecision.prompt }}</p>
+            <div class="test-dice omen-choices" role="group" aria-label="Debt exchange choices">
+              <button v-for="optionId in privateDebtTradeDecision.optionIds" :key="optionId"
+                @click="resolveDebtTradeChoice(optionId)">{{ optionId === 'skip' ? 'Skip' : `Gain Debt to discard ${conditionById[optionId]?.name ?? 'Condition'}` }}</button>
             </div>
           </section>
           <div v-if="game.gameResult.value" class="game-result" role="status">
