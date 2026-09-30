@@ -102,6 +102,11 @@ const privateConditionRecoveryDecision = computed(() => {
   return decision && decision.playerId === game.playerId.value && 'optionIds' in decision
     && decision.kind === 'recover_conditions' ? decision : undefined
 })
+const privateOmenDecision = computed(() => {
+  const decision = game.pendingDecision.value
+  return decision && decision.playerId === game.playerId.value && 'optionIds' in decision
+    && decision.kind === 'choose_omen_space' ? decision : undefined
+})
 const selectedReserveValue = computed(() => selectedReserveAssetIds.value.reduce((total, id) => total + (assetById[id]?.value ?? 0), 0))
 const inspectedRoutes = computed(() => inspectedLocationId.value
   ? baseGameRoutes.filter((route) => route.source === inspectedLocationId.value || route.target === inspectedLocationId.value)
@@ -253,6 +258,11 @@ function resolveConditionRecovery() {
   if (decision) game.send({ type: 'RESOLVE_DECISION', decisionId: decision.id, selectedOptionIds: selectedConditionRecoveryIds.value })
 }
 
+function resolveOmenChoice(optionId: string) {
+  const decision = privateOmenDecision.value
+  if (decision?.optionIds.includes(optionId)) game.send({ type: 'RESOLVE_DECISION', decisionId: decision.id, selectedOptionIds: [optionId] })
+}
+
 async function copyInvite() {
   await window.navigator.clipboard.writeText(window.location.href)
 }
@@ -370,7 +380,7 @@ async function copyInvite() {
             <template v-if="isMyEncounter && !myEncounterMonsters.length"><button v-for="deck in encounterDecks" :key="deck.id" @click="game.send({ type: 'RESOLVE_LOCATION_ENCOUNTER', deck: deck.id })">{{ deck.label }}</button></template>
             <img v-if="latestEncounterCard" :src="latestEncounterCard.imageUrl" :alt="`${game.currentLocationEncounterCardId.value ? 'Active' : 'Last resolved'} encounter: ${latestEncounterCard.id}`" />
           </section>
-          <section v-if="game.phase.value === 'mythos' && game.activePlayerId.value === game.playerId.value" class="encounter-panel" aria-label="Mythos resolution"><strong>Mythos phase</strong><button v-if="game.investigatorLifecycle.value.replacementWindow" @click="game.send({ type: 'BEGIN_NEXT_ROUND' })">Begin next round</button><button v-else @click="game.send({ type: 'ADVANCE_MYTHOS' })">Resolve next printed icon</button><small>{{ game.investigatorLifecycle.value.replacementWindow ? 'Finish investigator replacement choices first.' : 'Unimplemented card text will stop resolution safely.' }}</small></section>
+          <section v-if="game.phase.value === 'mythos' && game.activePlayerId.value === game.playerId.value" class="encounter-panel" aria-label="Mythos resolution"><strong>Mythos phase</strong><button v-if="game.investigatorLifecycle.value.replacementWindow" @click="game.send({ type: 'BEGIN_NEXT_ROUND' })">Begin next round</button><button v-else :disabled="Boolean(game.pendingDecision.value)" @click="game.send({ type: 'ADVANCE_MYTHOS' })">Resolve next printed icon</button><small>{{ game.investigatorLifecycle.value.replacementWindow ? 'Finish investigator replacement choices first.' : 'Unimplemented card text will stop resolution safely.' }}</small></section>
           <section v-if="me?.delayed" class="travel-planner" aria-label="Delayed investigator">
             <strong>You are Delayed</strong><small>Your next action turn is spent standing up.</small>
             <button v-if="isMyTurn" @click="game.send({ type: 'END_ACTIONS' })">Stand up and end actions</button>
@@ -407,6 +417,16 @@ async function copyInvite() {
                 @click="toggleConditionRecovery(conditionId)">{{ conditionById[conditionId]?.name }}</button>
             </div>
             <button class="primary" @click="resolveConditionRecovery">{{ selectedConditionRecoveryIds.length ? 'Roll selected Conditions' : 'Skip recovery rolls' }}</button>
+          </section>
+          <section v-if="privateOmenDecision" class="test-dialog" role="dialog" aria-modal="true" aria-labelledby="omen-choice-title">
+            <p class="chapter">Mythos choice</p>
+            <h2 id="omen-choice-title">Omen of Good Fortune</h2>
+            <p>{{ privateOmenDecision.prompt }}</p>
+            <div class="test-dice omen-choices" role="group" aria-label="Omen track spaces">
+              <button v-for="optionId in privateOmenDecision.optionIds" :key="optionId"
+                :aria-label="optionId === 'stay' ? 'Leave Omen where it is' : `Move Omen to ${['Green', 'Blue (first)', 'Red', 'Blue (second)'][Number(optionId.slice(5))]}`"
+                @click="resolveOmenChoice(optionId)">{{ optionId === 'stay' ? 'Stay' : `${Number(optionId.slice(5)) + 1}: ${['Green', 'Blue', 'Red', 'Blue'][Number(optionId.slice(5))]}` }}</button>
+            </div>
           </section>
           <div v-if="game.gameResult.value" class="game-result" role="status">
             <span class="chapter">Game complete</span>
@@ -556,6 +576,7 @@ input:focus { border-color: #d5aa63; box-shadow: 0 0 0 3px #d5aa6322; }
 .active-mystery { position: absolute; z-index: 5; top: 60px; right: 18px; min-width: 180px; padding: 10px 12px; color: #edf0df; background: #07171cee; border: 1px solid #6e5a36; border-radius: 10px; box-shadow: 0 8px 28px #0009; backdrop-filter: blur(10px); }.active-mystery div { display: grid; gap: 3px; }.active-mystery strong { font: 600 .78rem/1.15 Georgia, serif; }.active-mystery small { color: #91a7a8; font-size: .6rem; }
 .game-result { position: absolute; z-index: 8; top: 18px; left: 50%; min-width: 220px; display: grid; gap: 3px; padding: 11px 22px; transform: translateX(-50%); color: #f7efd8; background: #1b1510ee; border: 1px solid #d5aa63; border-radius: 10px; box-shadow: 0 10px 35px #000b, 0 0 24px #d5aa6330; text-align: center; backdrop-filter: blur(10px); }.game-result strong { color: #e9ce8b; font: 600 1.1rem Georgia, serif; }
 .test-dialog { position: absolute; z-index: 10; left: 50%; top: 50%; width: min(430px, calc(100% - 32px)); display: grid; gap: 14px; padding: 24px; transform: translate(-50%, -50%); color: #edf0df; background: #07171cf2; border: 1px solid #d5aa63; border-radius: 14px; box-shadow: 0 24px 80px #000d, 0 0 30px #d5aa6328; backdrop-filter: blur(14px); }.test-dialog h2, .test-dialog p { margin: 0; }.test-dialog > strong { color: #d5aa63; text-align: center; }.test-dice { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }.test-dice button { width: 50px; height: 50px; color: #e5e9dc; background: #122a30; border: 1px solid #58727a; border-radius: 9px; font-size: 1.25rem; font-weight: 900; }.test-dice button.success { color: #d9f2c5; border-color: #7aa46c; }.test-dice button.selected { color: #142127; background: #d5aa63; border-color: #f5dda7; box-shadow: 0 0 0 3px #d5aa6340; }
+.omen-choices button { width: auto; min-width: 90px; padding: 0 10px; font-size: .9rem; }
 .board-stage .board-tools { position: absolute; z-index: 4; top: 18px; left: 18px; right: 18px; margin: 0; pointer-events: none; }.board-stage .board-tools > * { pointer-events: auto; }.board-stage .route-legend { padding: 7px 10px; border: 1px solid #45616a; border-radius: 8px; background: #07171cdd; backdrop-filter: blur(8px); }
 .board-stage .location-inspector { position: absolute; z-index: 4; left: 18px; bottom: 18px; width: min(520px, calc(100% - 150px)); margin: 0; background: #07171cee; box-shadow: 0 8px 28px #0009; backdrop-filter: blur(10px); }
 .reserve-shelf { position: absolute; z-index: 5; top: 66px; left: 18px; width: clamp(150px, 16vw, 220px); max-height: calc(100% - 155px); overflow: auto; padding: 12px; background: #07171ce8; border: 1px solid #49636a; border-radius: 12px; box-shadow: 0 12px 34px #000a; backdrop-filter: blur(10px); }.reserve-shelf header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }.reserve-shelf header > div { display: grid; gap: 2px; }.reserve-shelf header strong { font: 600 1rem Georgia, serif; }.reserve-shelf header button { width: 28px; height: 28px; color: #d5aa63; background: #17343b; border: 1px solid #48636a; border-radius: 7px; }.reserve-shelf.collapsed { width: 48px; padding: 8px; overflow: hidden; }.reserve-shelf.collapsed header > div { display: none; }.reserve-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 12px; }.reserve-slot { aspect-ratio: 3 / 4; display: grid; place-items: center; align-content: center; gap: 3px; color: #71898b; background: #0a2025; border: 1px dashed #50686d; border-radius: 7px; }.reserve-slot span { color: #d5aa63; font: 600 1rem Georgia, serif; }.reserve-slot small { font-size: .54rem; text-transform: uppercase; letter-spacing: .08em; }.bank-loan { width: 100%; display: grid; gap: 2px; margin-top: 8px; padding: 8px; text-align: left; color: #b7c4c1; background: #172a2c; border: 1px solid #5e6c65; border-radius: 7px; }.bank-loan span { color: #d5aa63; font-size: .68rem; font-weight: 800; text-transform: uppercase; }.bank-loan small { font-size: .55rem; }

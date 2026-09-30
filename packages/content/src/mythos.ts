@@ -19,7 +19,7 @@ export interface MythosCardData {
   source: { sheet: string; row: number; column: number };
   verification: "verified_from_scan";
   effectModelStatus: "transcription_pending" | "typed";
-  effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" };
+  effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" };
 }
 
 const blueTitles = [
@@ -74,6 +74,7 @@ function scanCard(
   const id = cardId(color, index);
   const effect = id === "mythos_green_04" ? { type: "lead_gain_condition" as const, kind: "blessed" as const }
     : id === "mythos_yellow_13" ? { type: "move_omen_counterclockwise_then_advance_doom_for_gates" as const }
+      : id === "mythos_yellow_08" ? { type: "lead_choose_omen_without_doom" as const }
       : undefined;
   return { id, color, title, kind, icons: iconsFor(color, index), imageUrl: `/cards/mythos/${id}.webp`, source, verification: "verified_from_scan", effectModelStatus: effect ? "typed" : "transcription_pending", ...(effect ? { effect } : {}) };
 }
@@ -107,6 +108,7 @@ const mythosCardSchema = z.object({
   effect: z.discriminatedUnion("type", [
     z.object({ type: z.literal("lead_gain_condition"), kind: z.literal("blessed") }).strict(),
     z.object({ type: z.literal("move_omen_counterclockwise_then_advance_doom_for_gates") }).strict(),
+    z.object({ type: z.literal("lead_choose_omen_without_doom") }).strict(),
   ]).optional(),
 }).strict();
 
@@ -125,7 +127,8 @@ export function validateMythosContent(cards: readonly MythosCardData[]): void {
     if ((card.effectModelStatus === "typed") !== Boolean(card.effect)) throw new Error(`Mythos effect status mismatch for ${card.id}.`);
     if (card.id === "mythos_green_04" && card.effect?.type !== "lead_gain_condition") throw new Error(`Invalid Mythos effect for ${card.id}.`);
     if (card.id === "mythos_yellow_13" && card.effect?.type !== "move_omen_counterclockwise_then_advance_doom_for_gates") throw new Error(`Invalid Mythos effect for ${card.id}.`);
-    if (!(["mythos_green_04", "mythos_yellow_13"].includes(card.id)) && card.effect) throw new Error(`Unexpected Mythos effect transcription for ${card.id}.`);
+    if (card.id === "mythos_yellow_08" && card.effect?.type !== "lead_choose_omen_without_doom") throw new Error(`Invalid Mythos effect for ${card.id}.`);
+    if (!(["mythos_green_04", "mythos_yellow_08", "mythos_yellow_13"].includes(card.id)) && card.effect) throw new Error(`Unexpected Mythos effect transcription for ${card.id}.`);
     const colorIndex = Number.parseInt(card.id.slice(`mythos_${card.color}_`.length), 10) - 1;
     if (JSON.stringify(card.icons) !== JSON.stringify(iconsFor(card.color, colorIndex))) {
       throw new Error(`Invalid icon sequence for ${card.id}.`);

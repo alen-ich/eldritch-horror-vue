@@ -139,6 +139,48 @@ describe("authoritative game room", () => {
     assert.ok(!JSON.stringify(room.state).includes("mythos_green_01"));
   });
 
+  it("restores the Lead's private Omen of Good Fortune choice after reconnect", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "mythos";
+    state.leadInvestigatorId = state.activePlayerId = state.players[0]!.id;
+    state.ancientOneId = "azathoth";
+    state.omen = 0;
+    state.doom = 8;
+    state.currentMythosCardId = "mythos_yellow_08";
+    state.currentMythosIconIndex = 3;
+    internal.applyEngineState(state);
+    const ownerOptions = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "ADVANCE_MYTHOS" });
+    await room.waitForMessage(commandMessageType);
+    const choice = await ownerOptions as PendingDecision;
+    assert.equal(choice.kind, "choose_omen_space");
+    assert.deepEqual(choice.optionIds, ["stay", "omen_0", "omen_1", "omen_2", "omen_3"]);
+    assert.equal(room.state.pendingDecision?.optionCount, 5);
+    assert.equal(JSON.stringify(room.state).includes("omen_2"), false);
+    const denied = guest.waitForMessage(commandErrorMessageType);
+    sendCommand(room, guest, { type: "RESOLVE_DECISION", decisionId: choice.id, selectedOptionIds: ["omen_2"] });
+    assert.equal((await denied as { code: string }).code, "NOT_DECISION_OWNER");
+    const token = host.reconnectionToken;
+    host.reconnection.enabled = false;
+    host.connection.close();
+    await eventually(() => ![...room.state.players.values()][0]!.connected);
+    const restored = await colyseus.sdk.reconnect(token);
+    restored.onMessage("seat-token", () => undefined);
+    const restoredOptions = restored.waitForMessage(pendingDecisionMessageType);
+    restored.send("request-seat-token");
+    assert.deepEqual((await restoredOptions as PendingDecision).optionIds, choice.optionIds);
+    sendCommand(room, restored, { type: "RESOLVE_DECISION", decisionId: choice.id, selectedOptionIds: ["omen_2"] });
+    await room.waitForMessage(commandMessageType);
+    assert.equal(room.state.omen, 2);
+    assert.equal(room.state.doom, 8);
+    assert.equal(room.state.currentMythosCardId, "");
+    assert.equal(internal.toEngineState().replacementWindow, true);
+  });
+
   it("resolves a supported location encounter through the room and leaves unsupported cards private", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });

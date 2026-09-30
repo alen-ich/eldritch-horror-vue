@@ -221,7 +221,7 @@ export interface GameContent {
   conditions?: readonly { id: string; kind: string; backEffect?: ConditionBackEffect }[];
   monsters?: readonly MonsterCombatDefinition[];
   ancientOnes?: Readonly<Partial<Record<AncientOneId, AncientSetup>>>;
-  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } }[];
+  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } }[];
   referenceCards?: readonly { playerCount: number; spawnClues: number; monsterSurge?: number; spawnGates?: number }[];
   map: GameMap;
   investigators: Readonly<Partial<Record<InvestigatorId, InvestigatorSetup>>>;
@@ -1033,17 +1033,22 @@ export function advanceMythosIcon(state: GameState, content: GameContent, contex
   const icon = card.icons[state.currentMythosIconIndex ?? 0];
   if (!icon) {
     if (!card.effect || !state.leadInvestigatorId || state.pendingDecision || state.pendingDefeat || state.activeTest) return failure("MYTHOS_EFFECT_UNSUPPORTED", "The revealed card's printed text is not executable yet.");
+    if (card.effect.type === "lead_choose_omen_without_doom") {
+      if (state.omen === undefined || !Number.isInteger(state.omen) || state.omen < 0 || state.omen >= omenTrack.length) return failure("OMEN_CONTENT_MISSING", "The current Omen space is unavailable.");
+      const next = structuredClone(state);
+      next.pendingDecision = {
+        id: context.createId(), kind: "choose_omen_space", playerId: state.leadInvestigatorId, visibility: "owner",
+        prompt: "Omen of Good Fortune: move the Omen to any space, or leave it where it is, without advancing Doom.",
+        optionIds: ["stay", ...omenTrack.map((_, position) => `omen_${position}`)],
+        minSelections: 1, maxSelections: 1, continuation: "mythos_omen_choice",
+      };
+      return success(next, []);
+    }
     const resolved = card.effect.type === "lead_gain_condition"
       ? gainCondition(state, state.leadInvestigatorId, card.effect.kind, content, context)
       : resolveCounterclockwiseOmenCard(state, content);
     if (!resolved.ok || resolved.state.gameResult) return resolved;
-    resolved.state.currentMythosCardId = undefined;
-    resolved.state.currentMythosIconIndex = undefined;
-    resolved.state.stateVersion = state.stateVersion;
-    const opened = openReplacementWindow(resolved.state, content);
-    if (!opened.ok) return opened;
-    opened.state.stateVersion = state.stateVersion;
-    return success(opened.state, resolved.events.concat(opened.events));
+    return finishMythosEvent(state, resolved.state, resolved.events, content);
   }
   if (!icon) return failure("MYTHOS_EFFECT_UNSUPPORTED", "The revealed card's printed text is not executable yet.");
   if (icon.type === "monster_surge") return resolveMythosMonsterSurge(state, content, context);
@@ -1051,6 +1056,16 @@ export function advanceMythosIcon(state: GameState, content: GameContent, contex
   if (icon.type === "spawn_clues") return spawnMythosClues(state, content, context);
   if (icon.type === "spawn_gates") return resolveMythosSpawnGates(state, content, context);
   return failure("MYTHOS_EFFECT_UNSUPPORTED", "This printed Mythos icon is not executable yet.");
+}
+
+function finishMythosEvent(previous: GameState, resolved: GameState, events: GameEvent[], content: GameContent): CommandResult {
+  resolved.currentMythosCardId = undefined;
+  resolved.currentMythosIconIndex = undefined;
+  resolved.stateVersion = previous.stateVersion;
+  const opened = openReplacementWindow(resolved, content);
+  if (!opened.ok) return opened;
+  opened.state.stateVersion = previous.stateVersion;
+  return success(opened.state, events.concat(opened.events));
 }
 
 function routeBetween(map: GameMap, source: LocationId, target: LocationId) {
@@ -1659,6 +1674,22 @@ export function executeCommand(
       || selections.some((selection) => !decision.optionIds.includes(selection))
     ) {
       return failure("INVALID_DECISION_SELECTION", "The selected options are not legal for this decision.");
+    }
+    if (decision.continuation === "mythos_omen_choice") {
+      const card = content.mythosCards?.find(candidate => candidate.id === state.currentMythosCardId);
+      if (state.phase !== "mythos" || state.leadInvestigatorId !== actorPlayerId || card?.effect?.type !== "lead_choose_omen_without_doom"
+        || state.currentMythosIconIndex !== card.icons?.length || state.omen === undefined || !Number.isInteger(state.omen)
+        || state.omen < 0 || state.omen >= omenTrack.length) return failure("MYTHOS_CONTENT_MISSING", "The Omen choice is no longer attached to its Mythos card.");
+      const choice = selections[0]!;
+      const position = choice === "stay" ? state.omen : Number.parseInt(choice.slice("omen_".length), 10);
+      if (choice !== "stay" && (!/^omen_[0-3]$/.test(choice) || position >= omenTrack.length)) return failure("INVALID_DECISION_SELECTION", "That Omen space is invalid.");
+      next.pendingDecision = undefined;
+      const events: GameEvent[] = [{ type: "DECISION_RESOLVED", decisionId: decision.id, playerId: actorPlayerId, selectedOptionIds: [choice] }];
+      if (position !== state.omen) {
+        next.omen = position;
+        events.push({ type: "OMEN_MOVED", position, symbol: omenTrack[position]!, direction: "chosen", doomAdvance: 0 });
+      }
+      return finishMythosEvent(state, next, events, content);
     }
     if (decision.continuation === "test_reroll") {
       const test = state.activeTest;

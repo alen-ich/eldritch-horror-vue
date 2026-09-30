@@ -32,6 +32,7 @@ export const pendingDecisionKinds = [
   "select_acquired_cards",
   "discard_reserve_card",
   "recover_conditions",
+  "choose_omen_space",
 ] as const;
 export type PendingDecisionKind = (typeof pendingDecisionKinds)[number];
 
@@ -45,7 +46,7 @@ export const pendingDecisionSchema = z.object({
   minSelections: z.number().int().nonnegative(),
   maxSelections: z.number().int().positive(),
   selectionBudget: z.number().int().nonnegative().optional(),
-  continuation: z.enum(["test_reroll", "acquire_assets_purchase", "acquire_assets_discard", "condition_rest_recovery"]).optional(),
+  continuation: z.enum(["test_reroll", "acquire_assets_purchase", "acquire_assets_discard", "condition_rest_recovery", "mythos_omen_choice"]).optional(),
 }).strict().superRefine((decision, context) => {
   if (new Set(decision.optionIds).size !== decision.optionIds.length) {
     context.addIssue({ code: "custom", message: "Decision option IDs must be unique.", path: ["optionIds"] });
@@ -152,7 +153,7 @@ export type GameEvent =
   | { type: "CLUE_GAINED"; playerId: string; amount: number }
   | { type: "CLUE_COLLECTED"; clueId: string; playerId: string; locationId: LocationId }
   | { type: "OMEN_ADVANCED"; position: number; symbol: "comet" | "constellation" | "eclipse"; doomAdvance: number }
-  | { type: "OMEN_MOVED"; position: number; symbol: "comet" | "constellation" | "eclipse"; direction: "counterclockwise"; doomAdvance: number }
+  | { type: "OMEN_MOVED"; position: number; symbol: "comet" | "constellation" | "eclipse"; direction: "counterclockwise" | "chosen"; doomAdvance: number }
   | { type: "INVESTIGATOR_DAMAGED"; playerId: string; healthLost: number; sanityLost: number }
   | { type: "INVESTIGATOR_RECOVERED"; playerId: string; healthRecovered: number; sanityRecovered: number }
   | { type: "INVESTIGATOR_DEFEATED" | "INVESTIGATOR_REPLACED"; playerId: string; investigatorId: InvestigatorId }

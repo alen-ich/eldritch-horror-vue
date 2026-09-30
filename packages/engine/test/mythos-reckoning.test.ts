@@ -181,3 +181,52 @@ describe("typed Mythos card text", () => {
     expect(lost.events).toContainEqual({ type: "GAME_ENDED", result: "investigators_lose", reason: "azathoth_awakened" });
   });
 });
+
+describe("Omen of Good Fortune owner choice", () => {
+  const fortuneContent: GameContent = { ...content, mythosCards: [{
+    id: "mythos_yellow_08", color: "yellow", icons: [{ type: "advance_omen" }, { type: "resolve_reckoning" }, { type: "spawn_gates" }],
+    effect: { type: "lead_choose_omen_without_doom" },
+  }] };
+
+  function readyCard(): GameState {
+    const before = state();
+    before.currentMythosCardId = "mythos_yellow_08";
+    before.currentMythosIconIndex = 3;
+    before.omen = 0;
+    before.doom = 8;
+    before.activeGateIds = ["gate_arkham"];
+    return before;
+  }
+
+  it("pauses for the Lead, accepts a chosen track space, and advances no Doom", () => {
+    const before = readyCard();
+    const offered = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, fortuneContent, createDeterministicEngineContext({ ids: ["fortune-choice"] }));
+    if (!offered.ok) throw new Error(offered.error.message);
+    expect(offered.state.pendingDecision).toMatchObject({ id: "fortune-choice", kind: "choose_omen_space", playerId: "guest", visibility: "owner", optionIds: ["stay", "omen_0", "omen_1", "omen_2", "omen_3"] });
+    expect(offered.state.currentMythosCardId).toBe("mythos_yellow_08");
+    expect(offered.state.doom).toBe(8);
+    const denied = executeCommand(offered.state, "host", { type: "RESOLVE_DECISION", decisionId: "fortune-choice", selectedOptionIds: ["omen_2"] }, fortuneContent);
+    expect(denied).toMatchObject({ ok: false, error: { code: "NOT_DECISION_OWNER" } });
+    const invalid = executeCommand(offered.state, "guest", { type: "RESOLVE_DECISION", decisionId: "fortune-choice", selectedOptionIds: ["omen_4"] }, fortuneContent);
+    expect(invalid).toMatchObject({ ok: false, error: { code: "INVALID_DECISION_SELECTION" } });
+    const chosen = executeCommand(offered.state, "guest", { type: "RESOLVE_DECISION", decisionId: "fortune-choice", selectedOptionIds: ["omen_2"] }, fortuneContent);
+    if (!chosen.ok) throw new Error(chosen.error.message);
+    expect(chosen.state).toMatchObject({ omen: 2, doom: 8, replacementWindow: true, stateVersion: before.stateVersion + 2 });
+    expect(chosen.state.pendingDecision).toBeUndefined();
+    expect(chosen.state.currentMythosCardId).toBeUndefined();
+    expect(chosen.events).toContainEqual({ type: "OMEN_MOVED", position: 2, symbol: "eclipse", direction: "chosen", doomAdvance: 0 });
+    expect(before).toMatchObject({ omen: 0, doom: 8, currentMythosCardId: "mythos_yellow_08" });
+  });
+
+  it("allows the optional effect to be declined without moving Omen", () => {
+    const before = readyCard();
+    const offered = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, fortuneContent, createDeterministicEngineContext({ ids: ["fortune-choice"] }));
+    if (!offered.ok) throw new Error(offered.error.message);
+    expect(executeCommand(offered.state, "guest", { type: "ADVANCE_MYTHOS" }, fortuneContent, createDeterministicEngineContext({})))
+      .toMatchObject({ ok: false, error: { code: "MYTHOS_EFFECT_UNSUPPORTED" } });
+    const declined = executeCommand(offered.state, "guest", { type: "RESOLVE_DECISION", decisionId: "fortune-choice", selectedOptionIds: ["stay"] }, fortuneContent);
+    if (!declined.ok) throw new Error(declined.error.message);
+    expect(declined.state).toMatchObject({ omen: 0, doom: 8, replacementWindow: true });
+    expect(declined.events.some(event => event.type === "OMEN_MOVED")).toBe(false);
+  });
+});

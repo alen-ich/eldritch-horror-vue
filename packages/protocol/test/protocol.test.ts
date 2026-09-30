@@ -59,6 +59,7 @@ describe("pendingDecisionSchema", () => {
 
   it("accepts a bounded serializable decision", () => {
     expect(pendingDecisionSchema.parse(decision)).toEqual(decision);
+    expect(pendingDecisionSchema.parse({ ...decision, kind: "choose_omen_space", continuation: "mythos_omen_choice", optionIds: ["stay", "omen_0", "omen_1", "omen_2", "omen_3"] }).kind).toBe("choose_omen_space");
   });
 
   it.each([
