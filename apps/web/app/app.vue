@@ -144,6 +144,11 @@ const privateTideOfDespairDecision = computed(() => {
   return decision && decision.playerId === game.playerId.value && 'optionIds' in decision
     && decision.kind === 'choose_tide_of_despair' ? decision : undefined
 })
+const privateUnexpectedBetrayalDecision = computed(() => {
+  const decision = game.pendingDecision.value
+  return decision && decision.playerId === game.playerId.value && 'optionIds' in decision
+    && decision.kind === 'choose_unexpected_betrayal_ally' ? decision : undefined
+})
 const selectedReserveValue = computed(() => selectedReserveAssetIds.value.reduce((total, id) => total + (assetById[id]?.value ?? 0), 0))
 const inspectedRoutes = computed(() => inspectedLocationId.value
   ? baseGameRoutes.filter((route) => route.source === inspectedLocationId.value || route.target === inspectedLocationId.value)
@@ -333,6 +338,11 @@ function resolveBloodFlowsChoice(monsterInstanceId: string) {
 function resolveTideOfDespairChoice(optionId: string) {
   const decision = privateTideOfDespairDecision.value
   if (decision?.optionIds.includes(optionId)) game.send({ type: 'RESOLVE_DECISION', decisionId: decision.id, selectedOptionIds: [optionId] })
+}
+
+function resolveUnexpectedBetrayalChoice(assetId: string) {
+  const decision = privateUnexpectedBetrayalDecision.value
+  if (decision?.optionIds.includes(assetId)) game.send({ type: 'RESOLVE_DECISION', decisionId: decision.id, selectedOptionIds: [assetId] })
 }
 
 function worldFightsBackOptionLabel(optionId: string): string {
@@ -574,6 +584,15 @@ async function copyInvite() {
             <div class="test-dice omen-choices" role="group" aria-label="Tide of Despair choices">
               <button v-for="optionId in privateTideOfDespairDecision.optionIds" :key="optionId"
                 @click="resolveTideOfDespairChoice(optionId)">{{ optionId === 'discard_blessed' ? 'Discard Blessed' : 'Lose 2 Health and 2 Sanity' }}</button>
+            </div>
+          </section>
+          <section v-if="privateUnexpectedBetrayalDecision" class="test-dialog" role="dialog" aria-modal="true" aria-labelledby="unexpected-betrayal-title">
+            <p class="chapter">Mythos choice</p>
+            <h2 id="unexpected-betrayal-title">Unexpected Betrayal</h2>
+            <p>{{ privateUnexpectedBetrayalDecision.prompt }}</p>
+            <div class="test-dice omen-choices" role="group" aria-label="Ally Assets to discard">
+              <button v-for="assetId in privateUnexpectedBetrayalDecision.optionIds" :key="assetId"
+                @click="resolveUnexpectedBetrayalChoice(assetId)">Discard {{ assetById[assetId]?.name ?? assetId }}</button>
             </div>
           </section>
           <div v-if="game.gameResult.value" class="game-result" role="status">

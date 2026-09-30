@@ -95,6 +95,83 @@ describe("guarded yellow Reckoning", () => {
 });
 
 describe("typed Mythos card text", () => {
+  const betrayalContent: GameContent = { ...content,
+    investigators: { jim_culver: { startingLocationId: "arkham", health: 5, sanity: 4, skills: { lore: 3, influence: 3, observation: 2, strength: 2, will: 3 }, startingAssetIds: [], startingClues: 0 } },
+    assets: [
+      { id: "ally_one", value: 1, traits: ["ally"], engineEffects: [] },
+      { id: "ally_two", value: 2, traits: ["ally"], engineEffects: [] },
+      { id: "ally_three", value: 1, traits: ["ally"], engineEffects: [] },
+      { id: "item_one", value: 1, traits: ["item"], engineEffects: [] },
+    ],
+    mythosCards: [{ id: "mythos_green_11", color: "green", icons: [{ type: "advance_omen" }, { type: "monster_surge" }, { type: "spawn_clues" }], effect: { type: "each_investigator_with_ally_betrayed" } }],
+  };
+  function betrayalReady(): GameState {
+    const before = state();
+    before.currentMythosCardId = "mythos_green_11";
+    before.currentMythosIconIndex = 3;
+    before.doom = 8;
+    before.players[1] = { ...before.players[1]!, investigatorId: "jim_culver", locationId: "arkham", health: 5, sanity: 4, assetIds: ["ally_one", "ally_two", "item_one"] };
+    before.players[0] = { ...before.players[0]!, investigatorId: "jim_culver", locationId: "arkham", health: 5, sanity: 4, assetIds: ["ally_three"] };
+    return before;
+  }
+
+  it("offers Unexpected Betrayal only to Ally holders and discards the chosen Ally after Health loss", () => {
+    const before = betrayalReady();
+    const offered = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, betrayalContent, createDeterministicEngineContext({ ids: ["first-betrayal"] }));
+    if (!offered.ok) throw new Error(offered.error.message);
+    expect(offered.state.pendingDecision).toMatchObject({ kind: "choose_unexpected_betrayal_ally", playerId: "guest", optionIds: ["ally_one", "ally_two"] });
+    expect(executeCommand(offered.state, "host", { type: "RESOLVE_DECISION", decisionId: "first-betrayal", selectedOptionIds: ["ally_one"] }, betrayalContent))
+      .toMatchObject({ ok: false, error: { code: "NOT_DECISION_OWNER" } });
+    const first = executeCommand(offered.state, "guest", { type: "RESOLVE_DECISION", decisionId: "first-betrayal", selectedOptionIds: ["ally_one"] }, betrayalContent, createDeterministicEngineContext({ ids: ["second-betrayal"] }));
+    if (!first.ok) throw new Error(first.error.message);
+    expect(first.state.players[1]).toMatchObject({ health: 2, assetIds: ["ally_two", "item_one"] });
+    expect(first.state.assetDiscardIds).toEqual(["ally_one"]);
+    expect(first.events.map(event => event.type).indexOf("INVESTIGATOR_DAMAGED")).toBeLessThan(first.events.map(event => event.type).indexOf("ASSET_DISCARDED"));
+    expect(first.state.pendingDecision).toMatchObject({ playerId: "host", optionIds: ["ally_three"] });
+    const second = executeCommand(first.state, "host", { type: "RESOLVE_DECISION", decisionId: "second-betrayal", selectedOptionIds: ["ally_three"] }, betrayalContent, createDeterministicEngineContext({}));
+    if (!second.ok) throw new Error(second.error.message);
+    expect(second.state.players[0]).toMatchObject({ health: 2, assetIds: [] });
+    expect(second.state.replacementWindow).toBe(true);
+    expect(before.players[1]?.assetIds).toEqual(["ally_one", "ally_two", "item_one"]);
+  });
+
+  it("skips investigators without Allies and finishes when nobody has one", () => {
+    const before = betrayalReady();
+    before.players[1]!.assetIds = ["item_one"];
+    const offered = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, betrayalContent, createDeterministicEngineContext({ ids: ["host-betrayal"] }));
+    expect(offered).toMatchObject({ ok: true, state: { pendingDecision: { playerId: "host" } } });
+    before.players[0]!.assetIds = [];
+    const none = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, betrayalContent, createDeterministicEngineContext({}));
+    expect(none).toMatchObject({ ok: true, state: { replacementWindow: true } });
+  });
+
+  it("retains Unexpected Betrayal through lethal damage and excludes the discarded Ally from the defeated sheet", () => {
+    const before = betrayalReady();
+    before.players[1]!.health = 3;
+    const offered = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, betrayalContent, createDeterministicEngineContext({ ids: ["first-betrayal"] }));
+    if (!offered.ok) throw new Error(offered.error.message);
+    const lost = executeCommand(offered.state, "guest", { type: "RESOLVE_DECISION", decisionId: "first-betrayal", selectedOptionIds: ["ally_one"] }, betrayalContent, createDeterministicEngineContext({}));
+    if (!lost.ok) throw new Error(lost.error.message);
+    expect(lost.state.pendingDefeat?.playerId).toBe("guest");
+    expect(lost.state.assetDiscardIds).toContain("ally_one");
+    const resumed = executeCommand(lost.state, "guest", { type: "RESOLVE_DEFEAT", cityId: "arkham", cause: "health", leadPlayerId: "host" }, betrayalContent, createDeterministicEngineContext({ ids: ["second-betrayal"] }));
+    if (!resumed.ok) throw new Error(resumed.error.message);
+    expect(resumed.state.defeatedInvestigators?.[0]?.assetIds).toEqual(["ally_two", "item_one"]);
+    expect(resumed.state.pendingDecision?.playerId).toBe("host");
+  });
+
+  it("guards Unexpected Betrayal against unsupported awakening without discarding an Ally", () => {
+    const before = betrayalReady();
+    before.players[1]!.health = 3;
+    before.doom = 1;
+    before.ancientOneId = "cthulhu";
+    const offered = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, betrayalContent, createDeterministicEngineContext({ ids: ["first-betrayal"] }));
+    if (!offered.ok) throw new Error(offered.error.message);
+    expect(executeCommand(offered.state, "guest", { type: "RESOLVE_DECISION", decisionId: "first-betrayal", selectedOptionIds: ["ally_one"] }, betrayalContent, createDeterministicEngineContext({})))
+      .toMatchObject({ ok: false, error: { code: "AWAKENING_UNSUPPORTED" } });
+    expect(offered.state.assetDiscardIds).toEqual([]);
+    expect(offered.state.players[1]?.assetIds).toContain("ally_one");
+  });
   const tideContent: GameContent = { ...content,
     investigators: { jim_culver: { startingLocationId: "arkham", health: 5, sanity: 4, skills: { lore: 3, influence: 3, observation: 2, strength: 2, will: 3 }, startingAssetIds: [], startingClues: 0 } },
     mythosCards: [{ id: "mythos_yellow_16", color: "yellow", icons: [{ type: "advance_omen" }, { type: "resolve_reckoning" }, { type: "spawn_gates" }], effect: { type: "each_investigator_tide_of_despair" } }],

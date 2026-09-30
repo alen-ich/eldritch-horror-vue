@@ -146,6 +146,7 @@ export interface GameState {
   pendingMythosDamage?: { cardId: string; remainingPlayerIds: string[]; healthLoss: number };
   pendingHeatWave?: { cardId: string; remainingPlayerIds: string[] };
   pendingTideOfDespair?: { cardId: string; remainingPlayerIds: string[] };
+  pendingUnexpectedBetrayal?: { cardId: string; remainingPlayerIds: string[] };
   replacementWindow?: boolean;
   awakened?: boolean;
   doom?: number;
@@ -225,7 +226,7 @@ export interface GameContent {
   conditions?: readonly { id: string; kind: string; backEffect?: ConditionBackEffect }[];
   monsters?: readonly MonsterCombatDefinition[];
   ancientOnes?: Readonly<Partial<Record<AncientOneId, AncientSetup>>>;
-  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } | { type: "each_investigator_choose_world_fights_back" } | { type: "lead_gain_ally_asset" } | { type: "each_investigator_trade_debt_for_condition" } | { type: "discard_matching_gates_and_advance_doom" } | { type: "doom_two_unless_lead_gains_dark_pact" } | { type: "spawn_monster_on_each_cultist_space" } | { type: "roll_each_investigator_for_bermuda_triangle" } | { type: "group_discard_gate_then_advance_doom_if_nonmatching" } | { type: "torn_asunder" } | { type: "each_investigator_choose_heat_wave" } | { type: "lead_discard_monster_lose_toughness_health" } | { type: "each_investigator_tide_of_despair" } }[];
+  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } | { type: "each_investigator_choose_world_fights_back" } | { type: "lead_gain_ally_asset" } | { type: "each_investigator_trade_debt_for_condition" } | { type: "discard_matching_gates_and_advance_doom" } | { type: "doom_two_unless_lead_gains_dark_pact" } | { type: "spawn_monster_on_each_cultist_space" } | { type: "roll_each_investigator_for_bermuda_triangle" } | { type: "group_discard_gate_then_advance_doom_if_nonmatching" } | { type: "torn_asunder" } | { type: "each_investigator_choose_heat_wave" } | { type: "lead_discard_monster_lose_toughness_health" } | { type: "each_investigator_tide_of_despair" } | { type: "each_investigator_with_ally_betrayed" } }[];
   referenceCards?: readonly { playerCount: number; spawnClues: number; monsterSurge?: number; spawnGates?: number }[];
   map: GameMap;
   investigators: Readonly<Partial<Record<InvestigatorId, InvestigatorSetup>>>;
@@ -1158,6 +1159,18 @@ export function advanceMythosIcon(state: GameState, content: GameContent, contex
       next.pendingDecision = tideOfDespairDecision(next, ordered[0]!, content, context);
       return success(next, []);
     }
+    if (card.effect.type === "each_investigator_with_ally_betrayed") {
+      const ordered = mythosInvestigatorOrder(state);
+      if (ordered.some(playerId => state.players.find(player => player.id === playerId)!.assetIds.some(id => !content.assets.some(asset => asset.id === id && asset.traits)))) {
+        return failure("ASSET_CONTENT_MISSING", "An investigator's Asset lacks trait content.");
+      }
+      const affected = ordered.filter(playerId => allyAssetsHeld(state, playerId, content).length);
+      if (!affected.length) return finishMythosEvent(state, structuredClone(state), [], content);
+      const next = structuredClone(state);
+      next.pendingUnexpectedBetrayal = { cardId: state.currentMythosCardId, remainingPlayerIds: affected.slice(1) };
+      next.pendingDecision = unexpectedBetrayalDecision(next, affected[0]!, content, context);
+      return success(next, []);
+    }
     const resolved = card.effect.type === "lead_gain_condition"
       ? gainCondition(state, state.leadInvestigatorId, card.effect.kind, content, context)
       : resolveCounterclockwiseOmenCard(state, content);
@@ -1208,6 +1221,38 @@ function continueTideOfDespair(state: GameState, content: GameContent, context?:
     return success(next, []);
   }
   next.pendingTideOfDespair = undefined;
+  return finishMythosEvent(state, next, [], content);
+}
+
+function allyAssetsHeld(state: GameState, playerId: string, content: GameContent): string[] {
+  const player = state.players.find(candidate => candidate.id === playerId);
+  return (player?.assetIds ?? []).filter(id => content.assets.some(asset => asset.id === id && asset.traits?.includes("ally")));
+}
+
+function unexpectedBetrayalDecision(state: GameState, playerId: string, content: GameContent, context: EngineContext): PendingDecision {
+  return {
+    id: context.createId(), kind: "choose_unexpected_betrayal_ally", playerId, visibility: "owner",
+    prompt: "Unexpected Betrayal: lose 3 Health, then discard one of your Ally Assets.",
+    optionIds: allyAssetsHeld(state, playerId, content), minSelections: 1, maxSelections: 1,
+    continuation: "mythos_unexpected_betrayal",
+  };
+}
+
+function continueUnexpectedBetrayal(state: GameState, content: GameContent, context?: EngineContext): CommandResult {
+  const pending = state.pendingUnexpectedBetrayal;
+  const card = content.mythosCards?.find(candidate => candidate.id === state.currentMythosCardId);
+  if (state.phase !== "mythos" || state.pendingDefeat || state.pendingDecision || !pending || pending.cardId !== state.currentMythosCardId
+    || card?.effect?.type !== "each_investigator_with_ally_betrayed" || state.currentMythosIconIndex !== card.icons?.length) {
+    return failure("MYTHOS_CONTENT_MISSING", "The remaining choices are no longer attached to Unexpected Betrayal.");
+  }
+  const next = structuredClone(state);
+  const following = next.pendingUnexpectedBetrayal!.remainingPlayerIds.shift();
+  if (following) {
+    if (!context) return failure("RANDOM_INPUT_REQUIRED", "The next Unexpected Betrayal choice requires a server-generated ID.");
+    next.pendingDecision = unexpectedBetrayalDecision(next, following, content, context);
+    return success(next, []);
+  }
+  next.pendingUnexpectedBetrayal = undefined;
   return finishMythosEvent(state, next, [], content);
 }
 
@@ -1962,6 +2007,12 @@ export function executeCommand(
       if (!continued.ok) return continued;
       return { ...continued, events: [...events, ...continued.events] };
     }
+    if (next.pendingUnexpectedBetrayal) {
+      next.stateVersion = state.stateVersion;
+      const continued = continueUnexpectedBetrayal(next, content, context);
+      if (!continued.ok) return continued;
+      return { ...continued, events: [...events, ...continued.events] };
+    }
     if (state.phase === "mythos" && content.mythosCards?.find(card => card.id === state.currentMythosCardId)?.effect?.type === "lead_discard_monster_lose_toughness_health") {
       return finishMythosEvent(state, next, events, content);
     }
@@ -2284,6 +2335,38 @@ export function executeCommand(
       const events: GameEvent[] = [{ type: "DECISION_RESOLVED", decisionId: decision.id, playerId: actorPlayerId, selectedOptionIds: [choice] }, ...resolved.events];
       if (resolved.state.pendingDefeat || resolved.state.gameResult) return success(resolved.state, events);
       const continued = continueTideOfDespair(resolved.state, content, context);
+      if (!continued.ok) return continued;
+      continued.state.stateVersion = state.stateVersion + 1;
+      return { ...continued, events: [...events, ...continued.events] };
+    }
+    if (decision.continuation === "mythos_unexpected_betrayal") {
+      const card = content.mythosCards?.find(candidate => candidate.id === state.currentMythosCardId);
+      if (state.phase !== "mythos" || card?.effect?.type !== "each_investigator_with_ally_betrayed"
+        || state.currentMythosIconIndex !== card.icons?.length || state.pendingUnexpectedBetrayal?.cardId !== state.currentMythosCardId) {
+        return failure("MYTHOS_CONTENT_MISSING", "The choice is no longer attached to Unexpected Betrayal.");
+      }
+      const assetId = selections[0]!;
+      if (!allyAssetsHeld(state, actorPlayerId, content).includes(assetId)) {
+        return failure("INVALID_DECISION_SELECTION", "That Ally is no longer held.");
+      }
+      if (!actor.investigatorId) return failure("INVESTIGATOR_CONTENT_MISSING", "The investigator's Health setup is missing.");
+      if ((actor.health ?? 0) <= 3 && (state.doom ?? 0) <= 1 && state.ancientOneId !== "azathoth") {
+        return failure("AWAKENING_UNSUPPORTED", "Ancient One awakening is not implemented yet.");
+      }
+      const damaged = damageInvestigator(next, actorPlayerId, 3, 0, content);
+      if (!damaged.ok) return damaged;
+      const damagedActor = damaged.state.players.find(player => player.id === actorPlayerId)!;
+      damagedActor.assetIds = damagedActor.assetIds.filter(id => id !== assetId);
+      damaged.state.assetDiscardIds.push(assetId);
+      damaged.state.pendingDecision = undefined;
+      damaged.state.stateVersion = state.stateVersion;
+      const events: GameEvent[] = [
+        { type: "DECISION_RESOLVED", decisionId: decision.id, playerId: actorPlayerId, selectedOptionIds: [assetId] },
+        ...damaged.events,
+        { type: "ASSET_DISCARDED", playerId: actorPlayerId, assetId, reason: "mythos" },
+      ];
+      if (damaged.state.pendingDefeat || damaged.state.gameResult) return success(damaged.state, events);
+      const continued = continueUnexpectedBetrayal(damaged.state, content, context);
       if (!continued.ok) return continued;
       continued.state.stateVersion = state.stateVersion + 1;
       return { ...continued, events: [...events, ...continued.events] };

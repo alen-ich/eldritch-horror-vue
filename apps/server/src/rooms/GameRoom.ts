@@ -177,8 +177,8 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       return;
     }
     const context = parsed.data.command.type === "ADVANCE_MYTHOS" || parsed.data.command.type === "RESOLVE_LOCATION_ENCOUNTER" || parsed.data.command.type === "FIGHT_MONSTER"
-      || (parsed.data.command.type === "RESOLVE_DECISION" && (this.activeTest?.continuation === "location_encounter" || this.pendingDecision?.continuation === "mythos_world_fights_back" || this.pendingDecision?.continuation === "mythos_debt_trade" || this.pendingDecision?.continuation === "mythos_desperate_times" || this.pendingDecision?.continuation === "mythos_that_which_consumes" || this.pendingDecision?.continuation === "mythos_heat_wave" || this.pendingDecision?.continuation === "mythos_blood_flows" || this.pendingDecision?.continuation === "mythos_tide_of_despair"))
-      || (parsed.data.command.type === "RESOLVE_DEFEAT" && Boolean(this.toEngineState().pendingHeatWave || this.toEngineState().pendingTideOfDespair))
+      || (parsed.data.command.type === "RESOLVE_DECISION" && (this.activeTest?.continuation === "location_encounter" || this.pendingDecision?.continuation === "mythos_world_fights_back" || this.pendingDecision?.continuation === "mythos_debt_trade" || this.pendingDecision?.continuation === "mythos_desperate_times" || this.pendingDecision?.continuation === "mythos_that_which_consumes" || this.pendingDecision?.continuation === "mythos_heat_wave" || this.pendingDecision?.continuation === "mythos_blood_flows" || this.pendingDecision?.continuation === "mythos_tide_of_despair" || this.pendingDecision?.continuation === "mythos_unexpected_betrayal"))
+      || (parsed.data.command.type === "RESOLVE_DEFEAT" && Boolean(this.toEngineState().pendingHeatWave || this.toEngineState().pendingTideOfDespair || this.toEngineState().pendingUnexpectedBetrayal))
       ? serverMythosContext()
       : parsed.data.command.type === "START_GAME"
       ? createDeterministicEngineContext({
@@ -218,7 +218,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
   private toEngineState(): GameState {
     const monsters = JSON.parse(this.state.monsters) as NonNullable<GameState["monsters"]>;
     return {
-      ...JSON.parse(this.state.investigatorLifecycle) as Pick<GameState, "pendingDefeat" | "pendingMythosDamage" | "pendingHeatWave" | "pendingTideOfDespair" | "defeatedInvestigators" | "replacementWindow" | "awakened">,
+      ...JSON.parse(this.state.investigatorLifecycle) as Pick<GameState, "pendingDefeat" | "pendingMythosDamage" | "pendingHeatWave" | "pendingTideOfDespair" | "pendingUnexpectedBetrayal" | "defeatedInvestigators" | "replacementWindow" | "awakened">,
       doom: this.state.doom,
       omen: this.state.omen,
       greenOmenTokens: this.state.greenOmenTokens,
@@ -284,7 +284,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
 
   private applyEngineState(engineState: GameState): void {
     if (engineState.phase !== "lobby") this.autoDispose = false;
-    this.state.investigatorLifecycle = JSON.stringify({ pendingDefeat: engineState.pendingDefeat, pendingMythosDamage: engineState.pendingMythosDamage, pendingHeatWave: engineState.pendingHeatWave, pendingTideOfDespair: engineState.pendingTideOfDespair, defeatedInvestigators: engineState.defeatedInvestigators, replacementWindow: engineState.replacementWindow, awakened: engineState.awakened });
+    this.state.investigatorLifecycle = JSON.stringify({ pendingDefeat: engineState.pendingDefeat, pendingMythosDamage: engineState.pendingMythosDamage, pendingHeatWave: engineState.pendingHeatWave, pendingTideOfDespair: engineState.pendingTideOfDespair, pendingUnexpectedBetrayal: engineState.pendingUnexpectedBetrayal, defeatedInvestigators: engineState.defeatedInvestigators, replacementWindow: engineState.replacementWindow, awakened: engineState.awakened });
     this.state.doom = engineState.doom ?? 0;
     this.state.omen = engineState.omen ?? 0;
     this.state.greenOmenTokens = engineState.greenOmenTokens ?? 0;
