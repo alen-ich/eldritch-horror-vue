@@ -245,6 +245,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       monsters,
       encounteredMonsterInstanceIds: this.state.encounteredMonsterInstanceIds ? this.state.encounteredMonsterInstanceIds.split(",") : [],
       activeGateIds: this.state.activeGateIds ? this.state.activeGateIds.split(",") : [],
+      discardedGateIds: this.state.discardedGateIds ? this.state.discardedGateIds.split(",") : [],
       boardClues: JSON.parse(this.state.boardClues) as GameState["boardClues"],
       reserveAssetIds: this.state.reserveAssetIds ? this.state.reserveAssetIds.split(",") : [],
       assetDiscardIds: this.state.assetDiscardIds ? this.state.assetDiscardIds.split(",") : [],
@@ -314,6 +315,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     this.state.monsters = JSON.stringify(engineState.monsters ?? []);
     this.state.encounteredMonsterInstanceIds = (engineState.encounteredMonsterInstanceIds ?? []).join(",");
     this.state.activeGateIds = (engineState.activeGateIds ?? []).join(",");
+    this.state.discardedGateIds = (engineState.discardedGateIds ?? []).join(",");
     this.state.boardClues = JSON.stringify(engineState.boardClues ?? []);
     this.state.reserveAssetIds = engineState.reserveAssetIds.join(",");
     this.state.assetDiscardIds = engineState.assetDiscardIds.join(",");

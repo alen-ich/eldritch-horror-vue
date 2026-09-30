@@ -84,6 +84,7 @@ export const GameRoomState = schema({
   monsters: t.string().default("[]"),
   encounteredMonsterInstanceIds: t.string().default(""),
   activeGateIds: t.string().default(""),
+  discardedGateIds: t.string().default(""),
   boardClues: t.string().default("[]"),
   resolvedMythosClueCardId: t.string().default(""),
   reserveAssetIds: t.string().default(""),

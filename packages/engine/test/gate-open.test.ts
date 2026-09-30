@@ -53,6 +53,19 @@ describe("internal Gate opening", () => {
     expect(missing.privateState.deckOrderById.gates).toEqual(["gate_missing"]);
   });
 
+  it("recycles discarded Gates when the stack runs out without revealing the new order", () => {
+    const before = state();
+    before.privateState.deckOrderById.gates = ["gate_arkham"];
+    before.discardedGateIds = ["gate_london"];
+    before.privateState.tokenPoolById.monsters = [];
+    const result = openGateFromStack(before, content, createDeterministicEngineContext({}));
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.state.activeGateIds).toEqual(["gate_arkham"]);
+    expect(result.state.discardedGateIds).toEqual([]);
+    expect(result.state.privateState.deckOrderById.gates).toEqual(["gate_london"]);
+    expect(before.discardedGateIds).toEqual(["gate_london"]);
+  });
+
   it("does not reveal the Gate when its mandatory Monster effect cannot resolve", () => {
     const before = state();
     const unsupported: GameContent = { ...content, monsters: [{ ...content.monsters![0]!, spawnEffect: { type: "unsupported" } }] };

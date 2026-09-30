@@ -404,3 +404,82 @@ describe("Everyone Has a Price", () => {
     expect(noTrade.state.pendingDecision?.optionIds).toEqual(["skip"]);
   });
 });
+
+describe("Dimensional Instability", () => {
+  const cardContent: GameContent = { ...content,
+    gates: [
+      { id: "gate_arkham", locationId: "arkham", omenSymbol: "eclipse" },
+      { id: "gate_london", locationId: "london", omenSymbol: "constellation" },
+      { id: "gate_tokyo", locationId: "tokyo", omenSymbol: "constellation" },
+      { id: "gate_san_francisco", locationId: "san_francisco", omenSymbol: "comet" },
+    ],
+    map: { ...content.map, locationTypes: { ...content.map.locationTypes, london: "city", tokyo: "city", san_francisco: "city" } },
+    mythosCards: [{ id: "mythos_green_14", color: "green", icons: [{ type: "advance_omen" }, { type: "monster_surge" }, { type: "spawn_clues" }], effect: { type: "discard_matching_gates_and_advance_doom" } }],
+  };
+
+  function readyCard(): GameState {
+    const before = state();
+    before.currentMythosCardId = "mythos_green_14";
+    before.currentMythosIconIndex = 3;
+    before.omen = 1;
+    before.doom = 8;
+    before.activeGateIds = ["gate_arkham", "gate_london", "gate_tokyo"];
+    before.privateState.deckOrderById.gates = ["gate_san_francisco"];
+    before.discardedGateIds = [];
+    return before;
+  }
+
+  it("discards all matching Gates, advances Doom per Gate, and preserves nonmatching Gates", () => {
+    const before = readyCard();
+    const result = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, cardContent, createDeterministicEngineContext({}));
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.state.activeGateIds).toEqual(["gate_arkham"]);
+    expect(result.state.discardedGateIds).toEqual(["gate_london", "gate_tokyo"]);
+    expect(result.state.doom).toBe(6);
+    expect(result.state.replacementWindow).toBe(true);
+    expect(result.events.filter(event => event.type === "GATE_DISCARDED")).toEqual([
+      { type: "GATE_DISCARDED", gateId: "gate_london", locationId: "london" },
+      { type: "GATE_DISCARDED", gateId: "gate_tokyo", locationId: "tokyo" },
+    ]);
+    expect(before.activeGateIds).toHaveLength(3);
+  });
+
+  it("recycles the faceup discard pile when the Gate stack is empty", () => {
+    const before = readyCard();
+    before.privateState.deckOrderById.gates = [];
+    const result = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, cardContent, createDeterministicEngineContext({ shuffleIndexes: [0] }));
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.state.discardedGateIds).toEqual([]);
+    expect(result.state.privateState.deckOrderById.gates).toEqual(["gate_tokyo", "gate_london"]);
+  });
+
+  it("consumes the Event without changing Doom when no Gate matches", () => {
+    const before = readyCard();
+    before.omen = 0;
+    const result = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, cardContent, createDeterministicEngineContext({}));
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.state.activeGateIds).toEqual(before.activeGateIds);
+    expect(result.state.discardedGateIds).toEqual([]);
+    expect(result.state.doom).toBe(8);
+    expect(result.state.currentMythosCardId).toBeUndefined();
+  });
+
+  it("stops before unsupported awakening without discarding Gates", () => {
+    const before = readyCard();
+    before.ancientOneId = "cthulhu";
+    before.doom = 2;
+    expect(executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, cardContent, createDeterministicEngineContext({})))
+      .toMatchObject({ ok: false, error: { code: "AWAKENING_UNSUPPORTED" } });
+    expect(before.activeGateIds).toHaveLength(3);
+    expect(before.doom).toBe(2);
+  });
+
+  it("ends the game when Azathoth reaches zero Doom", () => {
+    const before = readyCard();
+    before.doom = 2;
+    const result = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, cardContent, createDeterministicEngineContext({}));
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.state.gameResult).toBe("investigators_lose");
+    expect(result.events).toContainEqual({ type: "GAME_ENDED", result: "investigators_lose", reason: "azathoth_awakened" });
+  });
+});

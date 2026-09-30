@@ -26,7 +26,8 @@ describe("base-game Mythos cards", () => {
     expect(baseGameMythosCards.find(card => card.id === "mythos_yellow_07")?.effect).toEqual({ type: "each_investigator_choose_world_fights_back" });
     expect(baseGameMythosCards.find(card => card.id === "mythos_yellow_05")?.effect).toEqual({ type: "lead_gain_ally_asset" });
     expect(baseGameMythosCards.find(card => card.id === "mythos_yellow_06")?.effect).toEqual({ type: "each_investigator_trade_debt_for_condition" });
-    expect(baseGameMythosCards.filter(card => card.effectModelStatus === "typed")).toHaveLength(6);
+    expect(baseGameMythosCards.find(card => card.id === "mythos_green_14")?.effect).toEqual({ type: "discard_matching_gates_and_advance_doom" });
+    expect(baseGameMythosCards.filter(card => card.effectModelStatus === "typed")).toHaveLength(7);
   });
 
   it("records the printed left-to-right icon sequence and blue-card token operands", () => {

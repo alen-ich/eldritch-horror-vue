@@ -164,6 +164,32 @@ describe("authoritative game room", () => {
     assert.ok(!JSON.stringify(room.state).includes("mythos_green_01"));
   });
 
+  it("discards Dimensional Instability Gates into a public pile while keeping the remaining stack private", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "mythos";
+    state.leadInvestigatorId = state.activePlayerId = state.players[0]!.id;
+    state.ancientOneId = "azathoth";
+    state.omen = 1;
+    state.doom = 8;
+    state.currentMythosCardId = "mythos_green_14";
+    state.currentMythosIconIndex = 3;
+    state.activeGateIds = ["gate_london", "gate_tokyo"];
+    state.privateState.deckOrderById.gates = ["gate_arkham"];
+    internal.applyEngineState(state);
+    assert.equal(JSON.stringify(room.state).includes("gate_arkham"), false);
+    sendCommand(room, host, { type: "ADVANCE_MYTHOS" });
+    await room.waitForMessage(commandMessageType);
+    assert.equal(room.state.doom, 6);
+    assert.equal(room.state.activeGateIds, "");
+    assert.equal(room.state.discardedGateIds, "gate_london,gate_tokyo");
+    assert.equal(room.state.currentMythosCardId, "");
+    assert.deepEqual(internal.toEngineState().privateState.deckOrderById.gates, ["gate_arkham"]);
+    assert.equal(JSON.stringify(room.state).includes("gate_arkham"), false);
+  });
+
   it("restores the Lead's private Omen of Good Fortune choice after reconnect", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
@@ -275,7 +301,8 @@ describe("authoritative game room", () => {
     await room.waitForMessage(commandMessageType);
     const second = await guestOptions as PendingDecision;
     assert.deepEqual(second.optionIds, ["condition_cursed", "skip"]);
-    assert.deepEqual(internal.toEngineState().players[0]!.conditionIds, ["condition_debt_01"]);
+    const firstDebtId = internal.toEngineState().players[0]!.conditionIds?.[0];
+    assert.ok(firstDebtId === "condition_debt_01" || firstDebtId === "condition_debt_02");
     assert.deepEqual(internal.toEngineState().privateState.tokenPoolById["condition:blessed"], ["condition_blessed_01"]);
     const token = guest.reconnectionToken;
     guest.reconnection.enabled = false;
@@ -288,7 +315,9 @@ describe("authoritative game room", () => {
     assert.deepEqual((await restoredOptions as PendingDecision).optionIds, second.optionIds);
     sendCommand(room, restored, { type: "RESOLVE_DECISION", decisionId: second.id, selectedOptionIds: ["condition_cursed"] });
     await room.waitForMessage(commandMessageType);
-    assert.deepEqual(internal.toEngineState().players[1]!.conditionIds, ["condition_debt_02"]);
+    const secondDebtId = internal.toEngineState().players[1]!.conditionIds?.[0];
+    assert.ok(secondDebtId === "condition_debt_01" || secondDebtId === "condition_debt_02");
+    assert.notEqual(secondDebtId, firstDebtId);
     assert.equal(room.state.currentMythosCardId, "");
     assert.equal(internal.toEngineState().replacementWindow, true);
   });

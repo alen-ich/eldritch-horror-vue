@@ -173,6 +173,7 @@ export interface GameState {
   monsterLocationIds: LocationId[];
   monsters?: MonsterInstance[];
   activeGateIds?: string[];
+  discardedGateIds?: string[];
   boardClues?: BoardClue[];
   reserveAssetIds: string[];
   assetDiscardIds: string[];
@@ -221,7 +222,7 @@ export interface GameContent {
   conditions?: readonly { id: string; kind: string; backEffect?: ConditionBackEffect }[];
   monsters?: readonly MonsterCombatDefinition[];
   ancientOnes?: Readonly<Partial<Record<AncientOneId, AncientSetup>>>;
-  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } | { type: "each_investigator_choose_world_fights_back" } | { type: "lead_gain_ally_asset" } | { type: "each_investigator_trade_debt_for_condition" } }[];
+  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } | { type: "each_investigator_choose_world_fights_back" } | { type: "lead_gain_ally_asset" } | { type: "each_investigator_trade_debt_for_condition" } | { type: "discard_matching_gates_and_advance_doom" } }[];
   referenceCards?: readonly { playerCount: number; spawnClues: number; monsterSurge?: number; spawnGates?: number }[];
   map: GameMap;
   investigators: Readonly<Partial<Record<InvestigatorId, InvestigatorSetup>>>;
@@ -292,6 +293,7 @@ export function createLobby(playerIds: string[]): GameState {
     usedConditionActionIds: [],
     monsterLocationIds: [],
     activeGateIds: [],
+    discardedGateIds: [],
     boardClues: [],
     reserveAssetIds: [],
     assetDiscardIds: [],
@@ -340,6 +342,7 @@ export function projectStateForPlayer(state: GameState, viewerPlayerId?: string)
     monsterLocationIds: [...publicState.monsterLocationIds],
     monsters: publicState.monsters?.map(monster => ({ ...monster })),
     activeGateIds: [...(publicState.activeGateIds ?? [])],
+    discardedGateIds: [...(publicState.discardedGateIds ?? [])],
     boardClues: publicState.boardClues?.map(clue => ({ ...clue })),
     reserveAssetIds: [...publicState.reserveAssetIds],
     assetDiscardIds: [...publicState.assetDiscardIds],
@@ -632,24 +635,35 @@ export function spawnMonsterFromCup(state: GameState, spawnLocationId: LocationI
 export function openGateFromStack(state: GameState, content: GameContent, context: EngineContext): CommandResult {
   if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
   if (state.phase === "lobby") return failure("WRONG_PHASE", "Gates cannot open before setup.");
-  const gateId = state.privateState.deckOrderById.gates?.[0];
+  const next = structuredClone(state);
+  const stack = next.privateState.deckOrderById.gates;
+  if (!stack) return failure("GATE_CONTENT_MISSING", "The Gate stack is not initialized.");
+  if (!stack.length && next.discardedGateIds?.length) {
+    next.privateState.deckOrderById.gates = context.shuffle(next.discardedGateIds);
+    next.discardedGateIds = [];
+  }
+  const gateId = next.privateState.deckOrderById.gates[0];
   if (!gateId) return failure("GATE_UNAVAILABLE", "No Gate remains in the stack.");
   const gate = content.gates?.find(candidate => candidate.id === gateId);
   if (!gate || !content.map.locationTypes[gate.locationId] || state.activeGateIds?.includes(gateId)) {
     return failure("GATE_CONTENT_MISSING", "The next Gate is missing, misplaced, or already active.");
   }
-  let next = structuredClone(state);
   next.privateState.deckOrderById.gates.shift();
+  if (!next.privateState.deckOrderById.gates.length && next.discardedGateIds?.length) {
+    next.privateState.deckOrderById.gates = context.shuffle(next.discardedGateIds);
+    next.discardedGateIds = [];
+  }
+  let opened = next;
   const events: GameEvent[] = [{ type: "GATE_OPENED", gateId, locationId: gate.locationId }];
-  if (next.privateState.tokenPoolById.monsters?.length) {
-    const spawned = spawnMonsterFromCup(next, gate.locationId, content, context);
+  if (opened.privateState.tokenPoolById.monsters?.length) {
+    const spawned = spawnMonsterFromCup(opened, gate.locationId, content, context);
     if (!spawned.ok) return spawned;
-    next = spawned.state;
-    next.stateVersion = state.stateVersion;
+    opened = spawned.state;
+    opened.stateVersion = state.stateVersion;
     events.push(...spawned.events);
   }
-  next.activeGateIds = [...(next.activeGateIds ?? []), gateId];
-  return success(next, events);
+  opened.activeGateIds = [...(opened.activeGateIds ?? []), gateId];
+  return success(opened, events);
 }
 
 /** Internal Clue effect; a location override supports effects that ignore the token's printed space. */
@@ -1063,6 +1077,11 @@ export function advanceMythosIcon(state: GameState, content: GameContent, contex
       next.pendingDecision = debtTradeDecision(next, ordered[0]!, content, context);
       return success(next, []);
     }
+    if (card.effect.type === "discard_matching_gates_and_advance_doom") {
+      const resolved = resolveDimensionalInstability(state, content, context);
+      if (!resolved.ok || resolved.state.gameResult) return resolved;
+      return finishMythosEvent(state, resolved.state, resolved.events, content);
+    }
     const resolved = card.effect.type === "lead_gain_condition"
       ? gainCondition(state, state.leadInvestigatorId, card.effect.kind, content, context)
       : resolveCounterclockwiseOmenCard(state, content);
@@ -1075,6 +1094,32 @@ export function advanceMythosIcon(state: GameState, content: GameContent, contex
   if (icon.type === "spawn_clues") return spawnMythosClues(state, content, context);
   if (icon.type === "spawn_gates") return resolveMythosSpawnGates(state, content, context);
   return failure("MYTHOS_EFFECT_UNSUPPORTED", "This printed Mythos icon is not executable yet.");
+}
+
+function resolveDimensionalInstability(state: GameState, content: GameContent, context: EngineContext): CommandResult {
+  if (state.omen === undefined || !Number.isInteger(state.omen) || state.omen < 0 || state.omen >= omenTrack.length
+    || state.doom === undefined || !state.ancientOneId) return failure("OMEN_CONTENT_MISSING", "Omen, Doom, or Ancient One setup is missing.");
+  const activeGates = (state.activeGateIds ?? []).map(id => content.gates?.find(gate => gate.id === id));
+  if (activeGates.some(gate => !gate || !content.map.locationTypes[gate.locationId])) return failure("GATE_CONTENT_MISSING", "An active Gate is missing from content.");
+  if (!state.privateState.deckOrderById.gates) return failure("GATE_CONTENT_MISSING", "The Gate stack is not initialized.");
+  const matching = activeGates.filter(gate => gate!.omenSymbol === omenTrack[state.omen!]);
+  const doomAdvance = matching.length;
+  if (doomAdvance >= state.doom && state.ancientOneId !== "azathoth") return failure("AWAKENING_UNSUPPORTED", "Ancient One awakening is not implemented yet.");
+  const next = structuredClone(state);
+  const discardedIds = matching.map(gate => gate!.id);
+  next.activeGateIds = (next.activeGateIds ?? []).filter(id => !discardedIds.includes(id));
+  next.discardedGateIds = [...(next.discardedGateIds ?? []), ...discardedIds];
+  next.doom = Math.max(0, state.doom - doomAdvance);
+  const events: GameEvent[] = matching.map(gate => ({ type: "GATE_DISCARDED", gateId: gate!.id, locationId: gate!.locationId }));
+  if (!next.privateState.deckOrderById.gates.length && next.discardedGateIds.length) {
+    next.privateState.deckOrderById.gates = context.shuffle(next.discardedGateIds);
+    next.discardedGateIds = [];
+  }
+  if (next.doom === 0 && state.ancientOneId === "azathoth") {
+    next.gameResult = "investigators_lose";
+    events.push({ type: "GAME_ENDED", result: "investigators_lose", reason: "azathoth_awakened" });
+  }
+  return success(next, events);
 }
 
 function gainAllyAssetFromDeck(state: GameState, playerId: string, content: GameContent, context: EngineContext): CommandResult {
@@ -1612,6 +1657,7 @@ export function executeCommand(
     usedConditionActionIds: [...(state.usedConditionActionIds ?? [])],
     monsterLocationIds: [...state.monsterLocationIds],
     activeGateIds: [...(state.activeGateIds ?? [])],
+    discardedGateIds: [...(state.discardedGateIds ?? [])],
     boardClues: state.boardClues?.map(clue => ({ ...clue })),
     reserveAssetIds: [...state.reserveAssetIds],
     assetDiscardIds: [...state.assetDiscardIds],

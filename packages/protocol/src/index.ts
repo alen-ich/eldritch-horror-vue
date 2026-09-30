@@ -152,6 +152,7 @@ export type GameEvent =
   | { type: "MONSTER_DISCARDED"; monsterInstanceId: string; monsterId: string }
   | { type: "MONSTER_SPAWNED"; monsterInstanceId: string; monsterId: string; locationId: LocationId; spawnLocationId: LocationId }
   | { type: "GATE_OPENED"; gateId: string; locationId: LocationId }
+  | { type: "GATE_DISCARDED"; gateId: string; locationId: LocationId }
   | { type: "CLUE_SPAWNED"; clueId: string; locationId: LocationId }
   | { type: "CLUE_GAINED"; playerId: string; amount: number }
   | { type: "CLUE_COLLECTED"; clueId: string; playerId: string; locationId: LocationId }
