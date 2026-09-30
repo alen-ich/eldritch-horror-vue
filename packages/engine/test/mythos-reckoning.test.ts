@@ -95,6 +95,72 @@ describe("guarded yellow Reckoning", () => {
 });
 
 describe("typed Mythos card text", () => {
+  const tideContent: GameContent = { ...content,
+    investigators: { jim_culver: { startingLocationId: "arkham", health: 5, sanity: 4, skills: { lore: 3, influence: 3, observation: 2, strength: 2, will: 3 }, startingAssetIds: [], startingClues: 0 } },
+    mythosCards: [{ id: "mythos_yellow_16", color: "yellow", icons: [{ type: "advance_omen" }, { type: "resolve_reckoning" }, { type: "spawn_gates" }], effect: { type: "each_investigator_tide_of_despair" } }],
+  };
+  function tideReady(): GameState {
+    const before = state();
+    before.currentMythosCardId = "mythos_yellow_16";
+    before.currentMythosIconIndex = 3;
+    before.doom = 8;
+    before.players[1] = { ...before.players[1]!, investigatorId: "jim_culver", locationId: "arkham", health: 4, sanity: 4, conditionIds: ["condition_blessed_01"] };
+    before.players[0] = { ...before.players[0]!, investigatorId: "jim_culver", locationId: "arkham", health: 4, sanity: 4, conditionIds: [] };
+    return before;
+  }
+
+  it("resolves Tide of Despair privately in Lead order and returns Blessed to supply", () => {
+    const before = tideReady();
+    const offered = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, tideContent, createDeterministicEngineContext({ ids: ["first-tide"] }));
+    if (!offered.ok) throw new Error(offered.error.message);
+    expect(offered.state.pendingDecision).toMatchObject({ kind: "choose_tide_of_despair", playerId: "guest", optionIds: ["discard_blessed", "lose_health_and_sanity"] });
+    expect(executeCommand(offered.state, "host", { type: "RESOLVE_DECISION", decisionId: "first-tide", selectedOptionIds: ["discard_blessed"] }, tideContent))
+      .toMatchObject({ ok: false, error: { code: "NOT_DECISION_OWNER" } });
+    const first = executeCommand(offered.state, "guest", { type: "RESOLVE_DECISION", decisionId: "first-tide", selectedOptionIds: ["discard_blessed"] }, tideContent, createDeterministicEngineContext({ ids: ["second-tide"] }));
+    if (!first.ok) throw new Error(first.error.message);
+    expect(first.state.players[1]?.conditionIds).toEqual([]);
+    expect(first.state.privateState.tokenPoolById["condition:blessed"]).toContain("condition_blessed_01");
+    expect(first.state.pendingDecision).toMatchObject({ playerId: "host", optionIds: ["lose_health_and_sanity"] });
+    const second = executeCommand(first.state, "host", { type: "RESOLVE_DECISION", decisionId: "second-tide", selectedOptionIds: ["lose_health_and_sanity"] }, tideContent, createDeterministicEngineContext({}));
+    if (!second.ok) throw new Error(second.error.message);
+    expect(second.state.players[0]).toMatchObject({ health: 2, sanity: 2 });
+    expect(second.state.pendingTideOfDespair).toBeUndefined();
+    expect(second.state.replacementWindow).toBe(true);
+    expect(before.players[1]?.conditionIds).toEqual(["condition_blessed_01"]);
+  });
+
+  it("pauses Tide of Despair on simultaneous lethal loss and resumes after the chosen defeat cause", () => {
+    const before = tideReady();
+    before.players[1]!.conditionIds = [];
+    before.players[1]!.health = 2;
+    before.players[1]!.sanity = 2;
+    const offered = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, tideContent, createDeterministicEngineContext({ ids: ["first-tide"] }));
+    if (!offered.ok) throw new Error(offered.error.message);
+    const lost = executeCommand(offered.state, "guest", { type: "RESOLVE_DECISION", decisionId: "first-tide", selectedOptionIds: ["lose_health_and_sanity"] }, tideContent, createDeterministicEngineContext({}));
+    if (!lost.ok) throw new Error(lost.error.message);
+    expect(lost.state.pendingDefeat?.causes).toEqual(["health", "sanity"]);
+    expect(lost.state.pendingTideOfDespair?.remainingPlayerIds).toEqual(["host"]);
+    const resumed = executeCommand(lost.state, "guest", { type: "RESOLVE_DEFEAT", cityId: "arkham", cause: "sanity", leadPlayerId: "host" }, tideContent, createDeterministicEngineContext({ ids: ["second-tide"] }));
+    if (!resumed.ok) throw new Error(resumed.error.message);
+    expect(resumed.state.pendingDecision).toMatchObject({ playerId: "host", kind: "choose_tide_of_despair" });
+    const completed = executeCommand(resumed.state, "host", { type: "RESOLVE_DECISION", decisionId: "second-tide", selectedOptionIds: ["lose_health_and_sanity"] }, tideContent, createDeterministicEngineContext({}));
+    if (!completed.ok) throw new Error(completed.error.message);
+    expect(completed.state.replacementWindow).toBe(true);
+  });
+
+  it("guards Tide of Despair against unsupported awakening without mutating state", () => {
+    const before = tideReady();
+    before.ancientOneId = "cthulhu";
+    before.doom = 1;
+    before.players[1]!.health = 2;
+    before.players[1]!.conditionIds = [];
+    const offered = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, tideContent, createDeterministicEngineContext({ ids: ["first-tide"] }));
+    if (!offered.ok) throw new Error(offered.error.message);
+    expect(executeCommand(offered.state, "guest", { type: "RESOLVE_DECISION", decisionId: "first-tide", selectedOptionIds: ["lose_health_and_sanity"] }, tideContent, createDeterministicEngineContext({})))
+      .toMatchObject({ ok: false, error: { code: "AWAKENING_UNSUPPORTED" } });
+    expect(offered.state.players[1]?.health).toBe(2);
+    expect(offered.state.pendingDecision?.id).toBe("first-tide");
+  });
   const bloodFlowsContent: GameContent = { ...content,
     investigators: { jim_culver: { startingLocationId: "arkham", health: 5, sanity: 4, skills: { lore: 3, influence: 3, observation: 2, strength: 2, will: 3 }, startingAssetIds: [], startingClues: 0 } },
     monsters: [

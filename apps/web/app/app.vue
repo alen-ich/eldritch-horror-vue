@@ -139,6 +139,11 @@ const privateBloodFlowsDecision = computed(() => {
   return decision && decision.playerId === game.playerId.value && 'optionIds' in decision
     && decision.kind === 'choose_blood_flows_monster' ? decision : undefined
 })
+const privateTideOfDespairDecision = computed(() => {
+  const decision = game.pendingDecision.value
+  return decision && decision.playerId === game.playerId.value && 'optionIds' in decision
+    && decision.kind === 'choose_tide_of_despair' ? decision : undefined
+})
 const selectedReserveValue = computed(() => selectedReserveAssetIds.value.reduce((total, id) => total + (assetById[id]?.value ?? 0), 0))
 const inspectedRoutes = computed(() => inspectedLocationId.value
   ? baseGameRoutes.filter((route) => route.source === inspectedLocationId.value || route.target === inspectedLocationId.value)
@@ -323,6 +328,11 @@ function resolveHeatWaveChoice(optionId: string) {
 function resolveBloodFlowsChoice(monsterInstanceId: string) {
   const decision = privateBloodFlowsDecision.value
   if (decision?.optionIds.includes(monsterInstanceId)) game.send({ type: 'RESOLVE_DECISION', decisionId: decision.id, selectedOptionIds: [monsterInstanceId] })
+}
+
+function resolveTideOfDespairChoice(optionId: string) {
+  const decision = privateTideOfDespairDecision.value
+  if (decision?.optionIds.includes(optionId)) game.send({ type: 'RESOLVE_DECISION', decisionId: decision.id, selectedOptionIds: [optionId] })
 }
 
 function worldFightsBackOptionLabel(optionId: string): string {
@@ -555,6 +565,15 @@ async function copyInvite() {
             <div class="test-dice omen-choices" role="group" aria-label="Monsters to discard">
               <button v-for="monsterInstanceId in privateBloodFlowsDecision.optionIds" :key="monsterInstanceId"
                 @click="resolveBloodFlowsChoice(monsterInstanceId)">Discard {{ monsterById[game.monsters.value.find(monster => monster.id === monsterInstanceId)?.monsterId ?? '']?.name ?? 'Monster' }}</button>
+            </div>
+          </section>
+          <section v-if="privateTideOfDespairDecision" class="test-dialog" role="dialog" aria-modal="true" aria-labelledby="tide-of-despair-title">
+            <p class="chapter">Mythos choice</p>
+            <h2 id="tide-of-despair-title">Tide of Despair</h2>
+            <p>{{ privateTideOfDespairDecision.prompt }}</p>
+            <div class="test-dice omen-choices" role="group" aria-label="Tide of Despair choices">
+              <button v-for="optionId in privateTideOfDespairDecision.optionIds" :key="optionId"
+                @click="resolveTideOfDespairChoice(optionId)">{{ optionId === 'discard_blessed' ? 'Discard Blessed' : 'Lose 2 Health and 2 Sanity' }}</button>
             </div>
           </section>
           <div v-if="game.gameResult.value" class="game-result" role="status">

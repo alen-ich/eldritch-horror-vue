@@ -145,6 +145,7 @@ export interface GameState {
   pendingDefeat?: { playerId: string; cityIds: LocationId[]; causes: ("health" | "sanity")[] };
   pendingMythosDamage?: { cardId: string; remainingPlayerIds: string[]; healthLoss: number };
   pendingHeatWave?: { cardId: string; remainingPlayerIds: string[] };
+  pendingTideOfDespair?: { cardId: string; remainingPlayerIds: string[] };
   replacementWindow?: boolean;
   awakened?: boolean;
   doom?: number;
@@ -224,7 +225,7 @@ export interface GameContent {
   conditions?: readonly { id: string; kind: string; backEffect?: ConditionBackEffect }[];
   monsters?: readonly MonsterCombatDefinition[];
   ancientOnes?: Readonly<Partial<Record<AncientOneId, AncientSetup>>>;
-  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } | { type: "each_investigator_choose_world_fights_back" } | { type: "lead_gain_ally_asset" } | { type: "each_investigator_trade_debt_for_condition" } | { type: "discard_matching_gates_and_advance_doom" } | { type: "doom_two_unless_lead_gains_dark_pact" } | { type: "spawn_monster_on_each_cultist_space" } | { type: "roll_each_investigator_for_bermuda_triangle" } | { type: "group_discard_gate_then_advance_doom_if_nonmatching" } | { type: "torn_asunder" } | { type: "each_investigator_choose_heat_wave" } | { type: "lead_discard_monster_lose_toughness_health" } }[];
+  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } | { type: "each_investigator_choose_world_fights_back" } | { type: "lead_gain_ally_asset" } | { type: "each_investigator_trade_debt_for_condition" } | { type: "discard_matching_gates_and_advance_doom" } | { type: "doom_two_unless_lead_gains_dark_pact" } | { type: "spawn_monster_on_each_cultist_space" } | { type: "roll_each_investigator_for_bermuda_triangle" } | { type: "group_discard_gate_then_advance_doom_if_nonmatching" } | { type: "torn_asunder" } | { type: "each_investigator_choose_heat_wave" } | { type: "lead_discard_monster_lose_toughness_health" } | { type: "each_investigator_tide_of_despair" } }[];
   referenceCards?: readonly { playerCount: number; spawnClues: number; monsterSurge?: number; spawnGates?: number }[];
   map: GameMap;
   investigators: Readonly<Partial<Record<InvestigatorId, InvestigatorSetup>>>;
@@ -1149,6 +1150,14 @@ export function advanceMythosIcon(state: GameState, content: GameContent, contex
       next.pendingDecision = heatWaveDecision(next, ordered[0]!, context);
       return success(next, []);
     }
+    if (card.effect.type === "each_investigator_tide_of_despair") {
+      const ordered = mythosInvestigatorOrder(state);
+      if (!ordered.length) return finishMythosEvent(state, structuredClone(state), [], content);
+      const next = structuredClone(state);
+      next.pendingTideOfDespair = { cardId: state.currentMythosCardId, remainingPlayerIds: ordered.slice(1) };
+      next.pendingDecision = tideOfDespairDecision(next, ordered[0]!, content, context);
+      return success(next, []);
+    }
     const resolved = card.effect.type === "lead_gain_condition"
       ? gainCondition(state, state.leadInvestigatorId, card.effect.kind, content, context)
       : resolveCounterclockwiseOmenCard(state, content);
@@ -1171,6 +1180,35 @@ function heatWaveDecision(state: GameState, playerId: string, context: EngineCon
     optionIds: player.delayed ? ["lose_health"] : ["become_delayed", "lose_health"],
     minSelections: 1, maxSelections: 1, continuation: "mythos_heat_wave",
   };
+}
+
+function tideOfDespairDecision(state: GameState, playerId: string, content: GameContent, context: EngineContext): PendingDecision {
+  const player = state.players.find(candidate => candidate.id === playerId)!;
+  const hasBlessed = (player.conditionIds ?? []).some(id => content.conditions?.find(card => card.id === id)?.kind === "blessed");
+  return {
+    id: context.createId(), kind: "choose_tide_of_despair", playerId, visibility: "owner",
+    prompt: "Tide of Despair: discard your Blessed Condition or lose 2 Health and 2 Sanity.",
+    optionIds: hasBlessed ? ["discard_blessed", "lose_health_and_sanity"] : ["lose_health_and_sanity"],
+    minSelections: 1, maxSelections: 1, continuation: "mythos_tide_of_despair",
+  };
+}
+
+function continueTideOfDespair(state: GameState, content: GameContent, context?: EngineContext): CommandResult {
+  const pending = state.pendingTideOfDespair;
+  const card = content.mythosCards?.find(candidate => candidate.id === state.currentMythosCardId);
+  if (state.phase !== "mythos" || state.pendingDefeat || state.pendingDecision || !pending || pending.cardId !== state.currentMythosCardId
+    || card?.effect?.type !== "each_investigator_tide_of_despair" || state.currentMythosIconIndex !== card.icons?.length) {
+    return failure("MYTHOS_CONTENT_MISSING", "The remaining choices are no longer attached to Tide of Despair.");
+  }
+  const next = structuredClone(state);
+  const following = next.pendingTideOfDespair!.remainingPlayerIds.shift();
+  if (following) {
+    if (!context) return failure("RANDOM_INPUT_REQUIRED", "The next Tide of Despair choice requires a server-generated ID.");
+    next.pendingDecision = tideOfDespairDecision(next, following, content, context);
+    return success(next, []);
+  }
+  next.pendingTideOfDespair = undefined;
+  return finishMythosEvent(state, next, [], content);
 }
 
 function continueHeatWave(state: GameState, content: GameContent, context?: EngineContext): CommandResult {
@@ -1918,6 +1956,12 @@ export function executeCommand(
       if (!continued.ok) return continued;
       return { ...continued, events: [...events, ...continued.events] };
     }
+    if (next.pendingTideOfDespair) {
+      next.stateVersion = state.stateVersion;
+      const continued = continueTideOfDespair(next, content, context);
+      if (!continued.ok) return continued;
+      return { ...continued, events: [...events, ...continued.events] };
+    }
     if (state.phase === "mythos" && content.mythosCards?.find(card => card.id === state.currentMythosCardId)?.effect?.type === "lead_discard_monster_lose_toughness_health") {
       return finishMythosEvent(state, next, events, content);
     }
@@ -2210,6 +2254,36 @@ export function executeCommand(
       const events: GameEvent[] = [{ type: "DECISION_RESOLVED", decisionId: decision.id, playerId: actorPlayerId, selectedOptionIds: [choice] }, ...resolved.events];
       if (resolved.state.pendingDefeat || resolved.state.gameResult) return success(resolved.state, events);
       const continued = continueHeatWave(resolved.state, content, context);
+      if (!continued.ok) return continued;
+      continued.state.stateVersion = state.stateVersion + 1;
+      return { ...continued, events: [...events, ...continued.events] };
+    }
+    if (decision.continuation === "mythos_tide_of_despair") {
+      const card = content.mythosCards?.find(candidate => candidate.id === state.currentMythosCardId);
+      if (state.phase !== "mythos" || card?.effect?.type !== "each_investigator_tide_of_despair"
+        || state.currentMythosIconIndex !== card.icons?.length || state.pendingTideOfDespair?.cardId !== state.currentMythosCardId) {
+        return failure("MYTHOS_CONTENT_MISSING", "The choice is no longer attached to Tide of Despair.");
+      }
+      const choice = selections[0]!;
+      let resolved: CommandResult;
+      if (choice === "discard_blessed") {
+        const conditionId = actor.conditionIds?.find(id => content.conditions?.find(card => card.id === id)?.kind === "blessed");
+        if (!conditionId || !returnConditionToPool(next, actor, conditionId, content)) {
+          return failure("CONDITION_NOT_HELD", "A Blessed Condition is no longer held.");
+        }
+        resolved = success(next, [{ type: "CONDITION_DISCARDED", playerId: actorPlayerId, conditionId: publicConditionId(conditionId) }]);
+      } else if (choice === "lose_health_and_sanity") {
+        if ((actor.health ?? 0) <= 2 || (actor.sanity ?? 0) <= 2) {
+          if ((state.doom ?? 0) <= 1 && state.ancientOneId !== "azathoth") return failure("AWAKENING_UNSUPPORTED", "Ancient One awakening is not implemented yet.");
+        }
+        resolved = damageInvestigator(next, actorPlayerId, 2, 2, content);
+      } else return failure("INVALID_DECISION_SELECTION", "That Tide of Despair choice is invalid.");
+      if (!resolved.ok) return resolved;
+      resolved.state.pendingDecision = undefined;
+      resolved.state.stateVersion = state.stateVersion;
+      const events: GameEvent[] = [{ type: "DECISION_RESOLVED", decisionId: decision.id, playerId: actorPlayerId, selectedOptionIds: [choice] }, ...resolved.events];
+      if (resolved.state.pendingDefeat || resolved.state.gameResult) return success(resolved.state, events);
+      const continued = continueTideOfDespair(resolved.state, content, context);
       if (!continued.ok) return continued;
       continued.state.stateVersion = state.stateVersion + 1;
       return { ...continued, events: [...events, ...continued.events] };
