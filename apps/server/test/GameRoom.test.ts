@@ -373,6 +373,42 @@ describe("authoritative game room", () => {
     assert.equal(room.state.currentMythosCardId, "");
   });
 
+  it("resolves Blood Flows through an owner-only Monster choice", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "mythos";
+    state.leadInvestigatorId = state.activePlayerId = state.players[0]!.id;
+    state.ancientOneId = "azathoth";
+    state.doom = 8;
+    state.currentMythosCardId = "mythos_green_16";
+    state.currentMythosIconIndex = 3;
+    state.players[0] = { ...state.players[0]!, investigatorId: "jim_culver", locationId: "arkham", health: 5, sanity: 4, clues: 0 };
+    state.monsters = [{ id: "blood-ghoul", monsterId: "monster_ghoul", locationId: "london", damage: 0 }];
+    state.monsterLocationIds = ["london"];
+    state.privateState.tokenPoolById.monsters = [];
+    delete state.privateState.tokenPoolById.clues;
+    internal.applyEngineState(state);
+    const ownerChoiceMessage = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "ADVANCE_MYTHOS" });
+    await room.waitForMessage(commandMessageType);
+    const choice = await ownerChoiceMessage as PendingDecision;
+    assert.equal(choice.kind, "choose_blood_flows_monster");
+    assert.deepEqual(choice.optionIds, ["blood-ghoul"]);
+    assert.equal(JSON.stringify(room.state).includes("blood-ghoul"), true);
+    const denied = guest.waitForMessage(commandErrorMessageType);
+    sendCommand(room, guest, { type: "RESOLVE_DECISION", decisionId: choice.id, selectedOptionIds: ["blood-ghoul"] });
+    assert.equal((await denied as { code: string }).code, "NOT_DECISION_OWNER");
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: choice.id, selectedOptionIds: ["blood-ghoul"] });
+    await room.waitForMessage(commandMessageType);
+    const resolved = internal.toEngineState();
+    assert.equal(resolved.monsters?.length, 0);
+    assert.equal(resolved.players[0]?.health, 4);
+    assert.equal(resolved.replacementWindow, true);
+  });
+
   it("restores the Lead's private Omen of Good Fortune choice after reconnect", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });

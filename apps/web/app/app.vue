@@ -134,6 +134,11 @@ const privateHeatWaveDecision = computed(() => {
   return decision && decision.playerId === game.playerId.value && 'optionIds' in decision
     && decision.kind === 'choose_heat_wave' ? decision : undefined
 })
+const privateBloodFlowsDecision = computed(() => {
+  const decision = game.pendingDecision.value
+  return decision && decision.playerId === game.playerId.value && 'optionIds' in decision
+    && decision.kind === 'choose_blood_flows_monster' ? decision : undefined
+})
 const selectedReserveValue = computed(() => selectedReserveAssetIds.value.reduce((total, id) => total + (assetById[id]?.value ?? 0), 0))
 const inspectedRoutes = computed(() => inspectedLocationId.value
   ? baseGameRoutes.filter((route) => route.source === inspectedLocationId.value || route.target === inspectedLocationId.value)
@@ -313,6 +318,11 @@ function resolveThatWhichConsumesChoice(gateId: string) {
 function resolveHeatWaveChoice(optionId: string) {
   const decision = privateHeatWaveDecision.value
   if (decision?.optionIds.includes(optionId)) game.send({ type: 'RESOLVE_DECISION', decisionId: decision.id, selectedOptionIds: [optionId] })
+}
+
+function resolveBloodFlowsChoice(monsterInstanceId: string) {
+  const decision = privateBloodFlowsDecision.value
+  if (decision?.optionIds.includes(monsterInstanceId)) game.send({ type: 'RESOLVE_DECISION', decisionId: decision.id, selectedOptionIds: [monsterInstanceId] })
 }
 
 function worldFightsBackOptionLabel(optionId: string): string {
@@ -536,6 +546,15 @@ async function copyInvite() {
             <div class="test-dice omen-choices" role="group" aria-label="Heat Wave choices">
               <button v-for="optionId in privateHeatWaveDecision.optionIds" :key="optionId"
                 @click="resolveHeatWaveChoice(optionId)">{{ optionId === 'become_delayed' ? 'Become Delayed' : 'Lose 3 Health' }}</button>
+            </div>
+          </section>
+          <section v-if="privateBloodFlowsDecision" class="test-dialog" role="dialog" aria-modal="true" aria-labelledby="blood-flows-title">
+            <p class="chapter">Mythos choice</p>
+            <h2 id="blood-flows-title">Blood Flows</h2>
+            <p>{{ privateBloodFlowsDecision.prompt }}</p>
+            <div class="test-dice omen-choices" role="group" aria-label="Monsters to discard">
+              <button v-for="monsterInstanceId in privateBloodFlowsDecision.optionIds" :key="monsterInstanceId"
+                @click="resolveBloodFlowsChoice(monsterInstanceId)">Discard {{ monsterById[game.monsters.value.find(monster => monster.id === monsterInstanceId)?.monsterId ?? '']?.name ?? 'Monster' }}</button>
             </div>
           </section>
           <div v-if="game.gameResult.value" class="game-result" role="status">

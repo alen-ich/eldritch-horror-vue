@@ -224,7 +224,7 @@ export interface GameContent {
   conditions?: readonly { id: string; kind: string; backEffect?: ConditionBackEffect }[];
   monsters?: readonly MonsterCombatDefinition[];
   ancientOnes?: Readonly<Partial<Record<AncientOneId, AncientSetup>>>;
-  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } | { type: "each_investigator_choose_world_fights_back" } | { type: "lead_gain_ally_asset" } | { type: "each_investigator_trade_debt_for_condition" } | { type: "discard_matching_gates_and_advance_doom" } | { type: "doom_two_unless_lead_gains_dark_pact" } | { type: "spawn_monster_on_each_cultist_space" } | { type: "roll_each_investigator_for_bermuda_triangle" } | { type: "group_discard_gate_then_advance_doom_if_nonmatching" } | { type: "torn_asunder" } | { type: "each_investigator_choose_heat_wave" } }[];
+  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } | { type: "each_investigator_choose_world_fights_back" } | { type: "lead_gain_ally_asset" } | { type: "each_investigator_trade_debt_for_condition" } | { type: "discard_matching_gates_and_advance_doom" } | { type: "doom_two_unless_lead_gains_dark_pact" } | { type: "spawn_monster_on_each_cultist_space" } | { type: "roll_each_investigator_for_bermuda_triangle" } | { type: "group_discard_gate_then_advance_doom_if_nonmatching" } | { type: "torn_asunder" } | { type: "each_investigator_choose_heat_wave" } | { type: "lead_discard_monster_lose_toughness_health" } }[];
   referenceCards?: readonly { playerCount: number; spawnClues: number; monsterSurge?: number; spawnGates?: number }[];
   map: GameMap;
   investigators: Readonly<Partial<Record<InvestigatorId, InvestigatorSetup>>>;
@@ -1127,6 +1127,20 @@ export function advanceMythosIcon(state: GameState, content: GameContent, contex
       return success(next, []);
     }
     if (card.effect.type === "torn_asunder") return resolveTornAsunder(state, content);
+    if (card.effect.type === "lead_discard_monster_lose_toughness_health") {
+      const eligible = (state.monsters ?? []).filter(instance => content.monsters?.some(monster => monster.id === instance.monsterId && monster.type === "normal" && monster.toughness !== "ancient_one"));
+      if ((state.monsters ?? []).some(instance => !content.monsters?.some(monster => monster.id === instance.monsterId))) {
+        return failure("MONSTER_CONTENT_MISSING", "An on-board Monster is missing from content.");
+      }
+      if (!eligible.length) return finishMythosEvent(state, structuredClone(state), [], content);
+      const next = structuredClone(state);
+      next.pendingDecision = {
+        id: context.createId(), kind: "choose_blood_flows_monster", playerId: state.leadInvestigatorId, visibility: "owner",
+        prompt: "Blood Flows: discard one non-Epic Monster anywhere on the board and lose Health equal to its printed toughness.",
+        optionIds: eligible.map(instance => instance.id), minSelections: 1, maxSelections: 1, continuation: "mythos_blood_flows",
+      };
+      return success(next, []);
+    }
     if (card.effect.type === "each_investigator_choose_heat_wave") {
       const ordered = mythosInvestigatorOrder(state);
       if (!ordered.length) return finishMythosEvent(state, structuredClone(state), [], content);
@@ -1904,6 +1918,9 @@ export function executeCommand(
       if (!continued.ok) return continued;
       return { ...continued, events: [...events, ...continued.events] };
     }
+    if (state.phase === "mythos" && content.mythosCards?.find(card => card.id === state.currentMythosCardId)?.effect?.type === "lead_discard_monster_lose_toughness_health") {
+      return finishMythosEvent(state, next, events, content);
+    }
     return success(next, events);
   }
   if (state.pendingDefeat) return failure("INVALID_DEFEAT", "Resolve the pending defeat first.");
@@ -2136,6 +2153,41 @@ export function executeCommand(
         }
       }
       return finishMythosEvent(state, next, events, content);
+    }
+    if (decision.continuation === "mythos_blood_flows") {
+      const card = content.mythosCards?.find(candidate => candidate.id === state.currentMythosCardId);
+      if (state.phase !== "mythos" || card?.effect?.type !== "lead_discard_monster_lose_toughness_health"
+        || state.currentMythosIconIndex !== card.icons?.length || state.leadInvestigatorId !== actorPlayerId || !context) {
+        return failure("MYTHOS_CONTENT_MISSING", "The choice is no longer attached to Blood Flows.");
+      }
+      const monsterInstanceId = selections[0]!;
+      const instance = next.monsters?.find(candidate => candidate.id === monsterInstanceId);
+      const definition = content.monsters?.find(candidate => candidate.id === instance?.monsterId);
+      if (!instance || definition?.type !== "normal" || definition.toughness === "ancient_one") {
+        return failure("INVALID_DECISION_SELECTION", "That Monster cannot be discarded.");
+      }
+      const poolKey = instance.setAside ? `set_aside:${instance.monsterId}` : "monsters";
+      const pool = next.privateState.tokenPoolById[poolKey];
+      if (!pool) return failure("MONSTER_CONTENT_MISSING", "The Monster token pool is unavailable.");
+      const toughness = definition.toughness.base + definition.toughness.perInvestigator * next.players.filter(player => !player.defeated && !player.eliminated).length;
+      if (!actor.investigatorId) return failure("INVESTIGATOR_CONTENT_MISSING", "The Lead Investigator is unavailable.");
+      if ((actor.health ?? 0) <= toughness && (state.doom ?? 0) <= 1 && state.ancientOneId !== "azathoth") {
+        return failure("AWAKENING_UNSUPPORTED", "The Lead's defeat would cause unsupported Ancient One awakening.");
+      }
+      next.monsters = next.monsters!.filter(candidate => candidate.id !== monsterInstanceId);
+      next.monsterLocationIds = [...new Set(next.monsters.map(candidate => candidate.locationId))];
+      next.privateState.tokenPoolById[poolKey] = instance.setAside ? [...pool, instance.monsterId] : context.shuffle([...pool, instance.monsterId]);
+      next.pendingDecision = undefined;
+      const damaged = damageInvestigator(next, actorPlayerId, toughness, 0, content);
+      if (!damaged.ok) return damaged;
+      damaged.state.stateVersion = state.stateVersion;
+      const events: GameEvent[] = [
+        { type: "DECISION_RESOLVED", decisionId: decision.id, playerId: actorPlayerId, selectedOptionIds: [monsterInstanceId] },
+        { type: "MONSTER_DISCARDED", monsterInstanceId, monsterId: instance.monsterId },
+        ...damaged.events,
+      ];
+      if (damaged.state.pendingDefeat || damaged.state.gameResult) return success(damaged.state, events);
+      return finishMythosEvent(state, damaged.state, events, content);
     }
     if (decision.continuation === "mythos_heat_wave") {
       const card = content.mythosCards?.find(candidate => candidate.id === state.currentMythosCardId);

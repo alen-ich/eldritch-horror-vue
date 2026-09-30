@@ -95,6 +95,76 @@ describe("guarded yellow Reckoning", () => {
 });
 
 describe("typed Mythos card text", () => {
+  const bloodFlowsContent: GameContent = { ...content,
+    investigators: { jim_culver: { startingLocationId: "arkham", health: 5, sanity: 4, skills: { lore: 3, influence: 3, observation: 2, strength: 2, will: 3 }, startingAssetIds: [], startingClues: 0 } },
+    monsters: [
+      { id: "monster_ghoul", type: "normal", horrorCheck: null, damageCheck: null, toughness: { base: 2, perInvestigator: 1 } },
+      { id: "monster_epic", type: "epic", horrorCheck: null, damageCheck: null, toughness: { base: 5, perInvestigator: 0 } },
+    ],
+    mythosCards: [{ id: "mythos_green_16", color: "green", icons: [{ type: "advance_omen" }, { type: "monster_surge" }, { type: "spawn_clues" }], effect: { type: "lead_discard_monster_lose_toughness_health" } }],
+  };
+  function bloodFlowsReady(): GameState {
+    const before = state();
+    before.currentMythosCardId = "mythos_green_16";
+    before.currentMythosIconIndex = 3;
+    before.doom = 8;
+    before.players[1] = { ...before.players[1]!, investigatorId: "jim_culver", locationId: "arkham", health: 5, sanity: 4 };
+    before.monsters = [{ id: "ghoul-on-board", monsterId: "monster_ghoul", locationId: "arkham", damage: 1 }, { id: "epic-on-board", monsterId: "monster_epic", locationId: "arkham", damage: 0 }];
+    before.monsterLocationIds = ["arkham"];
+    return before;
+  }
+
+  it("offers Blood Flows only normal Monsters and applies full toughness before finishing", () => {
+    const before = bloodFlowsReady();
+    const offered = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, bloodFlowsContent, createDeterministicEngineContext({ ids: ["blood-choice"] }));
+    if (!offered.ok) throw new Error(offered.error.message);
+    expect(offered.state.pendingDecision).toMatchObject({ kind: "choose_blood_flows_monster", playerId: "guest", optionIds: ["ghoul-on-board"] });
+    expect(executeCommand(offered.state, "host", { type: "RESOLVE_DECISION", decisionId: "blood-choice", selectedOptionIds: ["ghoul-on-board"] }, bloodFlowsContent))
+      .toMatchObject({ ok: false, error: { code: "NOT_DECISION_OWNER" } });
+    expect(executeCommand(offered.state, "guest", { type: "RESOLVE_DECISION", decisionId: "blood-choice", selectedOptionIds: ["epic-on-board"] }, bloodFlowsContent))
+      .toMatchObject({ ok: false });
+    const resolved = executeCommand(offered.state, "guest", { type: "RESOLVE_DECISION", decisionId: "blood-choice", selectedOptionIds: ["ghoul-on-board"] }, bloodFlowsContent, createDeterministicEngineContext({}));
+    if (!resolved.ok) throw new Error(resolved.error.message);
+    expect(resolved.state.players[1]?.health).toBe(1);
+    expect(resolved.state.monsters?.map(monster => monster.id)).toEqual(["epic-on-board"]);
+    expect(resolved.state.privateState.tokenPoolById.monsters).toContain("monster_ghoul");
+    expect(resolved.state.replacementWindow).toBe(true);
+    expect(before.players[1]?.health).toBe(5);
+  });
+
+  it("finishes Blood Flows when there is no discardable Monster", () => {
+    const before = bloodFlowsReady();
+    before.monsters = before.monsters?.filter(monster => monster.monsterId === "monster_epic");
+    const resolved = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, bloodFlowsContent, createDeterministicEngineContext({}));
+    expect(resolved).toMatchObject({ ok: true, state: { replacementWindow: true } });
+  });
+
+  it("pauses Blood Flows for lethal loss and finishes after defeat resolution", () => {
+    const before = bloodFlowsReady();
+    before.players[1]!.health = 3;
+    const offered = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, bloodFlowsContent, createDeterministicEngineContext({ ids: ["blood-choice"] }));
+    if (!offered.ok) throw new Error(offered.error.message);
+    const lost = executeCommand(offered.state, "guest", { type: "RESOLVE_DECISION", decisionId: "blood-choice", selectedOptionIds: ["ghoul-on-board"] }, bloodFlowsContent, createDeterministicEngineContext({}));
+    if (!lost.ok) throw new Error(lost.error.message);
+    expect(lost.state.pendingDefeat?.playerId).toBe("guest");
+    expect(lost.state.currentMythosCardId).toBe("mythos_green_16");
+    const defeated = executeCommand(lost.state, "guest", { type: "RESOLVE_DEFEAT", cityId: "arkham", cause: "health", leadPlayerId: "host" }, bloodFlowsContent);
+    if (!defeated.ok) throw new Error(defeated.error.message);
+    expect(defeated.state.currentMythosCardId).toBeUndefined();
+    expect(defeated.state.replacementWindow).toBe(true);
+  });
+
+  it("rejects Blood Flows loss before unsupported awakening without discarding the Monster", () => {
+    const before = bloodFlowsReady();
+    before.doom = 1;
+    before.ancientOneId = "cthulhu";
+    before.players[1]!.health = 3;
+    const offered = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, bloodFlowsContent, createDeterministicEngineContext({ ids: ["blood-choice"] }));
+    if (!offered.ok) throw new Error(offered.error.message);
+    expect(executeCommand(offered.state, "guest", { type: "RESOLVE_DECISION", decisionId: "blood-choice", selectedOptionIds: ["ghoul-on-board"] }, bloodFlowsContent, createDeterministicEngineContext({})))
+      .toMatchObject({ ok: false, error: { code: "AWAKENING_UNSUPPORTED" } });
+    expect(offered.state.monsters?.map(monster => monster.id)).toContain("ghoul-on-board");
+  });
   const heatWaveContent: GameContent = { ...content,
     investigators: { akachi_onyele: { startingLocationId: "arkham", health: 5, sanity: 7, skills: { lore: 3, influence: 2, observation: 2, strength: 2, will: 4 }, startingAssetIds: [], startingClues: 0 } },
     mythosCards: [{ id: "mythos_yellow_14", color: "yellow", icons: [{ type: "advance_omen" }, { type: "resolve_reckoning" }, { type: "spawn_gates" }], effect: { type: "each_investigator_choose_heat_wave" } }],
