@@ -19,7 +19,7 @@ export interface MythosCardData {
   source: { sheet: string; row: number; column: number };
   verification: "verified_from_scan";
   effectModelStatus: "transcription_pending" | "typed";
-  effect?: { type: "lead_gain_condition"; kind: "blessed" };
+  effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" };
 }
 
 const blueTitles = [
@@ -72,7 +72,10 @@ function scanCard(
   source: MythosCardData["source"],
 ): MythosCardData {
   const id = cardId(color, index);
-  return { id, color, title, kind, icons: iconsFor(color, index), imageUrl: `/cards/mythos/${id}.webp`, source, verification: "verified_from_scan", effectModelStatus: id === "mythos_green_04" ? "typed" : "transcription_pending", ...(id === "mythos_green_04" ? { effect: { type: "lead_gain_condition" as const, kind: "blessed" as const } } : {}) };
+  const effect = id === "mythos_green_04" ? { type: "lead_gain_condition" as const, kind: "blessed" as const }
+    : id === "mythos_yellow_13" ? { type: "move_omen_counterclockwise_then_advance_doom_for_gates" as const }
+      : undefined;
+  return { id, color, title, kind, icons: iconsFor(color, index), imageUrl: `/cards/mythos/${id}.webp`, source, verification: "verified_from_scan", effectModelStatus: effect ? "typed" : "transcription_pending", ...(effect ? { effect } : {}) };
 }
 
 export const baseGameMythosCards: readonly MythosCardData[] = [
@@ -101,7 +104,10 @@ const mythosCardSchema = z.object({
   source: z.object({ sheet: z.string().regex(/^photo_.+\.jpg$/), row: z.number().int().positive(), column: z.number().int().positive() }).strict(),
   verification: z.literal("verified_from_scan"),
   effectModelStatus: z.enum(["transcription_pending", "typed"]),
-  effect: z.object({ type: z.literal("lead_gain_condition"), kind: z.literal("blessed") }).strict().optional(),
+  effect: z.discriminatedUnion("type", [
+    z.object({ type: z.literal("lead_gain_condition"), kind: z.literal("blessed") }).strict(),
+    z.object({ type: z.literal("move_omen_counterclockwise_then_advance_doom_for_gates") }).strict(),
+  ]).optional(),
 }).strict();
 
 export function validateMythosContent(cards: readonly MythosCardData[]): void {
@@ -117,7 +123,9 @@ export function validateMythosContent(cards: readonly MythosCardData[]): void {
   }
   for (const card of parsed) {
     if ((card.effectModelStatus === "typed") !== Boolean(card.effect)) throw new Error(`Mythos effect status mismatch for ${card.id}.`);
-    if (Boolean(card.effect) !== (card.id === "mythos_green_04")) throw new Error(`Unexpected Mythos effect transcription for ${card.id}.`);
+    if (card.id === "mythos_green_04" && card.effect?.type !== "lead_gain_condition") throw new Error(`Invalid Mythos effect for ${card.id}.`);
+    if (card.id === "mythos_yellow_13" && card.effect?.type !== "move_omen_counterclockwise_then_advance_doom_for_gates") throw new Error(`Invalid Mythos effect for ${card.id}.`);
+    if (!(["mythos_green_04", "mythos_yellow_13"].includes(card.id)) && card.effect) throw new Error(`Unexpected Mythos effect transcription for ${card.id}.`);
     const colorIndex = Number.parseInt(card.id.slice(`mythos_${card.color}_`.length), 10) - 1;
     if (JSON.stringify(card.icons) !== JSON.stringify(iconsFor(card.color, colorIndex))) {
       throw new Error(`Invalid icon sequence for ${card.id}.`);

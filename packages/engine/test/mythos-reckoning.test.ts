@@ -123,4 +123,61 @@ describe("typed Mythos card text", () => {
     expect(before.currentMythosCardId).toBe("mythos_green_04");
     expect(before.replacementWindow).toBeUndefined();
   });
+
+  it("moves Omen counterclockwise and counts Gates at the new symbol exactly once", () => {
+    const before = state();
+    before.currentMythosCardId = "mythos_yellow_13";
+    before.currentMythosIconIndex = 3;
+    before.omen = 0;
+    before.doom = 8;
+    before.activeGateIds = ["gate_london", "gate_tokyo", "gate_arkham"];
+    const cardContent: GameContent = { ...content,
+      gates: [...content.gates!, { id: "gate_london", locationId: "london", omenSymbol: "constellation" }, { id: "gate_tokyo", locationId: "tokyo", omenSymbol: "constellation" }],
+      mythosCards: [{ id: "mythos_yellow_13", color: "yellow", icons: [{ type: "advance_omen" }, { type: "resolve_reckoning" }, { type: "spawn_gates" }], effect: { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } }],
+    };
+    const result = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, cardContent, createDeterministicEngineContext({}));
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.state).toMatchObject({ omen: 3, doom: 6, replacementWindow: true, stateVersion: 5 });
+    expect(result.state.currentMythosCardId).toBeUndefined();
+    expect(result.events).toContainEqual({ type: "OMEN_MOVED", position: 3, symbol: "constellation", direction: "counterclockwise", doomAdvance: 2 });
+    expect(before).toMatchObject({ omen: 0, doom: 8, currentMythosCardId: "mythos_yellow_13" });
+  });
+
+  it("rejects unsupported awakening without moving Omen or consuming the card", () => {
+    const before = state();
+    before.ancientOneId = "cthulhu";
+    before.currentMythosCardId = "mythos_yellow_13";
+    before.currentMythosIconIndex = 3;
+    before.omen = 0;
+    before.doom = 1;
+    before.activeGateIds = ["gate_london"];
+    const cardContent: GameContent = { ...content,
+      gates: [{ id: "gate_london", locationId: "london", omenSymbol: "constellation" }],
+      mythosCards: [{ id: "mythos_yellow_13", color: "yellow", icons: [{ type: "advance_omen" }, { type: "resolve_reckoning" }, { type: "spawn_gates" }], effect: { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } }],
+    };
+    expect(executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, cardContent, createDeterministicEngineContext({})))
+      .toMatchObject({ ok: false, error: { code: "AWAKENING_UNSUPPORTED" } });
+    expect(before).toMatchObject({ omen: 0, doom: 1, currentMythosCardId: "mythos_yellow_13", stateVersion: 4 });
+  });
+
+  it("ends the game at Azathoth's zero Doom only when matching Gates cause Doom loss", () => {
+    const cardContent: GameContent = { ...content,
+      gates: [{ id: "gate_london", locationId: "london", omenSymbol: "constellation" }],
+      mythosCards: [{ id: "mythos_yellow_13", color: "yellow", icons: [{ type: "advance_omen" }, { type: "resolve_reckoning" }, { type: "spawn_gates" }], effect: { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } }],
+    };
+    const noMatch = state();
+    noMatch.currentMythosCardId = "mythos_yellow_13";
+    noMatch.currentMythosIconIndex = 3;
+    noMatch.omen = 0;
+    noMatch.doom = 1;
+    const unchanged = executeCommand(noMatch, "guest", { type: "ADVANCE_MYTHOS" }, cardContent, createDeterministicEngineContext({}));
+    if (!unchanged.ok) throw new Error(unchanged.error.message);
+    expect(unchanged.state).toMatchObject({ omen: 3, doom: 1, replacementWindow: true });
+    const matching = structuredClone(noMatch);
+    matching.activeGateIds = ["gate_london"];
+    const lost = executeCommand(matching, "guest", { type: "ADVANCE_MYTHOS" }, cardContent, createDeterministicEngineContext({}));
+    if (!lost.ok) throw new Error(lost.error.message);
+    expect(lost.state).toMatchObject({ omen: 3, doom: 0, gameResult: "investigators_lose" });
+    expect(lost.events).toContainEqual({ type: "GAME_ENDED", result: "investigators_lose", reason: "azathoth_awakened" });
+  });
 });

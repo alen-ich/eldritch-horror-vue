@@ -114,6 +114,31 @@ describe("authoritative game room", () => {
     assert.equal(internal.toEngineState().replacementWindow, false);
   });
 
+  it("resolves Perplexing Stars from the public Gate symbols without exposing deck order", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "mythos";
+    state.leadInvestigatorId = state.activePlayerId = state.players[0]!.id;
+    state.ancientOneId = "azathoth";
+    state.omen = 0;
+    state.doom = 8;
+    state.activeGateIds = ["gate_london", "gate_tokyo"];
+    state.currentMythosCardId = "mythos_yellow_13";
+    state.currentMythosIconIndex = 3;
+    state.privateState.deckOrderById.mythos = ["mythos_green_01"];
+    internal.applyEngineState(state);
+    sendCommand(room, host, { type: "ADVANCE_MYTHOS" });
+    await room.waitForMessage(commandMessageType);
+    assert.equal(room.state.omen, 3);
+    assert.equal(room.state.doom, 6);
+    assert.equal(room.state.currentMythosCardId, "");
+    assert.equal(internal.toEngineState().replacementWindow, true);
+    assert.deepEqual(internal.toEngineState().privateState.deckOrderById.mythos, ["mythos_green_01"]);
+    assert.ok(!JSON.stringify(room.state).includes("mythos_green_01"));
+  });
+
   it("resolves a supported location encounter through the room and leaves unsupported cards private", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });

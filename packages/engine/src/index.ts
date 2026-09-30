@@ -221,7 +221,7 @@ export interface GameContent {
   conditions?: readonly { id: string; kind: string; backEffect?: ConditionBackEffect }[];
   monsters?: readonly MonsterCombatDefinition[];
   ancientOnes?: Readonly<Partial<Record<AncientOneId, AncientSetup>>>;
-  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } }[];
+  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } }[];
   referenceCards?: readonly { playerCount: number; spawnClues: number; monsterSurge?: number; spawnGates?: number }[];
   map: GameMap;
   investigators: Readonly<Partial<Record<InvestigatorId, InvestigatorSetup>>>;
@@ -892,6 +892,27 @@ export function advanceOmen(state: GameState, content: GameContent): CommandResu
   return success(next, events);
 }
 
+/** Printed Perplexing Stars text: move, rather than advance, Omen before counting matching Gates. */
+function resolveCounterclockwiseOmenCard(state: GameState, content: GameContent): CommandResult {
+  if (state.phase !== "mythos" || state.omen === undefined || !Number.isInteger(state.omen) || state.omen < 0 || state.omen >= omenTrack.length
+    || state.doom === undefined || !state.ancientOneId) return failure("OMEN_CONTENT_MISSING", "Omen, Doom, or Ancient One setup is missing.");
+  const gateSymbols = (state.activeGateIds ?? []).map(id => content.gates?.find(gate => gate.id === id)?.omenSymbol);
+  if (gateSymbols.some(symbol => symbol === undefined)) return failure("GATE_CONTENT_MISSING", "An active Gate is missing its Omen symbol.");
+  const position = (state.omen + omenTrack.length - 1) % omenTrack.length;
+  const symbol = omenTrack[position]!;
+  const doomAdvance = gateSymbols.filter(gateSymbol => gateSymbol === symbol).length;
+  if (doomAdvance >= state.doom && state.ancientOneId !== "azathoth") return failure("AWAKENING_UNSUPPORTED", "Ancient One awakening is not implemented yet.");
+  const next = structuredClone(state);
+  next.omen = position;
+  next.doom = Math.max(0, state.doom - doomAdvance);
+  const events: GameEvent[] = [{ type: "OMEN_MOVED", position, symbol, direction: "counterclockwise", doomAdvance }];
+  if (next.doom === 0 && state.ancientOneId === "azathoth") {
+    next.gameResult = "investigators_lose";
+    events.push({ type: "GAME_ENDED", result: "investigators_lose", reason: "azathoth_awakened" });
+  }
+  return success(next, events);
+}
+
 export function resolveCombatEncounter(state: GameState, playerId: string, monsterInstanceId: string, content: GameContent, context: EngineContext): CommandResult {
   if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
   if (state.phase !== "encounter" || state.activePlayerId !== playerId || state.pendingDecision || state.pendingDefeat || state.activeTest) {
@@ -1012,17 +1033,17 @@ export function advanceMythosIcon(state: GameState, content: GameContent, contex
   const icon = card.icons[state.currentMythosIconIndex ?? 0];
   if (!icon) {
     if (!card.effect || !state.leadInvestigatorId || state.pendingDecision || state.pendingDefeat || state.activeTest) return failure("MYTHOS_EFFECT_UNSUPPORTED", "The revealed card's printed text is not executable yet.");
-    if (card.effect.type === "lead_gain_condition") {
-      const gained = gainCondition(state, state.leadInvestigatorId, card.effect.kind, content, context);
-      if (!gained.ok) return gained;
-      gained.state.currentMythosCardId = undefined;
-      gained.state.currentMythosIconIndex = undefined;
-      gained.state.stateVersion = state.stateVersion;
-      const opened = openReplacementWindow(gained.state, content);
-      if (!opened.ok) return opened;
-      opened.state.stateVersion = state.stateVersion;
-      return success(opened.state, gained.events.concat(opened.events));
-    }
+    const resolved = card.effect.type === "lead_gain_condition"
+      ? gainCondition(state, state.leadInvestigatorId, card.effect.kind, content, context)
+      : resolveCounterclockwiseOmenCard(state, content);
+    if (!resolved.ok || resolved.state.gameResult) return resolved;
+    resolved.state.currentMythosCardId = undefined;
+    resolved.state.currentMythosIconIndex = undefined;
+    resolved.state.stateVersion = state.stateVersion;
+    const opened = openReplacementWindow(resolved.state, content);
+    if (!opened.ok) return opened;
+    opened.state.stateVersion = state.stateVersion;
+    return success(opened.state, resolved.events.concat(opened.events));
   }
   if (!icon) return failure("MYTHOS_EFFECT_UNSUPPORTED", "The revealed card's printed text is not executable yet.");
   if (icon.type === "monster_surge") return resolveMythosMonsterSurge(state, content, context);

@@ -19,6 +19,12 @@ describe("base-game Mythos cards", () => {
     expect(() => validateMythosContent(baseGameMythosCards)).not.toThrow();
   });
 
+  it("types only Mythos texts verified for execution", () => {
+    expect(baseGameMythosCards.find(card => card.id === "mythos_green_04")?.effect).toEqual({ type: "lead_gain_condition", kind: "blessed" });
+    expect(baseGameMythosCards.find(card => card.id === "mythos_yellow_13")?.effect).toEqual({ type: "move_omen_counterclockwise_then_advance_doom_for_gates" });
+    expect(baseGameMythosCards.filter(card => card.effectModelStatus === "typed")).toHaveLength(2);
+  });
+
   it("records the printed left-to-right icon sequence and blue-card token operands", () => {
     expect(baseGameMythosCards.find(card => card.id === "mythos_green_01")?.icons)
       .toEqual([{ type: "advance_omen" }, { type: "monster_surge" }, { type: "spawn_clues" }]);
