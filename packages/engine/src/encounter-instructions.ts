@@ -1,6 +1,9 @@
 import { skillIds, type SkillId } from "@eldritch/protocol";
 
 export type LocationEncounterEffect =
+  | { kind: "omen_move"; destination: "chosen"; advanceDoom: false; position?: number }
+  | { kind: "omen_advance"; amount: 1 }
+  | { kind: "omen_eldritch"; operation: "place" | "discard"; amount: 1; space: "green" | "chosen" }
   | { kind: "collect_encountered_clue"; markerId: string }
   | { kind: "clues" | "health" | "sanity" | "recover_health" | "recover_sanity"; amount: number }
   | { kind: "spawn_clues"; amount: number; target?: "chosen_space" }
@@ -25,7 +28,11 @@ export function parseLocationEncounterInstruction(value: unknown, depth = 0): Lo
     const effects: LocationEncounterEffect[] = [];
     for (const raw of value.effects as unknown[]) {
       if (!raw || typeof raw !== "object" || !("kind" in raw)) return undefined;
-      if (raw.kind === "collect_encountered_clue" && "markerId" in raw && typeof raw.markerId === "string" && raw.markerId) effects.push({ kind: "collect_encountered_clue", markerId: raw.markerId });
+      if (raw.kind === "omen_move" && "destination" in raw && raw.destination === "chosen" && "advanceDoom" in raw && raw.advanceDoom === false) effects.push({ kind: "omen_move", destination: "chosen", advanceDoom: false });
+      else if (raw.kind === "omen_advance" && "amount" in raw && raw.amount === 1) effects.push({ kind: "omen_advance", amount: 1 });
+      else if (raw.kind === "omen_eldritch" && "operation" in raw && "space" in raw && "amount" in raw && raw.amount === 1
+        && (raw.operation === "place" && raw.space === "green" || raw.operation === "discard" && raw.space === "chosen")) effects.push({ kind: "omen_eldritch", operation: raw.operation, space: raw.space, amount: 1 });
+      else if (raw.kind === "collect_encountered_clue" && "markerId" in raw && typeof raw.markerId === "string" && raw.markerId) effects.push({ kind: "collect_encountered_clue", markerId: raw.markerId });
       else if (raw.kind === "delay") effects.push({ kind: "delay" });
       else if (raw.kind === "discard" && "target" in raw && (raw.target === "madness" || raw.target === "blessed")) effects.push({ kind: "discard", target: raw.target });
       else if (raw.kind === "condition" && "condition" in raw && typeof raw.condition === "string" && raw.condition) effects.push({ kind: "condition", condition: raw.condition });
@@ -70,6 +77,9 @@ export function encounterInstructionLabel(instruction: LocationEncounterInstruct
   if (instruction.kind === "sequence") return instruction.steps.map(encounterInstructionLabel).join("; then ");
   if (instruction.kind !== "effects") return "Resolve the printed encounter choice";
   return instruction.effects.map(effect => {
+    if (effect.kind === "omen_move") return "Move Omen without advancing Doom";
+    if (effect.kind === "omen_advance") return "Advance Omen by 1";
+    if (effect.kind === "omen_eldritch") return `${effect.operation === "place" ? "Place" : "Discard"} 1 Omen Eldritch token`;
     if (effect.kind === "collect_encountered_clue") return "Gain this Clue";
     if (effect.kind === "condition") return `Gain ${effect.condition.replaceAll("_", " ")}`;
     if (effect.kind === "delay") return "Become Delayed";

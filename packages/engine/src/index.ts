@@ -936,7 +936,13 @@ export function collectBoardClue(state: GameState, playerId: string, markerId: s
 export function advanceOmen(state: GameState, content: GameContent): CommandResult {
   if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
   if (state.phase !== "mythos") return failure("WRONG_PHASE", "Omen advances during Mythos resolution.");
+  return resolveOmenAdvanceEffect(state, content);
+}
+
+/** Shared internal printed effect; callers enforce Mythos/Encounter timing. */
+function resolveOmenAdvanceEffect(state: GameState, content: GameContent): CommandResult {
   if (state.omen === undefined || state.doom === undefined || !state.ancientOneId) return failure("OMEN_CONTENT_MISSING", "Omen, Doom, or Ancient One setup is missing.");
+  if (!Number.isInteger(state.omen) || state.omen < 0 || state.omen >= omenTrack.length || !Number.isSafeInteger(state.greenOmenTokens ?? 0) || (state.greenOmenTokens ?? 0) < 0) return failure("OMEN_CONTENT_MISSING", "The Omen position or Eldritch count is invalid.");
   const activeGateSymbols = (state.activeGateIds ?? []).map(id => content.gates?.find(gate => gate.id === id)?.omenSymbol);
   if (activeGateSymbols.some(symbol => symbol === undefined)) return failure("GATE_CONTENT_MISSING", "An active Gate is missing its Omen symbol.");
   const result = advanceOmenTrack(state.omen, 1, activeGateSymbols as ("comet" | "constellation" | "eclipse")[]);
@@ -1656,7 +1662,23 @@ function applyLocationEncounterEffects(
   for (let index = 0; index < effects.length; index++) {
     const effect = effects[index]!;
     if ("amount" in effect && effect.amount === 0) continue;
-    if (effect.kind === "condition") {
+    if (effect.kind === "omen_advance") {
+      const advanced = resolveOmenAdvanceEffect(next, content);
+      if (!advanced.ok) return advanced;
+      next = advanced.state;
+      events.push(...advanced.events);
+    } else if (effect.kind === "omen_move") {
+      if (effect.position === undefined || !Number.isInteger(effect.position) || effect.position < 0 || effect.position >= omenTrack.length) return failure("ENCOUNTER_UNSUPPORTED", "Choose the Omen destination first.");
+      next.omen = effect.position;
+      events.push({ type: "OMEN_MOVED", position: effect.position, symbol: omenTrack[effect.position]!, direction: "chosen", doomAdvance: 0 });
+    } else if (effect.kind === "omen_eldritch") {
+      const tokens = next.greenOmenTokens ?? 0;
+      if (!Number.isSafeInteger(tokens) || tokens < 0) return failure("OMEN_CONTENT_MISSING", "The Omen Eldritch count is invalid.");
+      // Base Azathoth sources place tokens only on green; it is the only occupied Omen space.
+      const amount = effect.operation === "place" ? 1 : tokens > 0 ? -1 : 0;
+      next.greenOmenTokens = tokens + amount;
+      if (amount) events.push({ type: "OMEN_ELDRITCH_CHANGED", position: 0, amount, tokens: next.greenOmenTokens });
+    } else if (effect.kind === "condition") {
       const gained = gainCondition(next, playerId, effect.condition, content, context);
       if (gained.ok === false) {
         if (gained.error.code === "CONDITION_UNAVAILABLE") continue;
@@ -1801,6 +1823,12 @@ function continueLocationEncounter(state: GameState, content: GameContent, conte
     }
     const firstEffect = node.effects[0];
     if (!firstEffect) { pending.queue.shift(); continue; }
+    if (firstEffect.kind === "omen_move" && firstEffect.position === undefined) {
+      if (next.omen === undefined || !Number.isInteger(next.omen) || next.omen < 0 || next.omen >= omenTrack.length) return failure("OMEN_CONTENT_MISSING", "The current Omen space is unavailable.");
+      createEncounterChoice(next, context, "Choose an Omen space; Doom will not advance.", omenTrack.map((symbol, position) => [`omen-${position}`, `${position}: ${symbol}`]));
+      next.stateVersion = state.stateVersion;
+      return success(next, events);
+    }
     if (firstEffect.kind === "discard") {
       const targets = (player.conditionIds ?? []).filter(id => {
         const card = content.conditions?.find(candidate => candidate.id === id);
@@ -2671,6 +2699,10 @@ export function executeCommand(
         if (selected === "refuse") node.effects.shift();
         else if (selected === "accept") node.effects[0].accepted = true;
         else return failure("INVALID_DECISION_SELECTION", "Choose whether to accept the effect.");
+      } else if (node.kind === "effects" && node.effects[0]?.kind === "omen_move" && node.effects[0].position === undefined) {
+        const position = Number(selected.slice("omen-".length));
+        if (!/^omen-[0-3]$/.test(selected)) return failure("INVALID_DECISION_SELECTION", "Choose a physical Omen space.");
+        node.effects[0].position = position;
       } else if (node.kind === "effects" && node.effects[0]?.kind === "improve" && node.effects[0].skill === "chosen") {
         if (!["lore", "influence", "observation", "strength", "will"].includes(selected)) return failure("INVALID_DECISION_SELECTION", "Choose an available skill.");
         node.effects[0] = { kind: "improve", skill: selected as SkillId };

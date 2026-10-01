@@ -12,7 +12,7 @@ const content: GameContent = {
 };
 function state(number = 1, locationId = "arkham"): GameState {
   return {
-    stateVersion: 2, phase: "encounter", activePlayerId: "host", leadInvestigatorId: "host", ancientOneId: "azathoth", doom: 15, turnNumber: 1,
+    stateVersion: 2, phase: "encounter", activePlayerId: "host", leadInvestigatorId: "host", ancientOneId: "azathoth", doom: 15, omen: 0, greenOmenTokens: 1, turnNumber: 1,
     players: [{ id: "host", investigatorId: "akachi_onyele", locationId, health: 5, sanity: 7, maxHealth: 5, maxSanity: 7, assetIds: [], clues: 0, skillImprovements: {} }, { id: "guest", locationId: "london", assetIds: [], clues: 0, skillImprovements: {} }],
     actionsRemaining: 0, performedActions: [], monsterLocationIds: [], reserveAssetIds: [], assetDiscardIds: [], mysteryProgress: 0, mysteryTarget: 0, completedMysteryIds: [],
     boardClues: [{ id: "chosen", locationId }, { id: "other", locationId }],
@@ -22,11 +22,79 @@ function state(number = 1, locationId = "arkham"): GameState {
 const rng = (dice: number[]) => createDeterministicEngineContext({ dice, tokenIndexes: [0], ids: ["test", "decision", "later"] });
 
 describe("internal scan-backed Research encounters", () => {
-  it("supports exactly 12 verified Azathoth sections and rejects all other branches up front", () => {
+  function choose(before: GameState, option: string[] = []) {
+    return executeCommand(JSON.parse(JSON.stringify(before)), "host", { type: "RESOLVE_DECISION", decisionId: before.pendingDecision!.id, selectedOptionIds: option }, content, rng([]));
+  }
+  it("offers each physical Omen space privately, including repeated symbols, with no Doom", () => {
+    for (const position of [0, 1, 2, 3]) {
+      const before = state(1, "the_amazon");
+      before.omen = 3; before.doom = 1; before.greenOmenTokens = 4;
+      before.activeGateIds = ["missing_gate"]; // No matching-Gate lookup for movement without Doom.
+      const started = resolveResearchEncounter(before, "host", "chosen", content, rng([6]));
+      if (!started.ok) throw new Error(started.error.message);
+      expect(started.state.pendingDecision?.optionIds).toEqual(["omen-0", "omen-1", "omen-2", "omen-3"]);
+      expect(started.state.players[0]?.clues).toBe(1);
+      expect(projectStateForPlayer(started.state, "guest").pendingDecision).not.toHaveProperty("optionIds");
+      expect(choose(started.state, ["omen-4"]).ok).toBe(false);
+      const finished = choose(started.state, [`omen-${position}`]);
+      if (!finished.ok) throw new Error(finished.error.message);
+      expect(finished.state).toMatchObject({ omen: position, doom: 1, greenOmenTokens: 4, activePlayerId: "guest" });
+      expect(finished.state.gameResult).toBeUndefined();
+    }
+  });
+  it("places green Eldritch tokens without immediate Doom loss, even on the current green space", () => {
+    const result = resolveResearchEncounter(state(2), "host", "chosen", content, rng([1, 1, 1]));
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.state).toMatchObject({ omen: 0, greenOmenTokens: 2, doom: 15 });
+    expect(result.state.boardClues).toHaveLength(2); // Failed City test does not collect.
+    expect(result.events).toContainEqual({ type: "OMEN_ELDRITCH_CHANGED", position: 0, amount: 1, tokens: 2 });
+  });
+  it("removes one existing green token after an unconditional Clue grant, or does nothing at zero", () => {
+    for (const tokens of [0, 3]) {
+      const before = state(5, "the_amazon"); before.greenOmenTokens = tokens;
+      const started = resolveResearchEncounter(before, "host", "chosen", content, rng([6, 1]));
+      if (!started.ok) throw new Error(started.error.message);
+      const finished = choose(started.state);
+      if (!finished.ok) throw new Error(finished.error.message);
+      expect(finished.state.greenOmenTokens).toBe(Math.max(0, tokens - 1));
+      expect(finished.state.players[0]?.clues).toBe(1);
+      expect(finished.state.doom).toBe(15);
+    }
+  });
+  it("advances through matching Gates and includes Azathoth tokens when entering green", () => {
+    const before = state(6); before.omen = 3; before.greenOmenTokens = 2;
+    before.activeGateIds = ["green_gate"];
+    const rules = { ...content, gates: [{ id: "green_gate", locationId: "arkham" as const, omenSymbol: "comet" as const }] };
+    const result = resolveResearchEncounter(before, "host", "chosen", rules, rng([1, 1]));
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.state).toMatchObject({ omen: 0, doom: 12 });
+    expect(result.events).toContainEqual({ type: "OMEN_ADVANCED", position: 0, symbol: "comet", doomAdvance: 3 });
+    expect(result.state.boardClues).toHaveLength(2);
+  });
+  it("ends the game and cycles the Research card once when Omen advancement awakens Azathoth", () => {
+    const before = state(6); before.omen = 3; before.doom = 1;
+    const result = resolveResearchEncounter(before, "host", "chosen", content, rng([1, 1]));
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.state.gameResult).toBe("investigators_lose");
+    expect(result.state.pendingLocationEncounter).toBeUndefined();
+    expect(result.state.privateState.deckOrderById["encounter:research_azathoth"]).toEqual(["encounter_research_azathoth_08", "encounter_research_azathoth_06"]);
+    expect(result.state.activePlayerId).toBe("host");
+  });
+  it("rejects missing Omen data atomically instead of throwing or consuming the deck", () => {
+    for (const omen of [undefined, -1, 4, 1.5]) {
+      const before = state(6); before.omen = omen;
+      const snapshot = structuredClone(before);
+      expect(resolveResearchEncounter(before, "host", "chosen", content, rng([1, 1])).ok).toBe(false);
+      expect(before).toEqual(snapshot);
+    }
+  });
+  it("supports 22 verified Azathoth sections while retaining Mystery and Artifact blockers", () => {
     const supported = baseGameResearchEncounterRules.flatMap(card => Object.entries(card.sections)
       .filter(([, instruction]) => bindResearchInstruction(instruction, "marker"))
       .map(([section]) => `${card.number}:${section}`));
-    expect(supported).toEqual(["1:city", "1:sea", "2:wilderness", "2:sea", "3:city", "4:city", "4:wilderness", "7:city", "7:wilderness", "7:sea", "8:city", "8:wilderness"]);
+    expect(supported).toHaveLength(22);
+    expect(supported).not.toContain("5:city");
+    expect(supported).not.toContain("5:sea");
   });
   it("gains the exact encountered Clue plus an additional supply Clue and cycles once", () => {
     const before = state();
@@ -79,7 +147,7 @@ describe("internal scan-backed Research encounters", () => {
     expect(finished.state.activePlayerId).toBe("guest");
   });
   it("preflights unsupported branches before any card, token, or RNG consumption", () => {
-    const before = state(1, "the_amazon");
+    const before = state(5, "arkham");
     const snapshot = structuredClone(before);
     const context = createDeterministicEngineContext({});
     expect(resolveResearchEncounter(before, "host", "chosen", content, context)).toMatchObject({ ok: false, error: { code: "ENCOUNTER_UNSUPPORTED" } });
