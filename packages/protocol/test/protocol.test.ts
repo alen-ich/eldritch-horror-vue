@@ -51,6 +51,14 @@ describe("gameCommandSchema", () => {
       ancientOneId: "hastur",
     })).toThrow();
   });
+  it("validates supported Artifact intents without accepting forged identity or damage", () => {
+    expect(gameCommandSchema.parse({ type: "USE_ARTIFACT_ACTION", artifactId: "artifact_ttka_halot" })).toEqual({ type: "USE_ARTIFACT_ACTION", artifactId: "artifact_ttka_halot" });
+    for (const command of [
+      { type: "USE_ARTIFACT_ACTION", artifactId: "unknown" },
+      { type: "USE_ARTIFACT_ACTION", artifactId: "artifact_ttka_halot", damage: 99 },
+      { type: "USE_ARTIFACT_ACTION", artifactId: "artifact_ttka_halot", playerId: "guest" },
+    ]) expect(() => gameCommandSchema.parse(command)).toThrow();
+  });
 });
 
 describe("pendingDecisionSchema", () => {

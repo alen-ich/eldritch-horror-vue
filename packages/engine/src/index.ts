@@ -179,6 +179,7 @@ export interface GameState {
   actionsRemaining: number;
   performedActions: ActionType[];
   usedConditionActionIds?: string[];
+  usedArtifactActionIds?: string[];
   monsterLocationIds: LocationId[];
   monsters?: MonsterInstance[];
   activeGateIds?: string[];
@@ -353,6 +354,7 @@ export function projectStateForPlayer(state: GameState, viewerPlayerId?: string)
     })),
     performedActions: [...publicState.performedActions],
     usedConditionActionIds: [...(publicState.usedConditionActionIds ?? [])],
+    usedArtifactActionIds: [...(publicState.usedArtifactActionIds ?? [])],
     monsterLocationIds: [...publicState.monsterLocationIds],
     monsters: publicState.monsters?.map(monster => ({ ...monster })),
     activeGateIds: [...(publicState.activeGateIds ?? [])],
@@ -2111,8 +2113,31 @@ function createAcquireAssetsDecision(state: GameState, test: ActiveTest, content
   }];
 }
 
+function artifactTargets(state: GameState, player: EnginePlayer, content: GameContent): MonsterInstance[] {
+  return (state.monsters ?? []).filter(instance => {
+    const definition = content.monsters?.find(card => card.id === instance.monsterId);
+    // Special defeat/damage abilities need their own handlers before this action can target them.
+    return instance.locationId === player.locationId && definition && !definition.specialEffect && definition.toughness !== "ancient_one";
+  });
+}
+
+function completeArtifactAction(state: GameState, playerId: string, events: GameEvent[]): void {
+  state.usedArtifactActionIds = [...(state.usedArtifactActionIds ?? []), "artifact_ttka_halot"];
+  completeAction(state, state.players.findIndex(player => player.id === playerId), "component", events);
+}
+
 function finishSkillTest(state: GameState, test: ActiveTest, content: GameContent, context: EngineContext): GameEvent[] {
   if (test.continuation === "acquire_assets") return createAcquireAssetsDecision(state, test, content, context);
+  if (test.continuation === "artifact_action") {
+    state.activeTest = undefined;
+    const player = state.players.find(candidate => candidate.id === test.playerId)!;
+    const events: GameEvent[] = [{ type: "TEST_RESOLVED", testId: test.id, playerId: player.id, successes: test.successes, continuation: test.continuation }];
+    const targets = artifactTargets(state, player, content);
+    if (test.successes > 0 && (player.sanity ?? 0) > 1 && targets.length) {
+      state.pendingDecision = { id: context.createId(), kind: "artifact_target", playerId: player.id, visibility: "owner", prompt: "T'tka Halot: spend 1 Sanity for a Monster on your space to lose 3 Health, or decline.", optionIds: ["skip", ...targets.map(instance => instance.id)], optionLabels: Object.fromEntries([["skip", "Decline"], ...targets.map(instance => [instance.id, instance.monsterId])]), minSelections: 1, maxSelections: 1 };
+    } else completeArtifactAction(state, player.id, events);
+    return events;
+  }
   state.activeTest = undefined;
   const conditionId = test.sourceConditionId;
   const owner = conditionId ? state.players.find(player => player.conditionIds?.includes(conditionId)) : undefined;
@@ -2138,7 +2163,7 @@ function finishSkillTest(state: GameState, test: ActiveTest, content: GameConten
 function beginSkillTest(
   state: GameState,
   player: EnginePlayer,
-  request: { skill: SkillId; modifier: number; continuation: ActiveTest["continuation"]; sourceConditionId?: string; itemBonuses?: readonly number[]; otherBonuses?: readonly number[] },
+  request: { skill: SkillId; modifier: number; continuation: ActiveTest["continuation"]; sourceConditionId?: string; sourceArtifactId?: string; itemBonuses?: readonly number[]; otherBonuses?: readonly number[] },
   content: GameContent,
   context: EngineContext,
 ): GameEvent[] {
@@ -2166,6 +2191,7 @@ function beginSkillTest(
     successThreshold: conditionSuccessThreshold(player.conditionIds ?? []),
     continuation: request.continuation,
     sourceConditionId: request.sourceConditionId,
+    sourceArtifactId: request.sourceArtifactId,
   };
   test.successes = countActiveTestSuccesses(test, player, content);
   state.activeTest = test;
@@ -2242,6 +2268,7 @@ export function executeCommand(
     nextRound.actionsRemaining = 2;
     nextRound.performedActions = [];
     nextRound.usedConditionActionIds = [];
+    nextRound.usedArtifactActionIds = [];
     nextRound.replacementWindow = false;
     nextRound.encounteredMonsterInstanceIds = [];
     return success(nextRound, [{ type: "PHASE_ADVANCED", phase: "action", activePlayerId: first.id }]);
@@ -2259,7 +2286,9 @@ export function executeCommand(
     })),
     performedActions: [...state.performedActions],
     usedConditionActionIds: [...(state.usedConditionActionIds ?? [])],
+    usedArtifactActionIds: [...(state.usedArtifactActionIds ?? [])],
     monsterLocationIds: [...state.monsterLocationIds],
+    monsters: state.monsters?.map(monster => ({ ...monster })),
     activeGateIds: [...(state.activeGateIds ?? [])],
     discardedGateIds: [...(state.discardedGateIds ?? [])],
     boardClues: state.boardClues?.map(clue => ({ ...clue })),
@@ -2704,6 +2733,28 @@ export function executeCommand(
       continued.state.stateVersion = state.stateVersion + 1;
       return { ...continued, events: [...events, ...continued.events] };
     }
+    if (decision.kind === "artifact_target") {
+      if (next.phase !== "action" || next.activePlayerId !== actorPlayerId || !actor.artifactIds?.includes("artifact_ttka_halot") || next.usedArtifactActionIds?.includes("artifact_ttka_halot")) return failure("ARTIFACT_UNAVAILABLE", "The Artifact action is no longer available.");
+      const selected = selections[0]!;
+      const events: GameEvent[] = [{ type: "DECISION_RESOLVED", decisionId: decision.id, playerId: actorPlayerId, selectedOptionIds: [...selections] }];
+      if (selected !== "skip") {
+        const instance = artifactTargets(next, actor, content).find(monster => monster.id === selected);
+        const definition = content.monsters?.find(monster => monster.id === instance?.monsterId);
+        if (!instance || !definition || definition.toughness === "ancient_one" || (actor.sanity ?? 0) <= 1) return failure("INVALID_DECISION_SELECTION", "That Monster or Sanity payment is no longer available.");
+        actor.sanity = actor.sanity! - 1;
+        instance.damage += 3;
+        const toughness = definition.toughness.base + definition.toughness.perInvestigator * next.players.filter(player => !player.defeated && !player.eliminated).length;
+        if (instance.damage >= toughness) {
+          next.monsters = next.monsters!.filter(monster => monster.id !== instance.id);
+          next.monsterLocationIds = [...new Set(next.monsters.map(monster => monster.locationId))];
+          if (definition.type === "normal" && !instance.setAside) next.privateState.tokenPoolById.monsters = [...(next.privateState.tokenPoolById.monsters ?? []), instance.monsterId];
+          events.push({ type: "MONSTER_DEFEATED", monsterInstanceId: instance.id, monsterId: instance.monsterId });
+        }
+      }
+      next.pendingDecision = undefined;
+      completeArtifactAction(next, actorPlayerId, events);
+      return success(next, events);
+    }
     if (decision.continuation === "location_encounter_choice") {
       if (!context) return failure("RANDOM_INPUT_REQUIRED", "Encounter choices require server randomness.");
       const pending = next.pendingLocationEncounter;
@@ -2967,6 +3018,7 @@ export function executeCommand(
     next.actionsRemaining = 2;
     next.performedActions = [];
     next.usedConditionActionIds = [];
+    next.usedArtifactActionIds = [];
     next.activeMysteryId = activeMysteryId;
     next.mysteryProgress = 0;
     next.mysteryTarget = mysteryTarget;
@@ -3122,6 +3174,15 @@ export function executeCommand(
     }
     if (!context) return failure("RANDOM_INPUT_REQUIRED", "The Condition action requires deterministic dice and ID input.");
     return success(next, beginSkillTest(next, actor, { skill: "influence", modifier: 0, continuation: "condition_action", sourceConditionId: conditionId }, content, context));
+  }
+
+  if (command.type === "USE_ARTIFACT_ACTION") {
+    if (actor.assetIds.length || actor.artifactIds?.some(id => id !== command.artifactId)) return failure("ARTIFACT_EFFECT_UNSUPPORTED", "Possession bonuses for this Lore test are not executable yet.");
+    if (!actor.artifactIds?.includes(command.artifactId) || !content.artifacts?.some(card => card.id === command.artifactId)) return failure("ARTIFACT_UNAVAILABLE", "The investigator does not hold this Artifact.");
+    if (next.usedArtifactActionIds?.includes(command.artifactId)) return failure("ACTION_ALREADY_PERFORMED", "This Artifact action was already performed this round.");
+    if (!actor.investigatorId || !content.investigators[actor.investigatorId]) return failure("INVESTIGATOR_CONTENT_MISSING", "The investigator's Lore is missing.");
+    if (!context) return failure("RANDOM_INPUT_REQUIRED", "The Artifact action requires server dice.");
+    return success(next, beginSkillTest(next, actor, { skill: "lore", modifier: 0, continuation: "artifact_action", sourceArtifactId: command.artifactId }, content, context));
   }
 
   if (command.type === "OFFER_TRADE") {

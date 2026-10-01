@@ -42,6 +42,7 @@ export const pendingDecisionKinds = [
   "choose_unexpected_betrayal_ally",
   "choose_heat_wave",
   "encounter_choice",
+  "artifact_target",
 ] as const;
 export type PendingDecisionKind = (typeof pendingDecisionKinds)[number];
 
@@ -97,7 +98,8 @@ export interface ActiveTest {
   dice: number[];
   successes: number;
   successThreshold: number;
-  continuation: "acquire_assets" | "condition_action" | "condition_reckoning" | "location_encounter";
+  continuation: "acquire_assets" | "condition_action" | "condition_reckoning" | "location_encounter" | "artifact_action";
+  sourceArtifactId?: string;
   sourceConditionId?: string;
   sourceEncounterCardId?: string;
   sourceEncounterDeck?: "general" | "america" | "europe" | "asia_australia" | "research_azathoth" | "research_cthulhu" | "research_shub_niggurath" | "research_yog_sothoth";
@@ -129,6 +131,7 @@ export const gameCommandSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("PREPARE_TRAVEL"), ticketType: z.enum(["train", "ship"]) }).strict(),
   z.object({ type: z.literal("ACQUIRE_ASSETS") }).strict(),
   z.object({ type: z.literal("USE_CONDITION_ACTION"), targetPlayerId: z.string().min(1), conditionKind: z.enum(conditionKindIds) }).strict(),
+  z.object({ type: z.literal("USE_ARTIFACT_ACTION"), artifactId: z.literal("artifact_ttka_halot") }).strict(),
   z.object({ type: z.literal("USE_INVESTIGATOR_ACTION") }).strict(),
   z.object({ type: z.literal("END_ACTIONS") }).strict(),
   z.object({ type: z.literal("ADVANCE_MYTHOS") }).strict(),
