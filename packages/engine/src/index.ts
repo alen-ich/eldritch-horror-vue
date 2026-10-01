@@ -27,7 +27,7 @@ export * from "./combat.js";
 export * from "./conditions.js";
 export * from "./omen.js";
 
-export type ActionType = "travel" | "rest" | "prepare_travel" | "trade" | "acquire_assets" | "component";
+export type ActionType = "travel" | "rest" | "prepare_travel" | "trade" | "acquire_assets" | "component" | "investigator";
 
 export interface EngineInputSequences {
   dice?: readonly number[];
@@ -2910,6 +2910,29 @@ export function executeCommand(
     return failure("CONDITION_RESTRICTED", "A Detained investigator cannot perform other actions.");
   }
   if (state.actionsRemaining < 1 && command.type !== "END_ACTIONS") return failure("NO_ACTIONS_REMAINING", "This investigator has no actions remaining.");
+
+  if (command.type === "USE_INVESTIGATOR_ACTION") {
+    if (state.performedActions.includes("investigator")) return failure("ACTION_ALREADY_PERFORMED", "The investigator action can be performed only once per round.");
+    const events: GameEvent[] = [];
+    if (actor.investigatorId === "jim_culver") {
+      for (const recipient of next.players) {
+        if (recipient.defeated || recipient.eliminated || recipient.locationId !== actor.locationId) continue;
+        const recovered = recoverResource(recipient.sanity ?? 0, recipient.maxSanity ?? content.investigators[recipient.investigatorId!]?.sanity ?? 0, 1);
+        recipient.sanity = recovered.value;
+        events.push({ type: "INVESTIGATOR_RECOVERED", playerId: recipient.id, healthRecovered: 0, sanityRecovered: recovered.amount });
+      }
+    } else if (actor.investigatorId === "trish_scarborough") {
+      if (actor.clues !== 0) return failure("CONDITION_RESTRICTED", "Trish must have no Clues to use this action.");
+      if (!context) return failure("RANDOM_INPUT_REQUIRED", "The Clue draw requires server-owned randomness.");
+      const gained = gainCluesFromPool(next, actorPlayerId, 1, content, context);
+      if (!gained.ok) return gained;
+      next.privateState = gained.state.privateState;
+      actor.clues = gained.state.players[actorIndex]!.clues;
+      events.push(...gained.events);
+    } else return failure("ENCOUNTER_UNSUPPORTED", "This investigator action is not executable yet.");
+    completeAction(next, actorIndex, "investigator", events);
+    return success(next, events);
+  }
 
   if (command.type === "USE_CONDITION_ACTION") {
     const owner = next.players.find(player => player.id === command.targetPlayerId);

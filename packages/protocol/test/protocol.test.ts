@@ -11,6 +11,8 @@ describe("gameCommandSchema", () => {
       destinationIds: ["rome", "istanbul"],
     });
     expect(gameCommandSchema.parse({ type: "REST" })).toEqual({ type: "REST" });
+    expect(gameCommandSchema.parse({ type: "USE_INVESTIGATOR_ACTION" })).toEqual({ type: "USE_INVESTIGATOR_ACTION" });
+    expect(() => gameCommandSchema.parse({ type: "USE_INVESTIGATOR_ACTION", investigatorId: "jim_culver" })).toThrow();
     expect(gameCommandSchema.parse({ type: "PREPARE_TRAVEL", ticketType: "ship" })).toEqual({ type: "PREPARE_TRAVEL", ticketType: "ship" });
     expect(gameCommandSchema.parse({ type: "ACQUIRE_ASSETS" })).toEqual({ type: "ACQUIRE_ASSETS" });
     expect(gameCommandSchema.parse({ type: "END_ACTIONS" })).toEqual({ type: "END_ACTIONS" });

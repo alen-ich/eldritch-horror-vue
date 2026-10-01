@@ -259,6 +259,57 @@ describe("Condition local actions", () => {
   });
 });
 
+describe("resource investigator actions", () => {
+  it("Jim recovers capped Sanity for living investigators on his space, even with Monsters", () => {
+    const before = startedGame();
+    before.players[0]!.investigatorId = "jim_culver";
+    before.players[0]!.sanity = 3;
+    before.players[0]!.maxSanity = 5;
+    before.players[1]!.sanity = 4;
+    before.monsterLocationIds = ["san_francisco"];
+    const result = executeCommand(before, "host", { type: "USE_INVESTIGATOR_ACTION" }, testContent);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.state.players.map(player => player.sanity)).toEqual([4, 5]);
+    expect(result.state.actionsRemaining).toBe(1);
+    expect(result.state.performedActions).toEqual(["investigator"]);
+    expect(executeCommand(result.state, "host", { type: "USE_INVESTIGATOR_ACTION" }, testContent))
+      .toMatchObject({ ok: false, error: { code: "ACTION_ALREADY_PERFORMED" } });
+    expect(before.players[0]?.sanity).toBe(3);
+    before.players[1]!.locationId = "space_16";
+    const remote = executeCommand(before, "host", { type: "USE_INVESTIGATOR_ACTION" }, testContent);
+    if (remote.ok) expect(remote.state.players[1]?.sanity).toBe(4);
+    before.players[1]!.locationId = "san_francisco";
+    before.players[1]!.defeated = true;
+    const defeated = executeCommand(before, "host", { type: "USE_INVESTIGATOR_ACTION" }, testContent);
+    if (defeated.ok) expect(defeated.state.players[1]?.sanity).toBe(4);
+  });
+
+  it("Trish draws a physical Clue only when empty and cannot bypass phase or ownership", () => {
+    const before = startedGame();
+    before.players[0]!.investigatorId = "trish_scarborough";
+    before.players[0]!.clues = 0;
+    before.privateState.tokenPoolById.clues = ["clue_test"];
+    before.privateState.tokenPoolById["held_clues:host"] = [];
+    const rules = { ...testContent, clues: [{ id: "clue_test", locationId: "san_francisco" as const }] };
+    const context = createDeterministicEngineContext({ tokenIndexes: [0] });
+    const result = executeCommand(before, "host", { type: "USE_INVESTIGATOR_ACTION" }, rules, context);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.state.players[0]?.clues).toBe(1);
+    expect(result.state.privateState.tokenPoolById["held_clues:host"]).toEqual(["clue_test"]);
+    expect(result.state.privateState.tokenPoolById.clues).toEqual([]);
+    expect(executeCommand(before, "guest", { type: "USE_INVESTIGATOR_ACTION" }, rules, context))
+      .toMatchObject({ ok: false, error: { code: "NOT_ACTIVE_PLAYER" } });
+    before.players[0]!.clues = 1;
+    expect(executeCommand(before, "host", { type: "USE_INVESTIGATOR_ACTION" }, rules, context)).toMatchObject({ ok: false });
+    before.players[0]!.clues = 0;
+    before.privateState.tokenPoolById.clues = [];
+    const exhausted = executeCommand(before, "host", { type: "USE_INVESTIGATOR_ACTION" }, rules, context);
+    expect(exhausted).toMatchObject({ ok: true, state: { actionsRemaining: 1 } });
+    if (exhausted.ok) expect(exhausted.state.players[0]?.clues).toBe(0);
+    expect(before.actionsRemaining).toBe(2);
+  });
+});
+
 describe("combat encounter integration", () => {
   function combatState(): GameState {
     const state = startedGame();

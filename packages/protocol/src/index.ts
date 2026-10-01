@@ -129,6 +129,7 @@ export const gameCommandSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("PREPARE_TRAVEL"), ticketType: z.enum(["train", "ship"]) }).strict(),
   z.object({ type: z.literal("ACQUIRE_ASSETS") }).strict(),
   z.object({ type: z.literal("USE_CONDITION_ACTION"), targetPlayerId: z.string().min(1), conditionKind: z.enum(conditionKindIds) }).strict(),
+  z.object({ type: z.literal("USE_INVESTIGATOR_ACTION") }).strict(),
   z.object({ type: z.literal("END_ACTIONS") }).strict(),
   z.object({ type: z.literal("ADVANCE_MYTHOS") }).strict(),
   z.object({ type: z.literal("BEGIN_NEXT_ROUND") }).strict(),

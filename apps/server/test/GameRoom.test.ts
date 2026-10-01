@@ -753,6 +753,32 @@ describe("authoritative game room", () => {
     assert.equal(room.state.phase, "encounter");
   });
 
+  it("authorizes Trish's component action and conserves the private physical Clue", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "action";
+    state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
+    state.actionsRemaining = 2;
+    Object.assign(state.players[0]!, { investigatorId: "trish_scarborough", locationId: "space_16", health: 7, sanity: 5, assetIds: [], clues: 0 });
+    state.privateState.tokenPoolById.clues = ["clue_arkham"];
+    state.privateState.tokenPoolById[`held_clues:${state.players[0]!.id}`] = [];
+    internal.applyEngineState(state);
+    const denied = guest.waitForMessage(commandErrorMessageType);
+    sendCommand(room, guest, { type: "USE_INVESTIGATOR_ACTION" });
+    assert.equal((await denied as { code: string }).code, "NOT_ACTIVE_PLAYER");
+    sendCommand(room, host, { type: "USE_INVESTIGATOR_ACTION" });
+    await room.waitForMessage(commandMessageType);
+    const finished = internal.toEngineState();
+    assert.equal(finished.players[0]!.clues, 1);
+    assert.equal(finished.actionsRemaining, 1);
+    assert.deepEqual(finished.privateState.tokenPoolById.clues, []);
+    assert.deepEqual(finished.privateState.tokenPoolById[`held_clues:${state.players[0]!.id}`], ["clue_arkham"]);
+    assert.equal(JSON.stringify(room.state).includes("clue_arkham"), false);
+  });
+
   it("resumes the scanned San Francisco optional encounter through two private choices", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
