@@ -15,7 +15,7 @@ import type {
 } from "@eldritch/protocol";
 import { calculateDicePool, countTestSuccesses } from "./skill-tests.js";
 import { loseResource, recoverResource } from "./resources.js";
-import { buildGateStack, buildLocationEncounterDecks, buildMonsterPool, buildMythosDeck, type AncientSetup, type LocationEncounterDeckId, type EncounterDeckId, type ResearchEncounterDeckId, type MythosColor } from "./setup.js";
+import { buildArtifactDeck, buildGateStack, buildLocationEncounterDecks, buildMonsterPool, buildMythosDeck, type AncientSetup, type LocationEncounterDeckId, type EncounterDeckId, type ResearchEncounterDeckId, type MythosColor } from "./setup.js";
 import { bindResearchInstruction } from "./research-instructions.js";
 import { resolveStandardCombat, type CombatCheck } from "./combat.js";
 import { conditionSuccessThreshold, publicConditionId, resolveBoonBaneGain } from "./conditions.js";
@@ -106,6 +106,7 @@ export interface EnginePlayer {
   maxSanity?: number;
   travelTickets?: TravelTicketType[];
   assetIds: string[];
+  artifactIds?: string[];
   /** Public front-side physical card IDs; unrevealed backs are never projected. */
   conditionIds?: string[];
   clues: number;
@@ -144,7 +145,7 @@ export interface MonsterCombatDefinition {
 
 export interface GameState {
   pendingLocationEncounter?: { playerId: string; cardId: string; deck: EncounterDeckId; queue: LocationEncounterInstruction[]; dice: number[]; successes: number };
-  defeatedInvestigators?: { investigatorId: InvestigatorId; locationId: LocationId; cause: "health" | "sanity"; assetIds: string[]; clues: number; travelTickets: TravelTicketType[] }[];
+  defeatedInvestigators?: { investigatorId: InvestigatorId; locationId: LocationId; cause: "health" | "sanity"; assetIds: string[]; artifactIds?: string[]; clues: number; travelTickets: TravelTicketType[] }[];
   pendingDefeat?: { playerId: string; cityIds: LocationId[]; causes: ("health" | "sanity")[] };
   pendingMythosDamage?: { cardId: string; remainingPlayerIds: string[]; healthLoss: number };
   pendingHeatWave?: { cardId: string; remainingPlayerIds: string[] };
@@ -224,6 +225,7 @@ export type ConditionBackEffect =
   | { type: "discard_all_clues_then_discard" };
 
 export interface GameContent {
+  artifacts?: readonly { id: string }[];
   researchEncounters?: readonly { id: string; deck: ResearchEncounterDeckId; sections: Readonly<Record<string, unknown>> }[];
   locationEncounters?: readonly { id: string; deck: LocationEncounterDeckId; sections?: Readonly<Record<string, unknown>> }[];
   gates?: readonly { id: string; omenSymbol: "comet" | "constellation" | "eclipse"; locationId: LocationId }[];
@@ -241,6 +243,7 @@ export interface GameContent {
 }
 
 export type RuleErrorCode =
+  | "ARTIFACT_CONTENT_MISSING" | "ARTIFACT_UNAVAILABLE" | "ARTIFACT_EFFECT_UNSUPPORTED"
   | "ENCOUNTER_UNSUPPORTED" | "ENCOUNTER_CONTENT_MISSING" | "ENCOUNTER_DECK_MISSING" | "ENCOUNTER_DECK_ILLEGAL"
   | "MYTHOS_CARD_ACTIVE" | "MYTHOS_DECK_MISSING" | "MYTHOS_CONTENT_MISSING"
   | "MYTHOS_EFFECT_UNSUPPORTED"
@@ -344,6 +347,7 @@ export function projectStateForPlayer(state: GameState, viewerPlayerId?: string)
       ...player,
       travelTickets: player.travelTickets ? [...player.travelTickets] : undefined,
       assetIds: [...player.assetIds],
+      ...(player.artifactIds ? { artifactIds: [...player.artifactIds] } : {}),
       ...(player.conditionIds ? { conditionIds: player.conditionIds.map(publicConditionId) } : {}),
       skillImprovements: { ...player.skillImprovements },
     })),
@@ -541,6 +545,26 @@ function mysteryTargetValue(target: GameContent["mysteryTargetsById"][string], i
 function targetForMystery(content: GameContent, mysteryId: string, investigatorCount: number): number | undefined {
   const target = content.mysteryTargetsById[mysteryId];
   return target ? mysteryTargetValue(target, investigatorCount) : undefined;
+}
+
+/** Internal named transfer only. No public grant command or printed Artifact effects. */
+export function gainNamedArtifact(state: GameState, playerId: string, artifactId: string, content: GameContent): CommandResult {
+  if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
+  if (state.phase === "lobby") return failure("WRONG_PHASE", "Artifacts cannot be gained before setup.");
+  const player = state.players.find(player => player.id === playerId);
+  if (!player) return failure("PLAYER_NOT_FOUND", "Investigator not found.");
+  if (player.defeated || player.eliminated) return failure("INVESTIGATOR_DEFEATED", "This investigator cannot gain an Artifact.");
+  if (artifactId !== "artifact_ttka_halot") return failure("ARTIFACT_EFFECT_UNSUPPORTED", "This Artifact's printed gain/effects are not supported.");
+  const catalog = content.artifacts?.map(card => card.id);
+  const deck = state.privateState.deckOrderById.artifacts;
+  const physical = [...(deck ?? []), ...state.players.flatMap(player => player.artifactIds ?? []), ...(state.defeatedInvestigators ?? []).flatMap(player => player.artifactIds ?? [])];
+  if (!catalog || !deck || new Set(catalog).size !== catalog.length || new Set(physical).size !== physical.length || physical.some(id => !catalog.includes(id)) || physical.length !== catalog.length) return failure("ARTIFACT_CONTENT_MISSING", "The physical Artifact supply is inconsistent.");
+  if (!deck.includes(artifactId)) return failure("ARTIFACT_UNAVAILABLE", "The named Artifact is not in the supply.");
+  const next = structuredClone(state);
+  next.privateState.deckOrderById.artifacts = deck.filter(id => id !== artifactId);
+  const recipient = next.players.find(player => player.id === playerId)!;
+  recipient.artifactIds = [...(recipient.artifactIds ?? []), artifactId];
+  return success(next, [{ type: "ARTIFACT_GAINED", playerId, artifactId }]);
 }
 
 export function applyMysteryProgress(state: GameState, amount: number, content: GameContent): CommandResult {
@@ -2229,6 +2253,7 @@ export function executeCommand(
       ...player,
       travelTickets: player.travelTickets ? [...player.travelTickets] : undefined,
       assetIds: [...player.assetIds],
+      ...(player.artifactIds ? { artifactIds: [...player.artifactIds] } : {}),
       ...(player.conditionIds ? { conditionIds: [...player.conditionIds] } : {}),
       skillImprovements: { ...player.skillImprovements },
     })),
@@ -2265,8 +2290,9 @@ export function executeCommand(
       if (!held || held.length !== actor.clues) return failure("CLUE_CONTENT_MISSING", "The defeated investigator's physical Clues are unavailable.");
       next.privateState.tokenPoolById[`defeated_clues:${actor.investigatorId}`] = held.splice(0);
     }
-    next.defeatedInvestigators = [...(state.defeatedInvestigators ?? []), { investigatorId: actor.investigatorId!, locationId: command.cityId, cause: command.cause, assetIds: [...actor.assetIds], clues: actor.clues, travelTickets: [...(actor.travelTickets ?? [])] }];
+    next.defeatedInvestigators = [...(state.defeatedInvestigators ?? []), { investigatorId: actor.investigatorId!, locationId: command.cityId, cause: command.cause, assetIds: [...actor.assetIds], artifactIds: [...(actor.artifactIds ?? [])], clues: actor.clues, travelTickets: [...(actor.travelTickets ?? [])] }];
     actor.assetIds = [];
+    actor.artifactIds = [];
     for (const id of [...(actor.conditionIds ?? [])]) returnConditionToPool(next, actor, id, content);
     actor.clues = 0;
     actor.travelTickets = [];
@@ -2355,6 +2381,7 @@ export function executeCommand(
     actor.skillImprovements = {};
     actor.travelTickets = [];
     actor.assetIds = [];
+    actor.artifactIds = [];
     actor.conditionIds = [];
     for (const id of setup.startingAssetIds) {
       const piles = [next.privateState.deckOrderById.assets ?? [], next.assetDiscardIds, next.reserveAssetIds];
@@ -2949,6 +2976,10 @@ export function executeCommand(
     next.reserveAssetIds = shuffledAssets.splice(0, 4);
     next.assetDiscardIds = [];
     next.privateState.deckOrderById.assets = shuffledAssets;
+    if (content.artifacts?.length) {
+      next.privateState.deckOrderById.artifacts = buildArtifactDeck(content.artifacts.map(card => card.id), context.shuffle);
+      for (const player of next.players) player.artifactIds = [];
+    }
     for (const condition of content.conditions ?? []) {
       const key = conditionPoolKey(condition.kind);
       (next.privateState.tokenPoolById[key] ??= []).push(condition.id);

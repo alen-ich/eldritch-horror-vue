@@ -4,6 +4,12 @@ export type LocationEncounterDeckId = typeof locationEncounterDeckIds[number];
 export type ResearchEncounterDeckId = "research_azathoth" | "research_cthulhu" | "research_shub_niggurath" | "research_yog_sothoth";
 export type EncounterDeckId = LocationEncounterDeckId | ResearchEncounterDeckId;
 
+/** One physical copy of each Artifact; undrawn order stays server-private. */
+export function buildArtifactDeck(ids: readonly string[], shuffle: <T>(items: readonly T[]) => T[]): string[] {
+  if (!ids.length || new Set(ids).size !== ids.length || ids.some(id => !/^artifact_[a-z0-9_]+$/.test(id))) throw new Error("Artifacts require unique canonical physical IDs.");
+  return shuffle(ids);
+}
+
 /** Each location deck has its own private top-to-bottom order. */
 export function buildLocationEncounterDecks(
   cards: readonly { id: string; deck: LocationEncounterDeckId }[],

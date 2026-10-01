@@ -198,6 +198,7 @@ export type GameEvent =
   | { type: "MYSTERY_REVEALED"; mysteryId: string }
   | { type: "MYSTERY_PROGRESS_ADDED"; mysteryId: string; amount: number; progress: number }
   | { type: "MYSTERY_SOLVED"; mysteryId: string }
+  | { type: "ARTIFACT_GAINED"; playerId: string; artifactId: string }
   | { type: "MYSTERY_RETURNED_TO_DECK"; mysteryId: string }
   | { type: "GAME_ENDED"; result: "investigators_win" | "investigators_lose"; reason: string }
   | { type: "INVESTIGATOR_TRAVELED"; playerId: string; destinationId: LocationId; spentTickets: TravelTicketType[] }
