@@ -19,6 +19,49 @@ describe("authoritative game room", () => {
   after(async () => colyseus.shutdown());
   beforeEach(async () => colyseus.cleanup());
 
+  it("resolves Research through an authenticated marker intent and private reconnect-safe continuation", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "encounter";
+    state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
+    state.ancientOneId = "azathoth";
+    state.doom = 15;
+    state.players[0] = { ...state.players[0]!, investigatorId: "akachi_onyele", locationId: "space_2", health: 5, sanity: 7, maxHealth: 5, maxSanity: 7, clues: 0, assetIds: [] };
+    state.players[1] = { ...state.players[1]!, locationId: "london", clues: 0 };
+    state.boardClues = [{ id: "research-marker", locationId: "space_2" }];
+    state.privateState.tokenPoolById = { clues: [], clue_discard: [], "board_clue:research-marker": ["clue_arkham"], [`held_clues:${state.players[0]!.id}`]: [], [`held_clues:${state.players[1]!.id}`]: [] };
+    state.privateState.deckOrderById["encounter:research_azathoth"] = ["encounter_research_azathoth_02", "encounter_research_azathoth_01"];
+    internal.applyEngineState(state);
+    const denied = guest.waitForMessage(commandErrorMessageType);
+    sendCommand(room, guest, { type: "RESOLVE_RESEARCH_ENCOUNTER", clueId: "research-marker" });
+    assert.equal((await denied as { code: string }).code, "WRONG_PHASE");
+    const choiceMessage = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "RESOLVE_RESEARCH_ENCOUNTER", clueId: "research-marker" });
+    await room.waitForMessage(commandMessageType);
+    const choice = await choiceMessage as PendingDecision;
+    assert.equal(choice.kind, "select_rerolls");
+    const paused = internal.toEngineState();
+    assert.equal(paused.players[0]?.clues, 1);
+    assert.equal(paused.boardClues?.length, 0);
+    assert.equal(paused.pendingLocationEncounter?.deck, "research_azathoth");
+    assert.equal(JSON.stringify(room.state).includes("clue_arkham"), false);
+    assert.equal(JSON.stringify(room.state).includes("encounter_research_azathoth_01"), false);
+    internal.applyEngineState(JSON.parse(JSON.stringify(paused)) as GameState);
+    const guestDenied = guest.waitForMessage(commandErrorMessageType);
+    sendCommand(room, guest, { type: "RESOLVE_DECISION", decisionId: choice.id, selectedOptionIds: [] });
+    assert.equal((await guestDenied as { code: string }).code, "NOT_DECISION_OWNER");
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: choice.id, selectedOptionIds: [] });
+    await room.waitForMessage(commandMessageType);
+    const resolved = internal.toEngineState();
+    assert.equal(resolved.pendingLocationEncounter, undefined);
+    assert.equal(resolved.activePlayerId, state.players[1]!.id);
+    assert.deepEqual(resolved.privateState.tokenPoolById[`held_clues:${state.players[0]!.id}`], ["clue_arkham"]);
+    assert.deepEqual(resolved.privateState.deckOrderById["encounter:research_azathoth"], ["encounter_research_azathoth_01", "encounter_research_azathoth_02"]);
+  });
+
   it("places starting Gates, Monsters, and Clues without exposing private token order", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });

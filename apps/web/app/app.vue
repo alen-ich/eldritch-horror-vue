@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { baseGameAncientOnes, baseGameAssets, baseGameBoardDimensions, baseGameConditions, baseGameGates, baseGameInvestigators, baseGameLocations, baseGameMap, baseGameMonsters, baseGameMythosCards, baseGameMysteries, baseGameRoutes, baseGameScannedLocationEncounters, skillNames } from '@eldritch/content'
+import { baseGameAncientOnes, baseGameAssets, baseGameBoardDimensions, baseGameConditions, baseGameGates, baseGameInvestigators, baseGameLocations, baseGameMap, baseGameMonsters, baseGameMythosCards, baseGameMysteries, baseGameRoutes, baseGameScannedLocationEncounters, baseGameScannedTokenEncounters, skillNames } from '@eldritch/content'
 import type { AssetCardData, ConditionCard } from '@eldritch/content'
 import type { AncientOneId, InvestigatorId, LocationId } from '@eldritch/protocol'
 
@@ -52,7 +52,8 @@ const encounterDecks = computed(() => {
   return regional ? [{ id: 'general' as const, label: 'General' }, { id: regional, label: regional === 'asia_australia' ? 'Asia / Australia' : regional[0]!.toUpperCase() + regional.slice(1) }]
     : [{ id: 'general' as const, label: 'General' }]
 })
-const latestEncounterCard = computed(() => baseGameScannedLocationEncounters.find(card => card.id === (game.currentLocationEncounterCardId.value || game.lastLocationEncounterCardId.value)))
+const researchClues = computed(() => game.boardClues.value.filter(clue => clue.locationId === me.value?.locationId))
+const latestEncounterCard = computed(() => [...baseGameScannedLocationEncounters, ...baseGameScannedTokenEncounters].find(card => card.id === (game.currentLocationEncounterCardId.value || game.lastLocationEncounterCardId.value)))
 const isDetained = computed(() => (me.value?.conditionIds?.split(',') ?? []).some(id => conditionById[id]?.kind === 'detained'))
 const canUseNormalActions = computed(() => isMyTurn.value && !isDetained.value)
 const localConditionActions = computed(() => game.players.value.flatMap(player => (player.conditionIds ? player.conditionIds.split(',') : [])
@@ -470,6 +471,7 @@ async function copyInvite() {
             <div><strong>Encounter phase</strong><small v-if="isMyEncounter">{{ myEncounterMonsters.length ? 'Fight each Monster on your space before taking another encounter.' : 'Choose a location deck. Many card effects remain unsupported.' }}</small><small v-else>Waiting for the active investigator.</small></div>
             <template v-if="isMyEncounter && myEncounterMonsters.length"><button v-for="monster in myEncounterMonsters" :key="monster.id" :disabled="game.encounteredMonsterInstanceIds.value.includes(monster.id)" @click="game.send({ type: 'FIGHT_MONSTER', monsterInstanceId: monster.id })">{{ monsterById[monster.monsterId]?.name ?? monster.monsterId }} · {{ monster.damage }} damage{{ game.encounteredMonsterInstanceIds.value.includes(monster.id) ? ' · fought' : '' }}</button></template>
             <template v-if="isMyEncounter && !myEncounterMonsters.length"><button v-for="deck in encounterDecks" :key="deck.id" @click="game.send({ type: 'RESOLVE_LOCATION_ENCOUNTER', deck: deck.id })">{{ deck.label }}</button></template>
+            <template v-if="isMyEncounter && !myEncounterMonsters.length"><button v-for="(clue, index) in researchClues" :key="clue.id" @click="game.send({ type: 'RESOLVE_RESEARCH_ENCOUNTER', clueId: clue.id })">Research Clue {{ index + 1 }}</button></template>
             <img v-if="latestEncounterCard" :src="latestEncounterCard.imageUrl" :alt="`${game.currentLocationEncounterCardId.value ? 'Active' : 'Last resolved'} encounter: ${latestEncounterCard.id}`" />
           </section>
           <section v-if="game.phase.value === 'mythos'" class="encounter-panel mythos-panel" aria-label="Mythos resolution">
