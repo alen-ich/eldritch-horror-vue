@@ -29,6 +29,7 @@ interface ClientPlayerState {
   trainTickets: number
   shipTickets: number
   assetIds: string
+  artifactIds: string
   conditionIds: string
   clues: number
   loreImprovement: number
@@ -193,6 +194,7 @@ export function useGameRoom() {
       trainTickets: player.trainTickets,
       shipTickets: player.shipTickets,
       assetIds: player.assetIds,
+      artifactIds: player.artifactIds,
       conditionIds: player.conditionIds,
       clues: player.clues,
       loreImprovement: player.loreImprovement,

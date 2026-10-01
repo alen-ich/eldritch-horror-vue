@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { ColyseusTestServer, boot } from "@colyseus/testing";
-import type { GameState } from "@eldritch/engine";
+import { gainNamedArtifact, type GameState, type GameContent } from "@eldritch/engine";
+import { baseGameArtifacts } from "@eldritch/content";
 import {
   commandErrorMessageType,
   commandMessageType,
@@ -18,6 +19,28 @@ describe("authoritative game room", () => {
   before(async () => { colyseus = await boot(appConfig); });
   after(async () => colyseus.shutdown());
   beforeEach(async () => colyseus.cleanup());
+
+  it("keeps Artifact supply private and round-trips public physical holdings", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "encounter";
+    state.privateState.deckOrderById.artifacts = baseGameArtifacts.map(card => card.id);
+    const content: GameContent = { artifacts: baseGameArtifacts, map: { adjacentLocationIds: {}, routes: [], locationTypes: {} }, investigators: {}, assets: [], mysteryIdsByAncientOne: {}, mysteryTargetsById: {} };
+    const granted = gainNamedArtifact(state, state.players[0]!.id, "artifact_ttka_halot", content);
+    assert.equal(granted.ok, true);
+    if (!granted.ok) return;
+    internal.applyEngineState(granted.state);
+    assert.equal([...room.state.players.values()][0]?.artifactIds, "artifact_ttka_halot");
+    assert.deepEqual(internal.toEngineState().players[0]?.artifactIds, ["artifact_ttka_halot"]);
+    assert.equal(JSON.stringify(room.state).includes("artifact_grotesque_statue"), false);
+    assert.equal(internal.toEngineState().privateState.deckOrderById.artifacts?.length, 13);
+    const rejected = host.waitForMessage(commandErrorMessageType);
+    host.send(commandMessageType, { expectedStateVersion: room.state.stateVersion, command: { type: "GAIN_ARTIFACT", artifactId: "artifact_ttka_halot" } });
+    assert.equal((await rejected as { code: string }).code, "INVALID_COMMAND");
+  });
 
   it("returns a solved Mystery from Research without exposing the reshuffled deck", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
@@ -158,6 +181,9 @@ describe("authoritative game room", () => {
     sendCommand(room, host, { type: "START_GAME" });
     await room.waitForMessage(commandMessageType);
     const game = internal.toEngineState();
+    assert.equal(game.privateState.deckOrderById.artifacts?.length, 14);
+    assert.equal(new Set(game.privateState.deckOrderById.artifacts).size, 14);
+    assert.equal(JSON.stringify(room.state).includes("artifact_ttka_halot"), false);
     assert.equal(game.phase, "action");
     assert.equal(game.activeGateIds?.length, 1);
     assert.equal(game.monsters?.length, 1);

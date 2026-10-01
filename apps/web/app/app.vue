@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { baseGameAncientOnes, baseGameAssets, baseGameBoardDimensions, baseGameConditions, baseGameGates, baseGameInvestigators, baseGameLocations, baseGameMap, baseGameMonsters, baseGameMythosCards, baseGameMysteries, baseGameRoutes, baseGameScannedLocationEncounters, baseGameScannedTokenEncounters, skillNames } from '@eldritch/content'
 import type { AssetCardData, ConditionCard } from '@eldritch/content'
+import { baseGameArtifacts } from '@eldritch/content'
 import type { AncientOneId, InvestigatorId, LocationId } from '@eldritch/protocol'
 
 const displayName = ref('')
@@ -19,6 +20,7 @@ const selectedRerollOptionId = ref<string>()
 const selectedConditionRecoveryIds = ref<string[]>([])
 const trayTabs = [
   { id: 'assets', label: 'Assets', icon: '◆' },
+  { id: 'artifacts', label: 'Artifacts', icon: '◇' },
   { id: 'spells', label: 'Spells', icon: '✦' },
   { id: 'conditions', label: 'Conditions', icon: '◈' },
   { id: 'tasks', label: 'Tasks', icon: '✓' },
@@ -88,6 +90,7 @@ const inspectedLocation = computed(() => inspectedLocationId.value ? locationByI
 const inspectedClueCount = computed(() => game.boardClues.value.filter(clue => clue.locationId === inspectedLocationId.value).length)
 const myAssetIds = computed(() => me.value?.assetIds ? me.value.assetIds.split(',') : [])
 const ownedAssets = computed(() => myAssetIds.value.map((id) => assetById[id]).filter((asset): asset is AssetCardData => Boolean(asset)))
+const ownedArtifacts = computed(() => baseGameArtifacts.filter(card => (me.value?.artifactIds.split(',') ?? []).includes(card.id)))
 const ownedConditions = computed(() => (me.value?.conditionIds ? me.value.conditionIds.split(',') : [])
   .map(id => conditionById[id]).filter((card): card is ConditionCard => Boolean(card)))
 const privateAssetDecision = computed(() => {
@@ -660,11 +663,12 @@ async function copyInvite() {
         </div>
         <footer class="player-tray" :class="`tray-${trayState}`">
           <nav class="tray-tabs" aria-label="Player cards and game information">
-            <button v-for="tab in trayTabs" :key="tab.id" :class="{ active: activeTrayTab === tab.id && trayState !== 'collapsed' }" :aria-expanded="activeTrayTab === tab.id && trayState !== 'collapsed'" @click="selectTrayTab(tab.id)"><span>{{ tab.icon }}</span>{{ tab.label }}<small>{{ tab.id === 'assets' ? ownedAssets.length : tab.id === 'conditions' ? ownedConditions.length : 0 }}</small></button>
+            <button v-for="tab in trayTabs" :key="tab.id" :class="{ active: activeTrayTab === tab.id && trayState !== 'collapsed' }" :aria-expanded="activeTrayTab === tab.id && trayState !== 'collapsed'" @click="selectTrayTab(tab.id)"><span>{{ tab.icon }}</span>{{ tab.label }}<small>{{ tab.id === 'assets' ? ownedAssets.length : tab.id === 'artifacts' ? ownedArtifacts.length : tab.id === 'conditions' ? ownedConditions.length : 0 }}</small></button>
             <button class="tray-resize" :aria-label="trayState === 'expanded' ? 'Collapse tray' : 'Expand tray'" @click="cycleTrayState">{{ trayState === 'collapsed' ? '⌃' : trayState === 'peek' ? '⌃' : '⌄' }}</button>
           </nav>
           <div v-if="trayState !== 'collapsed'" class="tray-content">
             <div v-if="activeTrayTab === 'assets' && ownedAssets.length" class="owned-assets"><article v-for="asset in ownedAssets" :key="asset.id"><img :src="asset.imageUrl" :alt="asset.name"><div><p class="chapter">Value {{ asset.value }} · {{ asset.traits.join(', ') }}</p><h3>{{ asset.name }}</h3><p>{{ asset.effectText }}</p></div></article></div>
+            <div v-else-if="activeTrayTab === 'artifacts' && ownedArtifacts.length" class="owned-assets"><article v-for="artifact in ownedArtifacts" :key="artifact.id"><img :src="artifact.imageUrl" :alt="artifact.name"><div><p class="chapter">{{ artifact.traits.join(', ') }} · Effects pending</p><h3>{{ artifact.name }}</h3><p>{{ artifact.effectText }}</p></div></article></div>
             <div v-else-if="activeTrayTab === 'conditions' && ownedConditions.length" class="owned-assets"><article v-for="condition in ownedConditions" :key="condition.id"><img :src="condition.frontImageUrl" :alt="condition.name"><div><p class="chapter">{{ condition.trait }}</p><h3>{{ condition.name }}</h3><p>{{ condition.frontText }}</p></div></article></div>
             <div v-else><p class="chapter">{{ trayTabs.find(tab => tab.id === activeTrayTab)?.label }}</p><h3>{{ activeTrayTab === 'log' ? 'No recorded events yet' : `No ${activeTrayTab} in your public game state` }}</h3><p>{{ activeTrayTab === 'log' ? 'Authoritative game events will appear here as the rules engine grows.' : 'This area shows only server-synchronized cards and tokens.' }}</p></div>
           </div>

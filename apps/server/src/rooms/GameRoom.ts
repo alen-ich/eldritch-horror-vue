@@ -16,6 +16,7 @@ import {
 } from "@eldritch/protocol";
 import { ActiveTestState, GameRoomState, PendingDecisionState, PlayerState } from "./schema/GameRoomState.js";
 import { privateConditionBackEffectById } from "../private-condition-backs.js";
+import { baseGameArtifacts } from "@eldritch/content";
 import { typedMonsterSpawnEffect } from "../private-monster-spawn-effects.js";
 
 const RECONNECTION_SECONDS = 30;
@@ -45,6 +46,7 @@ function serverMythosContext(): EngineContext {
   };
 }
 const baseGameContent: GameContent = {
+  artifacts: baseGameArtifacts.map(({ id }) => ({ id })),
   researchEncounters: baseGameResearchEncounterRules,
   locationEncounters: baseGameScannedLocationEncounters.map(({ id, deck }) => ({ id, deck, sections: baseGameLocationEncounterRules.find(card => card.id === id)?.sections })),
   gates: baseGameGates.map(({ id, omenSymbol, locationId }) => ({ id, omenSymbol, locationId })),
@@ -259,6 +261,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
           ...Array.from({ length: player.shipTickets }, () => "ship" as const),
         ],
         assetIds: player.assetIds ? player.assetIds.split(",") : [],
+        artifactIds: player.artifactIds ? player.artifactIds.split(",") : [],
         conditionIds: [...(this.conditionIdsByPlayer.get(player.id) ?? [])],
         clues: player.clues,
         skillImprovements: {
@@ -323,6 +326,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       player.trainTickets = enginePlayer.travelTickets?.filter((ticket) => ticket === "train").length ?? 0;
       player.shipTickets = enginePlayer.travelTickets?.filter((ticket) => ticket === "ship").length ?? 0;
       player.assetIds = enginePlayer.assetIds.join(",");
+      player.artifactIds = (enginePlayer.artifactIds ?? []).join(",");
       this.conditionIdsByPlayer.set(enginePlayer.id, [...(enginePlayer.conditionIds ?? [])]);
       player.conditionIds = (enginePlayer.conditionIds ?? []).map(publicConditionId).join(",");
       player.clues = enginePlayer.clues;
