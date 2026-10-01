@@ -19,6 +19,45 @@ describe("authoritative game room", () => {
   after(async () => colyseus.shutdown());
   beforeEach(async () => colyseus.cleanup());
 
+  it("returns a solved Mystery from Research without exposing the reshuffled deck", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "encounter"; state.ancientOneId = "azathoth"; state.doom = 15; state.omen = 0;
+    state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
+    state.players[0] = { ...state.players[0]!, investigatorId: "akachi_onyele", locationId: "arkham", health: 5, sanity: 7, maxHealth: 5, maxSanity: 7, clues: 1, assetIds: [] };
+    state.completedMysteryIds = ["azathoth_occult_research", "azathoth_omen_of_devastation"];
+    state.activeMysteryId = "azathoth_seed_of_the_daemon_sultan";
+    state.mysteryProgress = 1; state.mysteryTarget = 2;
+    state.boardClues = [{ id: "mystery-research", locationId: "arkham" }];
+    state.privateState.tokenPoolById = { clues: ["clue_rome"], clue_discard: [], "board_clue:mystery-research": ["clue_arkham"], [`held_clues:${state.players[0]!.id}`]: ["clue_london"] };
+    state.privateState.deckOrderById.mysteries = ["azathoth_the_true_name"];
+    state.privateState.deckOrderById["encounter:research_azathoth"] = ["encounter_research_azathoth_05", "encounter_research_azathoth_01"];
+    internal.applyEngineState(state);
+    const rerollMessage = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "RESOLVE_RESEARCH_ENCOUNTER", clueId: "mystery-research" });
+    await room.waitForMessage(commandMessageType);
+    const reroll = await rerollMessage as PendingDecision;
+    const paused = internal.toEngineState();
+    paused.activeTest!.dice = paused.activeTest!.dice.map(() => 1); paused.activeTest!.successes = 0;
+    const refreshedMessage = host.waitForMessage(pendingDecisionMessageType);
+    internal.applyEngineState(paused);
+    await refreshedMessage;
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: reroll.id, selectedOptionIds: [] });
+    await room.waitForMessage(commandMessageType);
+    const resolved = internal.toEngineState();
+    assert.equal(resolved.completedMysteryIds.length, 1);
+    const returned = state.completedMysteryIds.find(id => !resolved.completedMysteryIds.includes(id))!;
+    assert.deepEqual(new Set(resolved.privateState.deckOrderById.mysteries), new Set(["azathoth_the_true_name", returned]));
+    assert.equal(resolved.activeMysteryId, state.activeMysteryId);
+    assert.equal(resolved.mysteryProgress, 1); assert.equal(resolved.mysteryTarget, 2);
+    assert.equal(resolved.boardClues?.length, 1);
+    assert.equal(JSON.stringify(room.state).includes("azathoth_the_true_name"), false);
+    assert.equal(resolved.activePlayerId, state.players[1]!.id);
+  });
+
   it("keeps Research Omen destinations owner-only and restores their continuation", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
