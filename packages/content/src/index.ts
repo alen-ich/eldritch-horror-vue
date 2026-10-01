@@ -15,3 +15,4 @@ export * from "./readiness.js";
 export * from "./reference-cards.js";
 export * from "./spells.js";
 export * from "./token-encounters.js";
+export * from "./research-encounter-rules.js";
