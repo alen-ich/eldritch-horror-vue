@@ -66,6 +66,8 @@ describe("pendingDecisionSchema", () => {
     { ...decision, optionIds: ["die-1", "die-1"] },
     { ...decision, minSelections: 2, maxSelections: 1 },
     { ...decision, maxSelections: 3 },
+    { ...decision, optionLabels: { missing: "Not an available option" } },
+    { ...decision, optionLabels: { "die-1": "" } },
   ])("rejects an inconsistent decision", (invalidDecision) => {
     expect(() => pendingDecisionSchema.parse(invalidDecision)).toThrow();
   });

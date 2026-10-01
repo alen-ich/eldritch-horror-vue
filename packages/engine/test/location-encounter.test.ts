@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createDeterministicEngineContext, executeCommand, resolveLocationEncounter, type GameContent, type GameState } from "../src/index.js";
+import { createDeterministicEngineContext, executeCommand, projectStateForPlayer, resolveLocationEncounter, type GameContent, type GameState } from "../src/index.js";
 
 const content: GameContent = {
   locationEncounters: [
@@ -32,6 +32,103 @@ function state(): GameState {
 }
 
 describe("guarded location encounter", () => {
+  function withInstruction(instruction: unknown): GameContent {
+    return { ...content, locationEncounters: [{ id: "encounter_general_08", deck: "general", sections: { sea: instruction } }] };
+  }
+
+  function choose(before: GameState, selected: string[], rules: GameContent, dice: number[] = []) {
+    return executeCommand(JSON.parse(JSON.stringify(before)) as GameState, "host", {
+      type: "RESOLVE_DECISION", decisionId: before.pendingDecision!.id, selectedOptionIds: selected,
+    }, rules, createDeterministicEngineContext({ dice, tokenIndexes: [0], ids: ["next-choice"] }));
+  }
+
+  it("persists optional costs and chosen improvements privately across successive decisions", () => {
+    const rules = withInstruction({ kind: "optional", cost: [{ kind: "delay" }], reward: { kind: "effects", effects: [{ kind: "improve", skill: "chosen" }] } });
+    const before = state();
+    const started = resolveLocationEncounter(before, "host", "general", rules, createDeterministicEngineContext({ ids: ["offer"] }));
+    if (!started.ok) throw new Error(started.error.message);
+    expect(started.state.pendingDecision).toMatchObject({ kind: "encounter_choice", optionIds: ["accept", "skip"] });
+    expect(projectStateForPlayer(started.state, "guest").pendingDecision).not.toHaveProperty("optionLabels");
+    expect(projectStateForPlayer(started.state, "host")).not.toHaveProperty("pendingLocationEncounter");
+    expect(executeCommand(started.state, "guest", { type: "RESOLVE_DECISION", decisionId: "offer", selectedOptionIds: ["accept"] }, rules))
+      .toMatchObject({ ok: false, error: { code: "NOT_DECISION_OWNER" } });
+    const accepted = choose(started.state, ["accept"], rules);
+    if (!accepted.ok) throw new Error(accepted.error.message);
+    expect(accepted.state).toMatchObject({ stateVersion: 4, activePlayerId: "host", pendingDecision: { optionIds: ["lore", "influence", "observation", "strength", "will"] } });
+    expect(accepted.state.players[0]?.delayed).toBe(true);
+    const finished = choose(accepted.state, ["lore"], rules);
+    expect(finished).toMatchObject({ ok: true, state: { stateVersion: 5, activePlayerId: "guest", pendingLocationEncounter: undefined, pendingDecision: undefined } });
+    if (finished.ok) expect(finished.state.players[0]?.skillImprovements.lore).toBe(1);
+    expect(before.players[0]?.delayed).toBeUndefined();
+    expect(choose(started.state, ["skip"], rules)).toMatchObject({ ok: true, state: { activePlayerId: "guest" } });
+    before.players[0]!.delayed = true;
+    expect(resolveLocationEncounter(before, "host", "general", rules, createDeterministicEngineContext({})))
+      .toMatchObject({ ok: true, state: { activePlayerId: "guest" } });
+  });
+
+  it("applies sequence prefixes once and rolls the improved skill before resuming a printed choice", () => {
+    const rules = withInstruction({ kind: "sequence", steps: [
+      { kind: "effects", effects: [{ kind: "improve", skill: "influence" }] },
+      { kind: "test", skill: "influence", modifier: 0, pass: { kind: "choice", options: [
+        { kind: "effects", effects: [{ kind: "recover_sanity", amount: 2 }] }, { kind: "effects", effects: [{ kind: "clues", amount: 1 }] },
+      ] }, fail: { kind: "effects", effects: [] } },
+    ] });
+    const before = state();
+    before.players[0]!.clues = 1;
+    before.players[0]!.sanity = 5;
+    before.privateState.tokenPoolById["held_clues:host"] = ["clue_london"];
+    const started = resolveLocationEncounter(before, "host", "general", rules, createDeterministicEngineContext({ dice: [1, 1, 1], ids: ["test", "reroll"] }));
+    if (!started.ok) throw new Error(started.error.message);
+    expect(started.state.activeTest?.dicePool).toBe(3);
+    const rerolled = choose(started.state, ["die-0"], rules, [5]);
+    if (!rerolled.ok) throw new Error(rerolled.error.message);
+    expect(rerolled.state.pendingDecision).toMatchObject({ optionIds: ["option-0", "option-1"] });
+    const finished = choose(rerolled.state, ["option-0"], rules);
+    if (!finished.ok) throw new Error(finished.error.message);
+    expect(finished.state.players[0]).toMatchObject({ clues: 0, sanity: 7, skillImprovements: { influence: 1 } });
+    expect(finished.state.privateState.tokenPoolById.clue_discard).toEqual(["clue_london"]);
+    expect(finished.state.privateState.deckOrderById["encounter:general"]).toEqual(["encounter_general_01", "encounter_general_08"]);
+  });
+
+  it("requires the entire optional cost and conserves paid physical Clues", () => {
+    const rules = withInstruction({ kind: "optional", cost: [{ kind: "clues", amount: -1 }], reward: { kind: "effects", effects: [{ kind: "recover_health", amount: 2 }] } });
+    const before = state();
+    before.players[0]!.health = 2;
+    expect(resolveLocationEncounter(before, "host", "general", rules, createDeterministicEngineContext({})))
+      .toMatchObject({ ok: true, state: { activePlayerId: "guest" } });
+    before.players[0]!.clues = 1;
+    before.privateState.tokenPoolById["held_clues:host"] = ["clue_london"];
+    const started = resolveLocationEncounter(before, "host", "general", rules, createDeterministicEngineContext({ ids: ["cost"] }));
+    if (!started.ok) throw new Error(started.error.message);
+    const paid = choose(started.state, ["accept"], rules);
+    if (!paid.ok) throw new Error(paid.error.message);
+    expect(paid.state.players[0]).toMatchObject({ clues: 0, health: 4 });
+    expect(paid.state.privateState.tokenPoolById.clue_discard).toEqual(["clue_london"]);
+    expect(paid.state.privateState.tokenPoolById["held_clues:host"]).toEqual([]);
+  });
+
+  it("places a private physical Clue on the chosen legal space and rejects unknown targets", () => {
+    const rules = withInstruction({ kind: "effects", effects: [{ kind: "spawn_clues", amount: 1, target: "chosen_space" }] });
+    const started = resolveLocationEncounter(state(), "host", "general", rules, createDeterministicEngineContext({ ids: ["space-choice"] }));
+    if (!started.ok) throw new Error(started.error.message);
+    expect(choose(started.state, ["not-a-space"], rules)).toMatchObject({ ok: false });
+    const placed = choose(started.state, ["london"], rules);
+    if (!placed.ok) throw new Error(placed.error.message);
+    expect(placed.state.boardClues).toMatchObject([{ locationId: "london" }]);
+    expect(placed.state.privateState.tokenPoolById.clues).toEqual([]);
+    expect(JSON.stringify(projectStateForPlayer(placed.state))).not.toContain("clue_arkham");
+  });
+
+  it("rejects any unmodeled nested outcome before rolling or applying sequence prefixes", () => {
+    const rules = withInstruction({ kind: "sequence", steps: [
+      { kind: "effects", effects: [{ kind: "clues", amount: 1 }] },
+      { kind: "choice", options: [{ kind: "effects", effects: [{ kind: "artifact", amount: 1 }] }] },
+    ] });
+    const before = state();
+    expect(resolveLocationEncounter(before, "host", "general", rules, createDeterministicEngineContext({})))
+      .toMatchObject({ ok: false, error: { code: "ENCOUNTER_UNSUPPORTED" } });
+    expect(before).toEqual(state());
+  });
   it("resolves the verified no-choice test, awards a physical Clue, cycles the card and advances the investigator", () => {
     const before = state();
     const result = executeCommand(before, "host", { type: "RESOLVE_LOCATION_ENCOUNTER", deck: "general" }, content,

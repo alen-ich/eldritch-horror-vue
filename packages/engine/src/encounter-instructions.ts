@@ -1,0 +1,76 @@
+import { skillIds, type SkillId } from "@eldritch/protocol";
+
+export type LocationEncounterEffect =
+  | { kind: "clues" | "health" | "sanity" | "recover_health" | "recover_sanity"; amount: number }
+  | { kind: "spawn_clues"; amount: number; target?: "chosen_space" }
+  | { kind: "condition"; condition: string }
+  | { kind: "delay" }
+  | { kind: "improve"; skill: SkillId | "chosen" };
+
+export type LocationEncounterInstruction =
+  | { kind: "effects"; effects: LocationEncounterEffect[] }
+  | { kind: "sequence"; steps: LocationEncounterInstruction[] }
+  | { kind: "choice"; options: LocationEncounterInstruction[] }
+  | { kind: "optional"; cost: LocationEncounterEffect[]; reward: LocationEncounterInstruction }
+  | { kind: "test"; skill: SkillId; modifier: number; pass: LocationEncounterInstruction; fail: LocationEncounterInstruction };
+
+const isSkill = (value: unknown): value is SkillId => skillIds.some(skill => skill === value);
+
+/** Accept only modeled mechanical nodes. No free-form card text is interpreted. */
+export function parseLocationEncounterInstruction(value: unknown, depth = 0): LocationEncounterInstruction | undefined {
+  if (depth > 32 || !value || typeof value !== "object" || !("kind" in value)) return undefined;
+  if (value.kind === "effects" && "effects" in value && Array.isArray(value.effects)) {
+    const effects: LocationEncounterEffect[] = [];
+    for (const raw of value.effects as unknown[]) {
+      if (!raw || typeof raw !== "object" || !("kind" in raw)) return undefined;
+      if (raw.kind === "delay") effects.push({ kind: "delay" });
+      else if (raw.kind === "condition" && "condition" in raw && typeof raw.condition === "string" && raw.condition) effects.push({ kind: "condition", condition: raw.condition });
+      else if (raw.kind === "improve" && "skill" in raw && (raw.skill === "chosen" || isSkill(raw.skill))) effects.push({ kind: "improve", skill: raw.skill });
+      else if ("amount" in raw && typeof raw.amount === "number" && Number.isInteger(raw.amount)) {
+        if (raw.kind === "clues" || (raw.kind === "health" || raw.kind === "sanity") && raw.amount <= 0
+          || (raw.kind === "recover_health" || raw.kind === "recover_sanity") && raw.amount >= 0) {
+          effects.push({ kind: raw.kind, amount: raw.amount });
+        } else if (raw.kind === "spawn_clues" && raw.amount >= 0 && (!("target" in raw) || raw.target === "chosen_space")) {
+          effects.push({ kind: "spawn_clues", amount: raw.amount, ...("target" in raw ? { target: "chosen_space" as const } : {}) });
+        } else return undefined;
+      } else return undefined;
+    }
+    return { kind: "effects", effects };
+  }
+  if ((value.kind === "sequence" && "steps" in value && Array.isArray(value.steps))
+    || (value.kind === "choice" && "options" in value && Array.isArray(value.options))) {
+    const nodes: unknown[] = value.kind === "sequence" ? (value as { steps: unknown[] }).steps : (value as { options: unknown[] }).options;
+    if (value.kind === "choice" && !nodes.length) return undefined;
+    const parsed = nodes.map(node => parseLocationEncounterInstruction(node, depth + 1));
+    if (parsed.some(node => !node)) return undefined;
+    return value.kind === "sequence" ? { kind: "sequence", steps: parsed as LocationEncounterInstruction[] } : { kind: "choice", options: parsed as LocationEncounterInstruction[] };
+  }
+  if (value.kind === "test" && "skill" in value && isSkill(value.skill) && "modifier" in value && typeof value.modifier === "number" && Number.isInteger(value.modifier) && "pass" in value && "fail" in value) {
+    const pass = parseLocationEncounterInstruction(value.pass, depth + 1);
+    const fail = parseLocationEncounterInstruction(value.fail, depth + 1);
+    if (pass && fail) return { kind: "test", skill: value.skill, modifier: value.modifier, pass, fail };
+  }
+  if (value.kind === "optional" && "cost" in value && "reward" in value) {
+    const cost = parseLocationEncounterInstruction({ kind: "effects", effects: value.cost }, depth + 1);
+    const reward = parseLocationEncounterInstruction(value.reward, depth + 1);
+    if (cost?.kind === "effects" && reward && cost.effects.every(effect => effect.kind === "delay" || effect.kind === "condition"
+      || (effect.kind === "clues" || effect.kind === "health" || effect.kind === "sanity") && effect.amount <= 0)) {
+      return { kind: "optional", cost: cost.effects, reward };
+    }
+  }
+  return undefined;
+}
+
+export function encounterInstructionLabel(instruction: LocationEncounterInstruction): string {
+  if (instruction.kind === "test") return `Test ${instruction.skill}${instruction.modifier ? ` (${instruction.modifier > 0 ? "+" : ""}${instruction.modifier})` : ""}`;
+  if (instruction.kind === "sequence") return instruction.steps.map(encounterInstructionLabel).join("; then ");
+  if (instruction.kind !== "effects") return "Resolve the printed encounter choice";
+  return instruction.effects.map(effect => {
+    if (effect.kind === "condition") return `Gain ${effect.condition.replaceAll("_", " ")}`;
+    if (effect.kind === "delay") return "Become Delayed";
+    if (effect.kind === "improve") return `Improve ${effect.skill === "chosen" ? "a skill" : effect.skill}`;
+    if (effect.kind === "spawn_clues") return `Spawn ${effect.amount} Clue${effect.amount === 1 ? "" : "s"}`;
+    const label = effect.kind.replaceAll("_", " ");
+    return `${effect.amount < 0 ? "Spend" : effect.kind.startsWith("recover") ? "" : "Gain"} ${Math.abs(effect.amount)} ${label}`.trim();
+  }).join(", ") || "No effect";
+}

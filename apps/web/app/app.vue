@@ -464,6 +464,7 @@ async function copyInvite() {
           <div class="doom-display">Doom {{ game.doom.value }} · Omen {{ ['Green', 'Blue', 'Red', 'Blue'][game.omen.value] }}</div>
           <TradePanel />
           <DefeatPanel />
+          <EncounterChoicePanel />
           <section v-if="game.phase.value === 'encounter'" class="encounter-panel" aria-label="Location encounter">
             <div><strong>Encounter phase</strong><small v-if="isMyEncounter">{{ myEncounterMonsters.length ? 'Fight each Monster on your space before taking another encounter.' : 'Choose a location deck. Many card effects remain unsupported.' }}</small><small v-else>Waiting for the active investigator.</small></div>
             <template v-if="isMyEncounter && myEncounterMonsters.length"><button v-for="monster in myEncounterMonsters" :key="monster.id" :disabled="game.encounteredMonsterInstanceIds.value.includes(monster.id)" @click="game.send({ type: 'FIGHT_MONSTER', monsterInstanceId: monster.id })">{{ monsterById[monster.monsterId]?.name ?? monster.monsterId }} · {{ monster.damage }} damage{{ game.encounteredMonsterInstanceIds.value.includes(monster.id) ? ' · fought' : '' }}</button></template>

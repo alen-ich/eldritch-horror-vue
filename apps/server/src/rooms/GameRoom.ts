@@ -95,6 +95,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
   private readonly conditionIdsByPlayer = new Map<string, string[]>();
   private pendingDecision?: PendingDecision;
   private activeTest?: ActiveTest;
+  private pendingLocationEncounter?: GameState["pendingLocationEncounter"];
 
   messages = {
     "request-seat-token": (client: Client) => {
@@ -177,7 +178,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       return;
     }
     const context = parsed.data.command.type === "ADVANCE_MYTHOS" || parsed.data.command.type === "RESOLVE_LOCATION_ENCOUNTER" || parsed.data.command.type === "FIGHT_MONSTER"
-      || (parsed.data.command.type === "RESOLVE_DECISION" && (this.activeTest?.continuation === "location_encounter" || this.pendingDecision?.continuation === "mythos_world_fights_back" || this.pendingDecision?.continuation === "mythos_debt_trade" || this.pendingDecision?.continuation === "mythos_desperate_times" || this.pendingDecision?.continuation === "mythos_that_which_consumes" || this.pendingDecision?.continuation === "mythos_heat_wave" || this.pendingDecision?.continuation === "mythos_blood_flows" || this.pendingDecision?.continuation === "mythos_tide_of_despair" || this.pendingDecision?.continuation === "mythos_unexpected_betrayal"))
+      || (parsed.data.command.type === "RESOLVE_DECISION" && (this.activeTest?.continuation === "location_encounter" || this.pendingDecision?.continuation === "location_encounter_choice" || this.pendingDecision?.continuation === "mythos_world_fights_back" || this.pendingDecision?.continuation === "mythos_debt_trade" || this.pendingDecision?.continuation === "mythos_desperate_times" || this.pendingDecision?.continuation === "mythos_that_which_consumes" || this.pendingDecision?.continuation === "mythos_heat_wave" || this.pendingDecision?.continuation === "mythos_blood_flows" || this.pendingDecision?.continuation === "mythos_tide_of_despair" || this.pendingDecision?.continuation === "mythos_unexpected_betrayal"))
       || (parsed.data.command.type === "RESOLVE_DEFEAT" && Boolean(this.toEngineState().pendingHeatWave || this.toEngineState().pendingTideOfDespair || this.toEngineState().pendingUnexpectedBetrayal))
       ? serverMythosContext()
       : parsed.data.command.type === "START_GAME"
@@ -238,6 +239,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       reserveAssetIds: this.state.reserveAssetIds ? this.state.reserveAssetIds.split(",") : [],
       assetDiscardIds: this.state.assetDiscardIds ? this.state.assetDiscardIds.split(",") : [],
       pendingDecision: this.pendingDecision,
+      pendingLocationEncounter: this.pendingLocationEncounter,
       activeTest: this.activeTest,
       privateState: this.privateState,
       players: [...this.state.players.values()].map((player) => ({
@@ -279,6 +281,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     this.privateState = engineState.privateState;
     this.pendingDecision = engineState.pendingDecision;
     this.activeTest = engineState.activeTest;
+    this.pendingLocationEncounter = engineState.pendingLocationEncounter;
     this.syncPendingDecisionSummary();
     this.syncActiveTest();
     this.state.stateVersion = engineState.stateVersion;

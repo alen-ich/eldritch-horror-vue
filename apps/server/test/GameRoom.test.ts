@@ -753,6 +753,42 @@ describe("authoritative game room", () => {
     assert.equal(room.state.phase, "encounter");
   });
 
+  it("resumes the scanned San Francisco optional encounter through two private choices", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "encounter";
+    state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
+    Object.assign(state.players[0]!, { investigatorId: "akachi_onyele", locationId: "san_francisco", health: 5, sanity: 7, assetIds: [], clues: 0, skillImprovements: {} });
+    state.privateState.deckOrderById["encounter:america"] = ["encounter_america_05"];
+    internal.applyEngineState(state);
+    sendCommand(room, host, { type: "RESOLVE_LOCATION_ENCOUNTER", deck: "america" });
+    await room.waitForMessage(commandMessageType);
+    const offered = internal.toEngineState();
+    assert.equal(offered.pendingDecision?.kind, "encounter_choice");
+    assert.ok(offered.pendingLocationEncounter);
+    assert.equal(JSON.stringify(room.state).includes("pendingLocationEncounter"), false);
+    assert.equal(JSON.stringify(room.state).includes("optionLabels"), false);
+    const denied = guest.waitForMessage(commandErrorMessageType);
+    sendCommand(room, guest, { type: "RESOLVE_DECISION", decisionId: offered.pendingDecision!.id, selectedOptionIds: ["accept"] });
+    assert.equal((await denied as { code: string }).code, "NOT_DECISION_OWNER");
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: offered.pendingDecision!.id, selectedOptionIds: ["accept"] });
+    await room.waitForMessage(commandMessageType);
+    const accepted = internal.toEngineState();
+    assert.equal(accepted.players[0]!.delayed, true);
+    assert.deepEqual(accepted.pendingDecision?.optionIds, ["lore", "influence", "observation", "strength", "will"]);
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: accepted.pendingDecision!.id, selectedOptionIds: ["lore"] });
+    await room.waitForMessage(commandMessageType);
+    const finished = internal.toEngineState();
+    assert.equal(finished.players[0]!.skillImprovements.lore, 1);
+    assert.equal(finished.activePlayerId, state.players[1]!.id);
+    assert.equal(finished.pendingLocationEncounter, undefined);
+    assert.equal(finished.pendingDecision, undefined);
+    assert.equal(finished.lastLocationEncounterCardId, "encounter_america_05");
+  });
+
   it("pauses a lethal location encounter for defeat and resumes the encounter order", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });

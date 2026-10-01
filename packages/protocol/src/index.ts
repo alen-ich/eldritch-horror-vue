@@ -41,6 +41,7 @@ export const pendingDecisionKinds = [
   "choose_tide_of_despair",
   "choose_unexpected_betrayal_ally",
   "choose_heat_wave",
+  "encounter_choice",
 ] as const;
 export type PendingDecisionKind = (typeof pendingDecisionKinds)[number];
 
@@ -51,10 +52,11 @@ export const pendingDecisionSchema = z.object({
   visibility: z.enum(["public", "owner"]),
   prompt: z.string().min(1),
   optionIds: z.array(z.string().min(1)).min(1),
+  optionLabels: z.record(z.string(), z.string().min(1)).optional(),
   minSelections: z.number().int().nonnegative(),
   maxSelections: z.number().int().positive(),
   selectionBudget: z.number().int().nonnegative().optional(),
-  continuation: z.enum(["test_reroll", "acquire_assets_purchase", "acquire_assets_discard", "condition_rest_recovery", "mythos_omen_choice", "mythos_world_fights_back", "mythos_debt_trade", "mythos_desperate_times", "mythos_that_which_consumes", "mythos_heat_wave", "mythos_blood_flows", "mythos_tide_of_despair", "mythos_unexpected_betrayal"]).optional(),
+  continuation: z.enum(["test_reroll", "acquire_assets_purchase", "acquire_assets_discard", "condition_rest_recovery", "mythos_omen_choice", "mythos_world_fights_back", "mythos_debt_trade", "mythos_desperate_times", "mythos_that_which_consumes", "mythos_heat_wave", "mythos_blood_flows", "mythos_tide_of_despair", "mythos_unexpected_betrayal", "location_encounter_choice"]).optional(),
 }).strict().superRefine((decision, context) => {
   if (new Set(decision.optionIds).size !== decision.optionIds.length) {
     context.addIssue({ code: "custom", message: "Decision option IDs must be unique.", path: ["optionIds"] });
@@ -64,6 +66,9 @@ export const pendingDecisionSchema = z.object({
   }
   if (decision.maxSelections > decision.optionIds.length) {
     context.addIssue({ code: "custom", message: "Maximum selections cannot exceed the option count.", path: ["maxSelections"] });
+  }
+  if (decision.optionLabels && Object.keys(decision.optionLabels).some(id => !decision.optionIds.includes(id))) {
+    context.addIssue({ code: "custom", message: "Option labels must refer to available options.", path: ["optionLabels"] });
   }
 });
 
@@ -172,6 +177,7 @@ export type GameEvent =
   | { type: "INVESTIGATOR_DEFEATED" | "INVESTIGATOR_REPLACED"; playerId: string; investigatorId: InvestigatorId }
   | { type: "TRADE_OFFERED" | "TRADE_ACCEPTED" | "TRADE_DECLINED"; offerId: string; playerId: string }
   | { type: "INVESTIGATOR_DELAYED" | "INVESTIGATOR_STOOD_UP"; playerId: string }
+  | { type: "SKILL_IMPROVED"; playerId: string; skill: SkillId; improvement: number }
   | { type: "INVESTIGATOR_SELECTED"; playerId: string; investigatorId: InvestigatorId }
   | { type: "ANCIENT_ONE_SELECTED"; ancientOneId: AncientOneId }
   | { type: "GAME_STARTED"; activePlayerId: string }
