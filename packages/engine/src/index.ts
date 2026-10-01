@@ -1642,6 +1642,8 @@ function applyLocationEncounterEffects(
       }
       next = gained.state;
       events.push(...gained.events);
+    } else if (effect.kind === "discard") {
+      return failure("ENCOUNTER_UNSUPPORTED", "Choose the printed Condition to discard first.");
     } else if (effect.kind === "delay") {
       const delayed = delayInvestigator(next, playerId);
       if (!delayed.ok) return delayed;
@@ -1650,7 +1652,7 @@ function applyLocationEncounterEffects(
     } else if (effect.kind === "improve") {
       if (effect.skill === "chosen") return failure("ENCOUNTER_UNSUPPORTED", "Choose the skill to improve first.");
       const recipient = next.players.find(candidate => candidate.id === playerId)!;
-      const improvement = Math.min(2, (recipient.skillImprovements[effect.skill] ?? 0) + 1);
+      const improvement = Math.min(2, (recipient.skillImprovements[effect.skill] ?? 0) + (effect.amount ?? 1));
       recipient.skillImprovements[effect.skill] = improvement;
       events.push({ type: "SKILL_IMPROVED", playerId, skill: effect.skill, improvement });
     } else if (effect.kind === "spawn_clues") {
@@ -1772,8 +1774,29 @@ function continueLocationEncounter(state: GameState, content: GameContent, conte
     }
     const firstEffect = node.effects[0];
     if (!firstEffect) { pending.queue.shift(); continue; }
+    if (firstEffect.kind === "discard") {
+      const targets = (player.conditionIds ?? []).filter(id => {
+        const card = content.conditions?.find(candidate => candidate.id === id);
+        return firstEffect.target === "madness" ? card?.trait === "madness" : card?.kind === "blessed";
+      });
+      if (!targets.length) { node.effects.shift(); continue; }
+      createEncounterChoice(next, context, "Choose the printed Condition to discard.", targets.map(id => [id, publicConditionId(id).replaceAll("_", " ")]));
+      next.stateVersion = state.stateVersion;
+      return success(next, events);
+    }
+    if (player.investigatorId === "mark_harrigan"
+      && (firstEffect.kind === "delay" || firstEffect.kind === "condition" && firstEffect.condition === "detained") && !firstEffect.accepted) {
+      createEncounterChoice(next, context, "Mark may refuse becoming Delayed or Detained.", [["accept", "Accept the effect"], ["refuse", "Use Mark's ability to refuse"]]);
+      next.stateVersion = state.stateVersion;
+      return success(next, events);
+    }
     if (firstEffect.kind === "improve" && firstEffect.skill === "chosen") {
       createEncounterChoice(next, context, "Choose a skill to improve.", ["lore", "influence", "observation", "strength", "will"].map(skill => [skill, `Improve ${skill}`]));
+      next.stateVersion = state.stateVersion;
+      return success(next, events);
+    }
+    if (firstEffect.kind === "improve" && player.investigatorId === "lily_chen" && !firstEffect.amount) {
+      createEncounterChoice(next, context, "Lily may improve this skill twice instead of once.", [["once", "Improve once"], ["twice", "Improve twice"]]);
       next.stateVersion = state.stateVersion;
       return success(next, events);
     }
@@ -2575,12 +2598,27 @@ export function executeCommand(
       } else if (node.kind === "optional") {
         if (selected === "accept") {
           if (!canPayEncounterCost(next, actor, node.cost, content)) return failure("INVALID_DECISION_SELECTION", "The printed cost cannot be paid in full.");
-          pending.queue.splice(0, 1, { kind: "effects", effects: node.cost }, node.reward);
+          pending.queue.splice(0, 1, { kind: "effects", effects: node.cost.map(effect => effect.kind === "delay" || effect.kind === "condition" ? { ...effect, accepted: true } : effect) }, node.reward);
         } else if (selected === "skip") pending.queue.shift();
         else return failure("INVALID_DECISION_SELECTION", "Choose whether to pay the printed cost.");
+      } else if (node.kind === "effects" && node.effects[0]?.kind === "discard") {
+        const effect = node.effects[0];
+        const definition = content.conditions?.find(card => card.id === selected);
+        if (!definition || (effect.target === "madness" ? definition.trait !== "madness" : definition.kind !== "blessed")
+          || !returnConditionToPool(next, actor, selected, content)) return failure("INVALID_DECISION_SELECTION", "That Condition cannot satisfy this discard.");
+        node.effects.shift();
+        events.push({ type: "CONDITION_DISCARDED", playerId: actorPlayerId, conditionId: publicConditionId(selected) });
+      } else if (node.kind === "effects" && actor.investigatorId === "mark_harrigan"
+        && (node.effects[0]?.kind === "delay" || node.effects[0]?.kind === "condition" && node.effects[0].condition === "detained") && !node.effects[0].accepted) {
+        if (selected === "refuse") node.effects.shift();
+        else if (selected === "accept") node.effects[0].accepted = true;
+        else return failure("INVALID_DECISION_SELECTION", "Choose whether to accept the effect.");
       } else if (node.kind === "effects" && node.effects[0]?.kind === "improve" && node.effects[0].skill === "chosen") {
         if (!["lore", "influence", "observation", "strength", "will"].includes(selected)) return failure("INVALID_DECISION_SELECTION", "Choose an available skill.");
         node.effects[0] = { kind: "improve", skill: selected as SkillId };
+      } else if (node.kind === "effects" && node.effects[0]?.kind === "improve" && actor.investigatorId === "lily_chen" && !node.effects[0].amount) {
+        if (selected !== "once" && selected !== "twice") return failure("INVALID_DECISION_SELECTION", "Choose the number of improvements.");
+        node.effects[0].amount = selected === "twice" ? 2 : 1;
       } else if (node.kind === "effects" && node.effects[0]?.kind === "spawn_clues" && node.effects[0].target === "chosen_space") {
         if (!content.map.locationTypes[selected as LocationId]) return failure("INVALID_DECISION_SELECTION", "Choose a board space.");
         const effect = node.effects.shift()!;

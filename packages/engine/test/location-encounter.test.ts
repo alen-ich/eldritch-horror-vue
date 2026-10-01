@@ -129,6 +129,79 @@ describe("guarded location encounter", () => {
       .toMatchObject({ ok: false, error: { code: "ENCOUNTER_UNSUPPORTED" } });
     expect(before).toEqual(state());
   });
+
+  it("lets Lily choose a double improvement and caps the skill at two", () => {
+    const before = state();
+    before.players[0]!.investigatorId = "lily_chen";
+    before.players[0]!.skillImprovements.lore = 1;
+    const rules = withInstruction({ kind: "effects", effects: [{ kind: "improve", skill: "lore" }] });
+    const started = resolveLocationEncounter(before, "host", "general", rules, createDeterministicEngineContext({ ids: ["lily"] }));
+    if (!started.ok) throw new Error(started.error.message);
+    expect(started.state.pendingDecision?.optionIds).toEqual(["once", "twice"]);
+    const finished = choose(started.state, ["twice"], rules);
+    if (!finished.ok) throw new Error(finished.error.message);
+    expect(finished.state.players[0]?.skillImprovements.lore).toBe(2);
+    expect(finished.state.pendingDecision).toBeUndefined();
+  });
+
+  it.each(["delay", "condition"])("lets Mark refuse a mandatory %s without cancelling later effects", kind => {
+    const before = state();
+    before.players[0]!.investigatorId = "mark_harrigan";
+    const rules = withInstruction({ kind: "effects", effects: [kind === "delay" ? { kind } : { kind, condition: "detained" }, { kind: "improve", skill: "will" }] });
+    const started = resolveLocationEncounter(before, "host", "general", rules, createDeterministicEngineContext({ ids: ["mark"] }));
+    if (!started.ok) throw new Error(started.error.message);
+    const refused = choose(started.state, ["refuse"], rules);
+    if (!refused.ok) throw new Error(refused.error.message);
+    expect(refused.state.players[0]?.delayed).not.toBe(true);
+    expect(refused.state.players[0]?.conditionIds ?? []).toEqual([]);
+    expect(refused.state.players[0]?.skillImprovements.will).toBe(1);
+  });
+
+  it("Mark's optional Delay cost is accepted explicitly and cannot be refused after taking its reward", () => {
+    const before = state();
+    before.players[0]!.investigatorId = "mark_harrigan";
+    const rules = withInstruction({ kind: "optional", cost: [{ kind: "delay" }], reward: { kind: "effects", effects: [{ kind: "improve", skill: "will" }] } });
+    const started = resolveLocationEncounter(before, "host", "general", rules, createDeterministicEngineContext({ ids: ["cost"] }));
+    if (!started.ok) throw new Error(started.error.message);
+    const accepted = choose(started.state, ["accept"], rules);
+    if (!accepted.ok) throw new Error(accepted.error.message);
+    expect(accepted.state.players[0]).toMatchObject({ delayed: true, skillImprovements: { will: 1 } });
+    expect(accepted.state.pendingDecision).toBeUndefined();
+  });
+
+  it("discards the selected Madness to its physical supply without exposing its reverse", () => {
+    const before = state();
+    before.players[0]!.conditionIds = ["condition_paranoia_01", "condition_hallucinations_01"];
+    const rules: GameContent = { ...withInstruction({ kind: "effects", effects: [{ kind: "discard", target: "madness" }] }), conditions: [
+      { id: "condition_paranoia_01", kind: "paranoia", trait: "madness" },
+      { id: "condition_hallucinations_01", kind: "hallucinations", trait: "madness" },
+    ] };
+    const started = resolveLocationEncounter(before, "host", "general", rules, createDeterministicEngineContext({ ids: ["discard"] }));
+    if (!started.ok) throw new Error(started.error.message);
+    expect(projectStateForPlayer(started.state, "guest").pendingDecision).not.toHaveProperty("optionIds");
+    const finished = choose(started.state, ["condition_paranoia_01"], rules);
+    if (!finished.ok) throw new Error(finished.error.message);
+    expect(finished.state.players[0]?.conditionIds).toEqual(["condition_hallucinations_01"]);
+    expect(finished.state.privateState.tokenPoolById["condition:paranoia"]).toEqual(["condition_paranoia_01"]);
+    expect(finished.events).toContainEqual({ type: "CONDITION_DISCARDED", playerId: "host", conditionId: "condition_paranoia" });
+  });
+
+  it("draws a Madness from the finite trait supply and prevents duplicate kinds", () => {
+    const before = state();
+    before.privateState.tokenPoolById["condition:paranoia"] = ["condition_paranoia_01"];
+    const rules: GameContent = { ...withInstruction({ kind: "effects", effects: [{ kind: "condition", condition: "madness" }] }),
+      conditions: [{ id: "condition_paranoia_01", kind: "paranoia", trait: "madness" }, { id: "condition_paranoia_02", kind: "paranoia", trait: "madness" }] };
+    const result = resolveLocationEncounter(before, "host", "general", rules, createDeterministicEngineContext({ tokenIndexes: [0] }));
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.state.players[0]?.conditionIds).toEqual(["condition_paranoia_01"]);
+    expect(result.state.privateState.tokenPoolById["condition:paranoia"]).toEqual([]);
+    before.players[0]!.conditionIds = ["condition_paranoia_02"];
+    const duplicate = resolveLocationEncounter(before, "host", "general", rules, createDeterministicEngineContext({ tokenIndexes: [0] }));
+    if (!duplicate.ok) throw new Error(duplicate.error.message);
+    expect(duplicate.state.players[0]?.conditionIds).toEqual(["condition_paranoia_02"]);
+    expect(duplicate.state.privateState.tokenPoolById["condition:paranoia"]).toEqual(["condition_paranoia_01"]);
+    expect(duplicate.events).toContainEqual({ type: "CONDITION_GAIN_PREVENTED", playerId: "host", kind: "paranoia" });
+  });
   it("resolves the verified no-choice test, awards a physical Clue, cycles the card and advances the investigator", () => {
     const before = state();
     const result = executeCommand(before, "host", { type: "RESOLVE_LOCATION_ENCOUNTER", deck: "general" }, content,

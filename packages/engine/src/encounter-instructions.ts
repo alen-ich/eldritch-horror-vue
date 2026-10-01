@@ -3,9 +3,10 @@ import { skillIds, type SkillId } from "@eldritch/protocol";
 export type LocationEncounterEffect =
   | { kind: "clues" | "health" | "sanity" | "recover_health" | "recover_sanity"; amount: number }
   | { kind: "spawn_clues"; amount: number; target?: "chosen_space" }
-  | { kind: "condition"; condition: string }
-  | { kind: "delay" }
-  | { kind: "improve"; skill: SkillId | "chosen" };
+  | { kind: "condition"; condition: string; accepted?: boolean }
+  | { kind: "delay"; accepted?: boolean }
+  | { kind: "discard"; target: "madness" | "blessed" }
+  | { kind: "improve"; skill: SkillId | "chosen"; amount?: 1 | 2 };
 
 export type LocationEncounterInstruction =
   | { kind: "effects"; effects: LocationEncounterEffect[] }
@@ -24,6 +25,7 @@ export function parseLocationEncounterInstruction(value: unknown, depth = 0): Lo
     for (const raw of value.effects as unknown[]) {
       if (!raw || typeof raw !== "object" || !("kind" in raw)) return undefined;
       if (raw.kind === "delay") effects.push({ kind: "delay" });
+      else if (raw.kind === "discard" && "target" in raw && (raw.target === "madness" || raw.target === "blessed")) effects.push({ kind: "discard", target: raw.target });
       else if (raw.kind === "condition" && "condition" in raw && typeof raw.condition === "string" && raw.condition) effects.push({ kind: "condition", condition: raw.condition });
       else if (raw.kind === "improve" && "skill" in raw && (raw.skill === "chosen" || isSkill(raw.skill))) effects.push({ kind: "improve", skill: raw.skill });
       else if ("amount" in raw && typeof raw.amount === "number" && Number.isInteger(raw.amount)) {
@@ -68,6 +70,7 @@ export function encounterInstructionLabel(instruction: LocationEncounterInstruct
   return instruction.effects.map(effect => {
     if (effect.kind === "condition") return `Gain ${effect.condition.replaceAll("_", " ")}`;
     if (effect.kind === "delay") return "Become Delayed";
+    if (effect.kind === "discard") return `Discard a ${effect.target} Condition`;
     if (effect.kind === "improve") return `Improve ${effect.skill === "chosen" ? "a skill" : effect.skill}`;
     if (effect.kind === "spawn_clues") return `Spawn ${effect.amount} Clue${effect.amount === 1 ? "" : "s"}`;
     const label = effect.kind.replaceAll("_", " ");
