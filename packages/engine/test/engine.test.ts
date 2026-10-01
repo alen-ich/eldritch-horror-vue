@@ -269,6 +269,18 @@ describe("combat encounter integration", () => {
     return state;
   }
 
+  it.each([
+    ["condition_blessed_01", [4, 4], 2, 0],
+    ["condition_cursed_01", [5, 6], 1, 1],
+  ] as const)("applies %s success thresholds to authoritative combat", (condition, dice, damage, loss) => {
+    const state = combatState();
+    state.players[0]!.conditionIds = [condition];
+    const result = resolveCombatEncounter(state, "host", "token-1", testContent, createDeterministicEngineContext({ dice: [...dice] }));
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "COMBAT_RESOLVED", monsterHealthLost: damage, healthLost: loss }));
+    expect(state.monsters?.[0]?.damage).toBe(0);
+  });
+
   it("preserves partial Monster damage and investigator Health loss", () => {
     const state = combatState();
     const result = resolveCombatEncounter(state, "host", "token-1", testContent, createDeterministicEngineContext({ dice: [5, 1] }));

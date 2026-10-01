@@ -982,6 +982,7 @@ export function resolveCombatEncounter(state: GameState, playerId: string, monst
     strength: investigator.skills.strength,
     willImprovement: player.skillImprovements.will,
     strengthImprovement: player.skillImprovements.strength,
+    successThreshold: conditionSuccessThreshold(player.conditionIds ?? []),
     currentHealth: player.health ?? 0,
     currentSanity: player.sanity ?? 0,
     monsterDamage: instance.damage,
