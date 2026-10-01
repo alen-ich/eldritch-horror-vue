@@ -19,6 +19,29 @@ describe("authoritative game room", () => {
   after(async () => colyseus.shutdown());
   beforeEach(async () => colyseus.cleanup());
 
+  it("places starting Gates, Monsters, and Clues without exposing private token order", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState };
+    sendCommand(room, host, { type: "SELECT_INVESTIGATOR", investigatorId: "akachi_onyele" });
+    await room.waitForMessage(commandMessageType);
+    sendCommand(room, guest, { type: "SELECT_INVESTIGATOR", investigatorId: "trish_scarborough" });
+    await room.waitForMessage(commandMessageType);
+    sendCommand(room, host, { type: "SELECT_ANCIENT_ONE", ancientOneId: "cthulhu" });
+    await room.waitForMessage(commandMessageType);
+    sendCommand(room, host, { type: "START_GAME" });
+    await room.waitForMessage(commandMessageType);
+    const game = internal.toEngineState();
+    assert.equal(game.phase, "action");
+    assert.equal(game.activeGateIds?.length, 1);
+    assert.equal(game.monsters?.length, 1);
+    assert.equal(game.boardClues?.length, 1);
+    assert.equal(game.privateState.deckOrderById.gates?.length, 8);
+    assert.ok(room.state.activeGateIds.includes(game.activeGateIds![0]!));
+    assert.ok(!JSON.stringify(room.state).includes(game.privateState.deckOrderById.gates![0]!));
+  });
+
   it("round-trips public Monster instances through room state while keeping the cup private", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
@@ -932,7 +955,7 @@ describe("authoritative game room", () => {
     assert.equal(privateAssets?.length, 35);
     assert.ok(!JSON.stringify(room.state).includes(privateAssets![0]!));
     const privateClues = (room as unknown as { privateState: { tokenPoolById: Record<string, string[]> } }).privateState.tokenPoolById;
-    assert.equal(privateClues.clues?.length, 35);
+    assert.equal(privateClues.clues?.length, 34);
     assert.equal(privateClues[`held_clues:${hostPlayer.id}`]?.length, 1);
     assert.ok(!JSON.stringify(room.state).includes(privateClues.clues![0]!));
 

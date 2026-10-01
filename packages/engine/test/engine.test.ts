@@ -493,12 +493,16 @@ describe("executeCommand", () => {
     const selectedAncientOne = executeCommand(selectedGuest.state, "host", { type: "SELECT_ANCIENT_ONE", ancientOneId: "cthulhu" }, testContent);
     expect(selectedAncientOne.ok).toBe(true);
     if (!selectedAncientOne.ok) return;
-    const clueContent: GameContent = { ...testContent, clues: [
+    const clueContent: GameContent = { ...testContent, referenceCards: [{ playerCount: 2, spawnGates: 1, spawnClues: 1 }],
+      ancientOnes: { cthulhu: { startingDoom: 12, greenOmenTokens: 0, mythosDeck: Array.from({ length: 3 }, () => ({ green: 0, yellow: 0, blue: 0 })) } },
+      gates: [{ id: "gate_space_15", locationId: "space_15", omenSymbol: "comet" }],
+      monsters: [{ ...testContent.monsters![0]!, count: 2 }],
+      clues: [
       { id: "clue_space_15", locationId: "space_15" },
       { id: "clue_space_16", locationId: "space_16" },
       { id: "clue_san_francisco", locationId: "san_francisco" },
     ] };
-    const context = createDeterministicEngineContext({ shuffleIndexes: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0] });
+    const context = createDeterministicEngineContext({ shuffleIndexes: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0], tokenIndexes: [0, 0], ids: ["setup_monster", "setup_clue"] });
     const started = executeCommand(selectedAncientOne.state, "host", { type: "START_GAME" }, clueContent, context);
     const badClueContent: GameContent = { ...clueContent, clues: [clueContent.clues![0]!, clueContent.clues![0]!] };
     const beforeBadStart = structuredClone(selectedAncientOne.state);
@@ -506,7 +510,11 @@ describe("executeCommand", () => {
       createDeterministicEngineContext({ shuffleIndexes: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0] })))
       .toMatchObject({ ok: false, error: { code: "CLUE_CONTENT_MISSING" } });
     expect(selectedAncientOne.state).toEqual(beforeBadStart);
-    expect(started.ok).toBe(true);
+    expect(executeCommand(selectedAncientOne.state, "host", { type: "START_GAME" }, { ...clueContent, referenceCards: [] },
+      createDeterministicEngineContext({ shuffleIndexes: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0] })))
+      .toMatchObject({ ok: false, error: { code: "REFERENCE_CARD_MISSING" } });
+    expect(selectedAncientOne.state).toEqual(beforeBadStart);
+    expect(started.ok, started.ok ? "" : JSON.stringify(started.error)).toBe(true);
     if (started.ok) expect(started.state).toMatchObject({
       phase: "action", activePlayerId: "host", leadInvestigatorId: "host", turnNumber: 1, actionsRemaining: 2,
       players: [
@@ -521,7 +529,7 @@ describe("executeCommand", () => {
     });
     if (started.ok) {
       expect(started.state.privateState.deckOrderById.mysteries).toEqual(["cthulhu_four", "cthulhu_two", "cthulhu_one"]);
-      expect(started.state.privateState.tokenPoolById.clues).toHaveLength(2);
+      expect(started.state.privateState.tokenPoolById.clues).toHaveLength(1);
       expect(started.state.privateState.tokenPoolById["held_clues:host"]).toHaveLength(1);
       expect(started.state.privateState.tokenPoolById["held_clues:guest"]).toHaveLength(0);
       expect(started.state.privateState.tokenPoolById.clue_discard).toEqual([]);
@@ -534,7 +542,12 @@ describe("executeCommand", () => {
         "asset_bandages",
       ]);
       expect(started.events).toContainEqual({ type: "ASSET_GAINED", playerId: "guest", assetId: "asset_45_automatic", source: "setup" });
-      expect(started.events.at(-1)).toEqual({ type: "RESERVE_REFILLED", assetIds: started.state.reserveAssetIds });
+      expect(started.state.activeGateIds).toEqual(["gate_space_15"]);
+      expect(started.state.monsters).toEqual([{ id: "setup_monster", monsterId: "monster_test", locationId: "space_15", damage: 0 }]);
+      expect(started.state.boardClues).toHaveLength(1);
+      expect(started.state.stateVersion).toBe(selectedAncientOne.state.stateVersion + 1);
+      expect(JSON.stringify(projectPublicState(started.state))).not.toContain("clue_space_");
+      expect(started.events.at(-1)).toEqual({ type: "MYSTERY_REVEALED", mysteryId: "cthulhu_three" });
     }
   });
 

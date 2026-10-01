@@ -245,6 +245,7 @@ export type RuleErrorCode =
   | "RECKONING_UNSUPPORTED"
   | "INVALID_COMBAT" | "MONSTER_CONTENT_MISSING" | "MONSTER_EFFECT_UNSUPPORTED" | "MONSTER_UNAVAILABLE"
   | "GATE_UNAVAILABLE" | "GATE_CONTENT_MISSING"
+  | "REFERENCE_CARD_MISSING"
   | "CLUE_CONTENT_MISSING" | "CLUE_UNAVAILABLE"
   | "OMEN_CONTENT_MISSING" | "AWAKENING_UNSUPPORTED"
   | "INVALID_DEFEAT" | "INVESTIGATOR_DEFEATED" | "INVALID_DAMAGE"
@@ -2694,10 +2695,7 @@ export function executeCommand(
       next.privateState.tokenPoolById.monsters = pool.cup;
       for (const [id, tokens] of Object.entries(pool.setAsideById)) next.privateState.tokenPoolById[`set_aside:${id}`] = tokens;
     }
-    const events: GameEvent[] = [
-      { type: "GAME_STARTED", activePlayerId: actorPlayerId },
-      { type: "MYSTERY_REVEALED", mysteryId: activeMysteryId },
-    ];
+    const events: GameEvent[] = [{ type: "GAME_STARTED", activePlayerId: actorPlayerId }];
     for (const player of next.players) {
       const setup = content.investigators[player.investigatorId!];
       if (!setup) return failure("INVESTIGATOR_CONTENT_MISSING", "The selected investigator has no setup data.");
@@ -2720,7 +2718,33 @@ export function executeCommand(
       })));
     }
     events.push({ type: "RESERVE_REFILLED", assetIds: [...next.reserveAssetIds] });
-    return success(next, events);
+    const reference = content.referenceCards?.find(card => card.playerCount === next.players.length);
+    const startingGates = content.gates?.length ? reference?.spawnGates : 0;
+    const startingClues = content.clues?.length ? reference?.spawnClues : 0;
+    if (startingGates === undefined || startingClues === undefined || startingGates < 1 && Boolean(content.gates?.length)
+      || startingClues < 1 && Boolean(content.clues?.length)) {
+      return failure("REFERENCE_CARD_MISSING", "The player-count Reference card must define starting Gate and Clue counts.");
+    }
+    if (startingGates > 0 && !next.privateState.tokenPoolById.monsters?.length) {
+      return failure("MONSTER_CONTENT_MISSING", "Starting Gates require a populated Monster cup.");
+    }
+    let setupState = next;
+    for (let index = 0; index < startingGates; index++) {
+      const opened = openGateFromStack(setupState, content, context);
+      if (!opened.ok) return opened;
+      setupState = opened.state;
+      setupState.stateVersion = next.stateVersion;
+      events.push(...opened.events);
+    }
+    for (let index = 0; index < startingClues; index++) {
+      const spawned = spawnClueFromPool(setupState, content, context);
+      if (!spawned.ok) return spawned;
+      setupState = spawned.state;
+      setupState.stateVersion = next.stateVersion;
+      events.push(...spawned.events);
+    }
+    events.push({ type: "MYSTERY_REVEALED", mysteryId: activeMysteryId });
+    return success(setupState, events);
   }
 
   if (state.phase !== "action") return failure("WRONG_PHASE", "That action is not available in the lobby.");

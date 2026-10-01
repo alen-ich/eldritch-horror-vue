@@ -1,6 +1,6 @@
 import { randomInt, randomUUID } from "node:crypto";
 import { Client, CloseCode, Room } from "colyseus";
-import { baseGameAncientOnes, baseGameMythosCards, baseGameAssets, baseGameClues, baseGameConditions, baseGameGates, baseGameInvestigators, baseGameMap, baseGameMysteries, baseGameMonsters, baseGameReferenceCards, baseGameScannedLocationEncounters, baseGameLocationEncounterRules, locationEncounterDecks } from "@eldritch/content";
+import { baseGameAncientOnes, baseGameMythosCards, baseGameAssets, baseGameClues, baseGameConditions, baseGameGates, baseGameInvestigators, baseGameMap, baseGameMysteries, baseGameMonsters, baseGameReferenceCards, baseGameScannedLocationEncounters, baseGameLocationEncounterRules } from "@eldritch/content";
 import { createDeterministicEngineContext, executeCommand, publicConditionId, type EngineContext, type GameContent, type GameState, type PrivateGameState } from "@eldritch/engine";
 import {
   commandErrorMessageType,
@@ -181,20 +181,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       || (parsed.data.command.type === "RESOLVE_DEFEAT" && Boolean(this.toEngineState().pendingHeatWave || this.toEngineState().pendingTideOfDespair || this.toEngineState().pendingUnexpectedBetrayal))
       ? serverMythosContext()
       : parsed.data.command.type === "START_GAME"
-      ? createDeterministicEngineContext({
-          shuffleIndexes: [
-            ...randomShuffleIndexes(4),
-            ...randomShuffleIndexes(baseGameAssets.length - [...this.state.players.values()].reduce((count, player) => {
-              const investigator = baseGameInvestigators.find(({ id }) => id === player.investigatorId);
-              return count + (investigator?.startingAssetIds.length ?? 0);
-            }, 0)),
-            ...["green", "yellow", "blue"].flatMap(color => randomShuffleIndexes(baseGameMythosCards.filter(card => card.color === color).length)),
-            ...(baseGameAncientOnes.find(ancient => ancient.id === this.state.ancientOneId)?.mythosDeck ?? []).flatMap(stage => randomShuffleIndexes(stage.green + stage.yellow + stage.blue)),
-            ...randomShuffleIndexes(baseGameGates.length),
-            ...randomShuffleIndexes(baseGameClues.length),
-            ...locationEncounterDecks.flatMap(deck => randomShuffleIndexes(baseGameScannedLocationEncounters.filter(card => card.deck === deck).length)),
-          ],
-        })
+      ? serverMythosContext()
         : parsed.data.command.type === "ACQUIRE_ASSETS" || parsed.data.command.type === "USE_CONDITION_ACTION"
         ? createDeterministicEngineContext({
             dice: Array.from({ length: 12 }, () => randomInt(1, 7)),
