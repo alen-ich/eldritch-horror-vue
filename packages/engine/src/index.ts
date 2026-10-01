@@ -891,6 +891,26 @@ export function gainCluesFromPool(state: GameState, playerId: string, amount: nu
 }
 
 /** Internal encounter effect: take one opaque marker at this investigator's space. */
+/** Internal printed encounter effect; never accepts a client-authored outcome. */
+export function resolveBoardClueEffect(state: GameState, markerId: string, effect: { kind: "discard" } | { kind: "relocate"; locationId: LocationId }, content: GameContent): CommandResult {
+  if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
+  if (state.phase !== "encounter") return failure("WRONG_PHASE", "Research Clue effects resolve during encounters.");
+  const marker = state.boardClues?.find(clue => clue.id === markerId);
+  if (!marker) return failure("CLUE_UNAVAILABLE", "The encountered Clue is no longer on the board.");
+  const physical = state.privateState.tokenPoolById[`board_clue:${markerId}`];
+  if (!physical || physical.length !== 1 || !content.clues?.some(clue => clue.id === physical[0])) return failure("CLUE_CONTENT_MISSING", "The encountered physical Clue is unavailable.");
+  if (effect.kind === "relocate" && !content.map.locationTypes[effect.locationId]) return failure("CLUE_CONTENT_MISSING", "The destination is not on the board.");
+  const next = structuredClone(state);
+  if (effect.kind === "relocate") {
+    next.boardClues!.find(clue => clue.id === markerId)!.locationId = effect.locationId;
+    return success(next, [{ type: "CLUE_RELOCATED", clueId: markerId, fromLocationId: marker.locationId, locationId: effect.locationId }]);
+  }
+  next.boardClues = next.boardClues!.filter(clue => clue.id !== markerId);
+  next.privateState.tokenPoolById.clue_discard = [...(next.privateState.tokenPoolById.clue_discard ?? []), physical[0]!];
+  delete next.privateState.tokenPoolById[`board_clue:${markerId}`];
+  return success(next, [{ type: "CLUE_DISCARDED", clueId: markerId, locationId: marker.locationId }]);
+}
+
 export function collectBoardClue(state: GameState, playerId: string, markerId: string): CommandResult {
   if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
   if (state.phase !== "encounter") return failure("WRONG_PHASE", "Board Clues are collected during encounters.");

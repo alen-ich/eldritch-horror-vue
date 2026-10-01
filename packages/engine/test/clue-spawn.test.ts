@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { resolveBoardClueEffect } from "../src/index.js";
 import { collectBoardClue, createDeterministicEngineContext, drawMythosCard, gainCluesFromPool, projectPublicState, spawnClueFromPool, spawnMythosClues, type GameContent, type GameState } from "../src/index.js";
 
 const content: GameContent = {
@@ -15,6 +16,50 @@ function state(pool = ["clue_arkham", "clue_london"]): GameState {
     privateState: { deckOrderById: {}, tokenPoolById: { clues: pool, clue_discard: [] } },
   };
 }
+
+describe("internal Research Clue effects", () => {
+  function encountered(): GameState {
+    const before = state([]);
+    before.phase = "encounter";
+    before.boardClues = [{ id: "chosen", locationId: "arkham" }, { id: "other", locationId: "arkham" }];
+    before.privateState.tokenPoolById["board_clue:chosen"] = ["clue_london"];
+    before.privateState.tokenPoolById["board_clue:other"] = ["clue_arkham"];
+    return before;
+  }
+  it("relocates only the chosen marker without changing or revealing its physical face", () => {
+    const before = encountered();
+    const result = resolveBoardClueEffect(before, "chosen", { kind: "relocate", locationId: "london" }, content);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.boardClues).toEqual([{ id: "chosen", locationId: "london" }, { id: "other", locationId: "arkham" }]);
+    expect(result.state.privateState.tokenPoolById["board_clue:chosen"]).toEqual(["clue_london"]);
+    expect(JSON.stringify(projectPublicState(result.state))).not.toContain("clue_london");
+    expect(before.boardClues?.[0]?.locationId).toBe("arkham");
+    expect(result.state.stateVersion).toBe(6);
+  });
+  it("discards the exact physical token once and leaves other same-space Clues intact", () => {
+    const before = encountered();
+    const result = resolveBoardClueEffect(before, "chosen", { kind: "discard" }, content);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.privateState.tokenPoolById.clue_discard).toEqual(["clue_london"]);
+    expect(result.state.boardClues).toEqual([{ id: "other", locationId: "arkham" }]);
+    expect(result.state.privateState.tokenPoolById["board_clue:chosen"]).toBeUndefined();
+    expect(resolveBoardClueEffect(result.state, "chosen", { kind: "discard" }, content).ok).toBe(false);
+    expect(before.privateState.tokenPoolById.clue_discard).toEqual([]);
+  });
+  it("rejects wrong phase, ended games, invalid destinations and inconsistent tokens atomically", () => {
+    for (const invalid of ["phase", "ended", "physical", "destination"] as const) {
+      const before = encountered();
+      if (invalid === "phase") before.phase = "mythos";
+      if (invalid === "ended") before.gameResult = "investigators_lose";
+      if (invalid === "physical") before.privateState.tokenPoolById["board_clue:chosen"] = [];
+      const snapshot = structuredClone(before);
+      expect(resolveBoardClueEffect(before, "chosen", { kind: "relocate", locationId: invalid === "destination" ? "missing" : "london" }, content).ok).toBe(false);
+      expect(before).toEqual(snapshot);
+    }
+  });
+});
 
 describe("internal Clue spawn", () => {
   it("draws one physical Clue and places an opaque public marker at its printed space", () => {

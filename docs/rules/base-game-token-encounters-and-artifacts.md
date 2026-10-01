@@ -18,6 +18,8 @@ Generated files live under `apps/web/public/cards/encounters/<deck>/` and `apps/
 
 ## Execution status and next implementation
 
+Research preparation: internal `resolveBoardClueEffect` supports relocating the exact opaque marker while preserving its private physical identity, or returning that exact token to the discard supply. It rejects missing tokens, invalid destinations, ended games, and non-Encounter phases atomically. This is not a client command or a Research card handler; failed encounters that retain a Clue make no token transition. Tests cover multiple Clues on one space, identity preservation, duplicate discards, and public privacy.
+
 This import removes the source-scan dependency, not the engine dependency. New encounter records remain `not_executable`, Artifacts remain `transcribed_pending_execution`, and both readiness families remain `needs_review`. They are not added to live engine draws in this import.
 
 Next: transcribe Research instructions by Ancient One and location type; connect supported Research outcomes to the exact board Clue encountered, including failed retention, relocation, and discard. Then model the shared complex-encounter Initial/Pass/Fail lifecycle with nested tests and choices; wire Other World Gate closure, Expedition relocation, Special Mystery/Ancient One progress, and Artifact gain/effects. Add deterministic rules and multiplayer tests per vertical slice before enabling commands. No further scans in these five categories are currently needed.
