@@ -1,6 +1,7 @@
 import { skillIds, type SkillId } from "@eldritch/protocol";
 
 export type LocationEncounterEffect =
+  | { kind: "return_solved_mystery"; selection: "random"; shuffle: true }
   | { kind: "omen_move"; destination: "chosen"; advanceDoom: false; position?: number }
   | { kind: "omen_advance"; amount: 1 }
   | { kind: "omen_eldritch"; operation: "place" | "discard"; amount: 1; space: "green" | "chosen" }
@@ -28,7 +29,8 @@ export function parseLocationEncounterInstruction(value: unknown, depth = 0): Lo
     const effects: LocationEncounterEffect[] = [];
     for (const raw of value.effects as unknown[]) {
       if (!raw || typeof raw !== "object" || !("kind" in raw)) return undefined;
-      if (raw.kind === "omen_move" && "destination" in raw && raw.destination === "chosen" && "advanceDoom" in raw && raw.advanceDoom === false) effects.push({ kind: "omen_move", destination: "chosen", advanceDoom: false });
+      if (raw.kind === "return_solved_mystery" && "selection" in raw && raw.selection === "random" && "shuffle" in raw && raw.shuffle === true) effects.push({ kind: "return_solved_mystery", selection: "random", shuffle: true });
+      else if (raw.kind === "omen_move" && "destination" in raw && raw.destination === "chosen" && "advanceDoom" in raw && raw.advanceDoom === false) effects.push({ kind: "omen_move", destination: "chosen", advanceDoom: false });
       else if (raw.kind === "omen_advance" && "amount" in raw && raw.amount === 1) effects.push({ kind: "omen_advance", amount: 1 });
       else if (raw.kind === "omen_eldritch" && "operation" in raw && "space" in raw && "amount" in raw && raw.amount === 1
         && (raw.operation === "place" && raw.space === "green" || raw.operation === "discard" && raw.space === "chosen")) effects.push({ kind: "omen_eldritch", operation: raw.operation, space: raw.space, amount: 1 });
@@ -77,6 +79,7 @@ export function encounterInstructionLabel(instruction: LocationEncounterInstruct
   if (instruction.kind === "sequence") return instruction.steps.map(encounterInstructionLabel).join("; then ");
   if (instruction.kind !== "effects") return "Resolve the printed encounter choice";
   return instruction.effects.map(effect => {
+    if (effect.kind === "return_solved_mystery") return "Shuffle a random solved Mystery back into its deck";
     if (effect.kind === "omen_move") return "Move Omen without advancing Doom";
     if (effect.kind === "omen_advance") return "Advance Omen by 1";
     if (effect.kind === "omen_eldritch") return `${effect.operation === "place" ? "Place" : "Discard"} 1 Omen Eldritch token`;

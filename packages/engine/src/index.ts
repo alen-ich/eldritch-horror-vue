@@ -1662,7 +1662,17 @@ function applyLocationEncounterEffects(
   for (let index = 0; index < effects.length; index++) {
     const effect = effects[index]!;
     if ("amount" in effect && effect.amount === 0) continue;
-    if (effect.kind === "omen_advance") {
+    if (effect.kind === "return_solved_mystery") {
+      if (!next.completedMysteryIds.length) continue;
+      const deck = next.privateState.deckOrderById.mysteries;
+      const catalog = next.ancientOneId && content.mysteryIdsByAncientOne[next.ancientOneId];
+      const physicalIds = [...next.completedMysteryIds, ...(deck ?? []), ...(next.activeMysteryId ? [next.activeMysteryId] : [])];
+      if (!deck || !catalog || new Set(physicalIds).size !== physicalIds.length || physicalIds.some(id => !catalog.includes(id))) return failure("MYSTERY_CONTENT_MISSING", "The physical Mystery deck is inconsistent.");
+      const drawn = context.drawToken(next.completedMysteryIds);
+      next.completedMysteryIds = drawn.remaining;
+      next.privateState.deckOrderById.mysteries = context.shuffle([...deck, drawn.token]);
+      events.push({ type: "MYSTERY_RETURNED_TO_DECK", mysteryId: drawn.token });
+    } else if (effect.kind === "omen_advance") {
       const advanced = resolveOmenAdvanceEffect(next, content);
       if (!advanced.ok) return advanced;
       next = advanced.state;

@@ -22,6 +22,57 @@ function state(number = 1, locationId = "arkham"): GameState {
 const rng = (dice: number[]) => createDeterministicEngineContext({ dice, tokenIndexes: [0], ids: ["test", "decision", "later"] });
 
 describe("internal scan-backed Research encounters", () => {
+  function mysteryState(): GameState {
+    const before = state(5);
+    before.completedMysteryIds = ["solved_a", "solved_b"];
+    before.activeMysteryId = "active";
+    before.mysteryProgress = 1; before.mysteryTarget = 2;
+    before.privateState.deckOrderById.mysteries = ["undrawn"];
+    return before;
+  }
+  const mysteryContent: GameContent = { ...content, mysteryIdsByAncientOne: { azathoth: ["solved_a", "solved_b", "active", "undrawn"] } };
+  it("randomly returns exactly one solved Mystery and shuffles privately without resetting active progress", () => {
+    for (const tokenIndex of [0, 1]) {
+      const before = mysteryState();
+      const result = resolveResearchEncounter(before, "host", "chosen", mysteryContent,
+        createDeterministicEngineContext({ dice: [1, 1], tokenIndexes: [tokenIndex], shuffleIndexes: [0] }));
+      if (!result.ok) throw new Error(result.error.message);
+      const returned = before.completedMysteryIds[tokenIndex]!;
+      expect(result.state.completedMysteryIds).toEqual(before.completedMysteryIds.filter(id => id !== returned));
+      expect(new Set(result.state.privateState.deckOrderById.mysteries)).toEqual(new Set(["undrawn", returned]));
+      expect(result.state).toMatchObject({ activeMysteryId: "active", mysteryProgress: 1, mysteryTarget: 2, activePlayerId: "guest", stateVersion: 3 });
+      expect(result.events).toContainEqual({ type: "MYSTERY_RETURNED_TO_DECK", mysteryId: returned });
+      expect(result.state.boardClues).toEqual(before.boardClues);
+      expect(JSON.stringify(projectStateForPlayer(result.state, "guest"))).not.toContain("undrawn");
+      expect(before.completedMysteryIds).toEqual(["solved_a", "solved_b"]);
+    }
+  });
+  it("does nothing when no Mystery is solved, without requiring deck or random selection input", () => {
+    const result = resolveResearchEncounter(state(5), "host", "chosen", content, rng([1, 1]));
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.state.completedMysteryIds).toEqual([]);
+    expect(result.events.some(event => event.type === "MYSTERY_RETURNED_TO_DECK")).toBe(false);
+    expect(result.state.doom).toBe(15);
+  });
+  it("does not return a Mystery after a passed City test", () => {
+    const before = mysteryState();
+    const result = resolveResearchEncounter(before, "host", "chosen", mysteryContent, rng([6, 1]));
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.state.completedMysteryIds).toEqual(before.completedMysteryIds);
+    expect(result.state.privateState.deckOrderById.mysteries).toEqual(["undrawn"]);
+    expect(result.state.players[0]?.clues).toBe(2);
+  });
+  it("rejects duplicate, unknown, or absent Mystery supply atomically", () => {
+    for (const invalid of ["duplicate", "unknown", "missing"] as const) {
+      const before = mysteryState();
+      if (invalid === "duplicate") before.privateState.deckOrderById.mysteries = ["solved_a"];
+      if (invalid === "unknown") before.completedMysteryIds = ["expansion_mystery"];
+      if (invalid === "missing") delete before.privateState.deckOrderById.mysteries;
+      const snapshot = structuredClone(before);
+      expect(resolveResearchEncounter(before, "host", "chosen", mysteryContent, rng([1, 1]))).toMatchObject({ ok: false, error: { code: "MYSTERY_CONTENT_MISSING" } });
+      expect(before).toEqual(snapshot);
+    }
+  });
   function choose(before: GameState, option: string[] = []) {
     return executeCommand(JSON.parse(JSON.stringify(before)), "host", { type: "RESOLVE_DECISION", decisionId: before.pendingDecision!.id, selectedOptionIds: option }, content, rng([]));
   }
@@ -88,12 +139,12 @@ describe("internal scan-backed Research encounters", () => {
       expect(before).toEqual(snapshot);
     }
   });
-  it("supports 22 verified Azathoth sections while retaining Mystery and Artifact blockers", () => {
+  it("supports 23 verified Azathoth sections while retaining the named Artifact blocker", () => {
     const supported = baseGameResearchEncounterRules.flatMap(card => Object.entries(card.sections)
       .filter(([, instruction]) => bindResearchInstruction(instruction, "marker"))
       .map(([section]) => `${card.number}:${section}`));
-    expect(supported).toHaveLength(22);
-    expect(supported).not.toContain("5:city");
+    expect(supported).toHaveLength(23);
+    expect(supported).toContain("5:city");
     expect(supported).not.toContain("5:sea");
   });
   it("gains the exact encountered Clue plus an additional supply Clue and cycles once", () => {
@@ -147,7 +198,7 @@ describe("internal scan-backed Research encounters", () => {
     expect(finished.state.activePlayerId).toBe("guest");
   });
   it("preflights unsupported branches before any card, token, or RNG consumption", () => {
-    const before = state(5, "arkham");
+    const before = state(5, "space_2");
     const snapshot = structuredClone(before);
     const context = createDeterministicEngineContext({});
     expect(resolveResearchEncounter(before, "host", "chosen", content, context)).toMatchObject({ ok: false, error: { code: "ENCOUNTER_UNSUPPORTED" } });
