@@ -20,6 +20,47 @@ describe("authoritative game room", () => {
   after(async () => colyseus.shutdown());
   beforeEach(async () => colyseus.cleanup());
 
+  it("keeps the Artifact target choice private and preserves its round usage", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "action"; state.actionsRemaining = 2;
+    state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
+    state.players[0] = { ...state.players[0]!, investigatorId: "akachi_onyele", locationId: "arkham", health: 5, sanity: 7, clues: 1, artifactIds: ["artifact_ttka_halot"], assetIds: [] };
+    state.monsters = [{ id: "artifact-target", monsterId: "monster_elder_thing", locationId: "arkham", damage: 0 }];
+    internal.applyEngineState(state);
+    const rerollMessage = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "USE_ARTIFACT_ACTION", artifactId: "artifact_ttka_halot" });
+    await room.waitForMessage(commandMessageType);
+    const reroll = await rerollMessage as PendingDecision;
+    const paused = internal.toEngineState();
+    assert.equal(paused.activeTest?.sourceArtifactId, "artifact_ttka_halot");
+    paused.activeTest!.dice = paused.activeTest!.dice.map(() => 6); paused.activeTest!.successes = paused.activeTest!.dice.length;
+    const refresh = host.waitForMessage(pendingDecisionMessageType);
+    internal.applyEngineState(JSON.parse(JSON.stringify(paused)));
+    await refresh;
+    const targetMessage = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: reroll.id, selectedOptionIds: [] });
+    await room.waitForMessage(commandMessageType);
+    const decision = await targetMessage as PendingDecision;
+    assert.equal(decision.kind, "artifact_target");
+    assert.ok(decision.optionIds.includes("artifact-target"));
+    assert.equal("optionIds" in room.state.pendingDecision!, false);
+    const rejected = guest.waitForMessage(commandErrorMessageType);
+    sendCommand(room, guest, { type: "RESOLVE_DECISION", decisionId: decision.id, selectedOptionIds: ["artifact-target"] });
+    await room.waitForMessage(commandMessageType);
+    assert.equal((await rejected as { code: string }).code, "NOT_DECISION_OWNER");
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: decision.id, selectedOptionIds: ["artifact-target"] });
+    await room.waitForMessage(commandMessageType);
+    const after = internal.toEngineState();
+    assert.equal(after.players[0]?.sanity, 6); assert.equal(after.actionsRemaining, 1);
+    assert.deepEqual(after.usedArtifactActionIds, ["artifact_ttka_halot"]);
+    assert.equal(after.monsters?.length, 0);
+    assert.ok(after.privateState.tokenPoolById.monsters?.includes("monster_elder_thing"));
+  });
+
   it("keeps Artifact supply private and round-trips public physical holdings", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });

@@ -64,6 +64,7 @@ interface ClientGameState {
   actionsRemaining?: number
   performedActions?: string
   usedConditionActionIds?: string
+  usedArtifactActionIds?: string
   reserveAssetIds?: string
   assetDiscardIds?: string
   boardClues?: string
@@ -115,6 +116,7 @@ const turnNumber = ref(0)
 const actionsRemaining = ref(0)
 const performedActions = ref<string[]>([])
 const usedConditionActionIds = ref<string[]>([])
+const usedArtifactActionIds = ref<string[]>([])
 const reserveAssetIds = ref<string[]>([])
 const assetDiscardIds = ref<string[]>([])
 const boardClues = ref<{ id: string; locationId: string }[]>([])
@@ -156,6 +158,7 @@ export function useGameRoom() {
     actionsRemaining.value = state.actionsRemaining ?? 0
     performedActions.value = state.performedActions ? state.performedActions.split(',') : []
     usedConditionActionIds.value = state.usedConditionActionIds ? state.usedConditionActionIds.split(',') : []
+    usedArtifactActionIds.value = state.usedArtifactActionIds ? state.usedArtifactActionIds.split(',') : []
     reserveAssetIds.value = state.reserveAssetIds ? state.reserveAssetIds.split(',') : []
     assetDiscardIds.value = state.assetDiscardIds ? state.assetDiscardIds.split(',') : []
     boardClues.value = JSON.parse(state.boardClues ?? '[]') as { id: string; locationId: string }[]
@@ -277,6 +280,7 @@ export function useGameRoom() {
 
   return {
     investigatorLifecycle: readonly(investigatorLifecycle),
+    usedArtifactActionIds: readonly(usedArtifactActionIds),
     doom: readonly(doom), omen: readonly(omen),
     tradeOffer: readonly(tradeOffer),
     players: readonly(players), stateVersion: readonly(stateVersion), phase: readonly(phase), ancientOneId: readonly(ancientOneId), currentMythosCardId: readonly(currentMythosCardId), currentMythosIconIndex: readonly(currentMythosIconIndex), activeMysteryId: readonly(activeMysteryId), lastLocationEncounterCardId: readonly(lastLocationEncounterCardId), currentLocationEncounterCardId: readonly(currentLocationEncounterCardId), mysteryProgress: readonly(mysteryProgress), mysteryTarget: readonly(mysteryTarget), completedMysteryIds: readonly(completedMysteryIds), gameResult: readonly(gameResult), activePlayerId: readonly(activePlayerId),

@@ -180,7 +180,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       });
       return;
     }
-    const context = parsed.data.command.type === "ADVANCE_MYTHOS" || parsed.data.command.type === "RESOLVE_LOCATION_ENCOUNTER" || parsed.data.command.type === "RESOLVE_RESEARCH_ENCOUNTER" || parsed.data.command.type === "FIGHT_MONSTER" || parsed.data.command.type === "USE_INVESTIGATOR_ACTION"
+    const context = parsed.data.command.type === "USE_ARTIFACT_ACTION" || this.activeTest?.continuation === "artifact_action" || this.pendingDecision?.kind === "artifact_target" || parsed.data.command.type === "ADVANCE_MYTHOS" || parsed.data.command.type === "RESOLVE_LOCATION_ENCOUNTER" || parsed.data.command.type === "RESOLVE_RESEARCH_ENCOUNTER" || parsed.data.command.type === "FIGHT_MONSTER" || parsed.data.command.type === "USE_INVESTIGATOR_ACTION"
       || (parsed.data.command.type === "RESOLVE_DECISION" && (this.activeTest?.continuation === "location_encounter" || this.pendingDecision?.continuation === "location_encounter_choice" || this.pendingDecision?.continuation === "mythos_world_fights_back" || this.pendingDecision?.continuation === "mythos_debt_trade" || this.pendingDecision?.continuation === "mythos_desperate_times" || this.pendingDecision?.continuation === "mythos_that_which_consumes" || this.pendingDecision?.continuation === "mythos_heat_wave" || this.pendingDecision?.continuation === "mythos_blood_flows" || this.pendingDecision?.continuation === "mythos_tide_of_despair" || this.pendingDecision?.continuation === "mythos_unexpected_betrayal"))
       || (parsed.data.command.type === "RESOLVE_DEFEAT" && Boolean(this.toEngineState().pendingHeatWave || this.toEngineState().pendingTideOfDespair || this.toEngineState().pendingUnexpectedBetrayal))
       ? serverMythosContext()
@@ -233,6 +233,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       actionsRemaining: this.state.actionsRemaining,
       performedActions: this.state.performedActions ? this.state.performedActions.split(",") as GameState["performedActions"] : [],
       usedConditionActionIds: this.state.usedConditionActionIds ? this.state.usedConditionActionIds.split(",") : [],
+      usedArtifactActionIds: this.state.usedArtifactActionIds ? this.state.usedArtifactActionIds.split(",") : [],
       monsterLocationIds: [...new Set(monsters.map(monster => monster.locationId))],
       monsters,
       encounteredMonsterInstanceIds: this.state.encounteredMonsterInstanceIds ? this.state.encounteredMonsterInstanceIds.split(",") : [],
@@ -307,6 +308,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     this.state.actionsRemaining = engineState.actionsRemaining;
     this.state.performedActions = engineState.performedActions.join(",");
     this.state.usedConditionActionIds = (engineState.usedConditionActionIds ?? []).join(",");
+    this.state.usedArtifactActionIds = (engineState.usedArtifactActionIds ?? []).join(",");
     this.state.monsters = JSON.stringify(engineState.monsters ?? []);
     this.state.encounteredMonsterInstanceIds = (engineState.encounteredMonsterInstanceIds ?? []).join(",");
     this.state.activeGateIds = (engineState.activeGateIds ?? []).join(",");

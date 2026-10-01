@@ -2,7 +2,7 @@
 const game = useGameRoom()
 const decision = computed(() => {
   const value = game.pendingDecision.value
-  return value?.kind === 'encounter_choice' && value.playerId === game.playerId.value && 'optionIds' in value ? value : undefined
+  return (value?.kind === 'encounter_choice' || value?.kind === 'artifact_target') && value.playerId === game.playerId.value && 'optionIds' in value ? value : undefined
 })
 function choose(id: string) {
   if (decision.value) game.send({ type: 'RESOLVE_DECISION', decisionId: decision.value.id, selectedOptionIds: [id] })
@@ -11,7 +11,7 @@ function choose(id: string) {
 
 <template>
   <section v-if="decision" class="encounter-choice" role="dialog" aria-modal="true" aria-labelledby="encounter-choice-title">
-    <h2 id="encounter-choice-title">Encounter choice</h2>
+    <h2 id="encounter-choice-title">{{ decision.kind === 'artifact_target' ? 'Artifact action' : 'Encounter choice' }}</h2>
     <p>{{ decision.prompt }}</p>
     <button v-for="id in decision.optionIds" :key="id" @click="choose(id)">{{ decision.optionLabels?.[id] ?? id }}</button>
   </section>
