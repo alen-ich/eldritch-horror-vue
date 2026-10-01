@@ -100,7 +100,7 @@ export interface ActiveTest {
   continuation: "acquire_assets" | "condition_action" | "condition_reckoning" | "location_encounter";
   sourceConditionId?: string;
   sourceEncounterCardId?: string;
-  sourceEncounterDeck?: "general" | "america" | "europe" | "asia_australia";
+  sourceEncounterDeck?: "general" | "america" | "europe" | "asia_australia" | "research_azathoth" | "research_cthulhu" | "research_shub_niggurath" | "research_yog_sothoth";
 }
 
 export interface PendingDecisionSummary {
@@ -134,6 +134,7 @@ export const gameCommandSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("ADVANCE_MYTHOS") }).strict(),
   z.object({ type: z.literal("BEGIN_NEXT_ROUND") }).strict(),
   z.object({ type: z.literal("RESOLVE_LOCATION_ENCOUNTER"), deck: z.enum(["general", "america", "europe", "asia_australia"]) }).strict(),
+  z.object({ type: z.literal("RESOLVE_RESEARCH_ENCOUNTER"), clueId: z.string().min(1).max(128) }).strict(),
   z.object({ type: z.literal("FIGHT_MONSTER"), monsterInstanceId: z.string().min(1) }).strict(),
   z.object({
     type: z.literal("RESOLVE_DECISION"),
@@ -153,6 +154,7 @@ export type GameCommandMessage = z.infer<typeof gameCommandMessageSchema>;
 
 export type GameEvent =
   | { type: "LOCATION_ENCOUNTER_RESOLVED"; playerId: string; cardId: string; deck: "general" | "america" | "europe" | "asia_australia"; dice: number[]; successes: number }
+  | { type: "RESEARCH_ENCOUNTER_RESOLVED"; playerId: string; cardId: string; deck: "research_azathoth" | "research_cthulhu" | "research_shub_niggurath" | "research_yog_sothoth"; dice: number[]; successes: number }
   | { type: "MYTHOS_CARD_REVEALED"; cardId: string }
   | { type: "BERMUDA_TRIANGLE_ROLLED"; playerId: string; die: number; moved: boolean }
   | { type: "CONDITION_BACK_RESOLVED"; playerId: string; conditionId: string; effect: "discard" | "recover_health_and_sanity_then_flip_front" | "gain_clues_then_flip_front" | "become_delayed_then_flip_front" | "discard_all_clues_then_discard" }

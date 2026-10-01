@@ -1,6 +1,8 @@
 export type MythosColor = "green" | "yellow" | "blue";
 export const locationEncounterDeckIds = ["general", "america", "europe", "asia_australia"] as const;
 export type LocationEncounterDeckId = typeof locationEncounterDeckIds[number];
+export type ResearchEncounterDeckId = "research_azathoth" | "research_cthulhu" | "research_shub_niggurath" | "research_yog_sothoth";
+export type EncounterDeckId = LocationEncounterDeckId | ResearchEncounterDeckId;
 
 /** Each location deck has its own private top-to-bottom order. */
 export function buildLocationEncounterDecks(

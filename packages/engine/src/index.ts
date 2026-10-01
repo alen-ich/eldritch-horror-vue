@@ -15,7 +15,8 @@ import type {
 } from "@eldritch/protocol";
 import { calculateDicePool, countTestSuccesses } from "./skill-tests.js";
 import { loseResource, recoverResource } from "./resources.js";
-import { buildGateStack, buildLocationEncounterDecks, buildMonsterPool, buildMythosDeck, type AncientSetup, type LocationEncounterDeckId, type MythosColor } from "./setup.js";
+import { buildGateStack, buildLocationEncounterDecks, buildMonsterPool, buildMythosDeck, type AncientSetup, type LocationEncounterDeckId, type EncounterDeckId, type ResearchEncounterDeckId, type MythosColor } from "./setup.js";
+import { bindResearchInstruction } from "./research-instructions.js";
 import { resolveStandardCombat, type CombatCheck } from "./combat.js";
 import { conditionSuccessThreshold, publicConditionId, resolveBoonBaneGain } from "./conditions.js";
 import { advanceOmenTrack, omenTrack } from "./omen.js";
@@ -142,7 +143,7 @@ export interface MonsterCombatDefinition {
 }
 
 export interface GameState {
-  pendingLocationEncounter?: { playerId: string; cardId: string; deck: LocationEncounterDeckId; queue: LocationEncounterInstruction[]; dice: number[]; successes: number };
+  pendingLocationEncounter?: { playerId: string; cardId: string; deck: EncounterDeckId; queue: LocationEncounterInstruction[]; dice: number[]; successes: number };
   defeatedInvestigators?: { investigatorId: InvestigatorId; locationId: LocationId; cause: "health" | "sanity"; assetIds: string[]; clues: number; travelTickets: TravelTicketType[] }[];
   pendingDefeat?: { playerId: string; cityIds: LocationId[]; causes: ("health" | "sanity")[] };
   pendingMythosDamage?: { cardId: string; remainingPlayerIds: string[]; healthLoss: number };
@@ -223,6 +224,7 @@ export type ConditionBackEffect =
   | { type: "discard_all_clues_then_discard" };
 
 export interface GameContent {
+  researchEncounters?: readonly { id: string; deck: ResearchEncounterDeckId; sections: Readonly<Record<string, unknown>> }[];
   locationEncounters?: readonly { id: string; deck: LocationEncounterDeckId; sections?: Readonly<Record<string, unknown>> }[];
   gates?: readonly { id: string; omenSymbol: "comet" | "constellation" | "eclipse"; locationId: LocationId }[];
   clues?: readonly { id: string; locationId: LocationId }[];
@@ -1662,6 +1664,11 @@ function applyLocationEncounterEffects(
       }
       next = gained.state;
       events.push(...gained.events);
+    } else if (effect.kind === "collect_encountered_clue") {
+      const collected = collectBoardClue(next, playerId, effect.markerId);
+      if (!collected.ok) return collected;
+      next = collected.state;
+      events.push(...collected.events);
     } else if (effect.kind === "discard") {
       return failure("ENCOUNTER_UNSUPPORTED", "Choose the printed Condition to discard first.");
     } else if (effect.kind === "delay") {
@@ -1842,7 +1849,9 @@ function continueLocationEncounter(state: GameState, content: GameContent, conte
   next.lastLocationEncounterCardId = pending.cardId;
   next.currentLocationEncounterCardId = undefined;
   next.pendingLocationEncounter = undefined;
-  const resolved: GameEvent = { type: "LOCATION_ENCOUNTER_RESOLVED", playerId: pending.playerId, cardId: pending.cardId, deck: pending.deck, dice: pending.dice, successes: pending.successes };
+  const resolved: GameEvent = pending.deck.startsWith("research_")
+    ? { type: "RESEARCH_ENCOUNTER_RESOLVED", playerId: pending.playerId, cardId: pending.cardId, deck: pending.deck as ResearchEncounterDeckId, dice: pending.dice, successes: pending.successes }
+    : { type: "LOCATION_ENCOUNTER_RESOLVED", playerId: pending.playerId, cardId: pending.cardId, deck: pending.deck as LocationEncounterDeckId, dice: pending.dice, successes: pending.successes };
   if (!next.pendingDefeat && !next.gameResult) {
     const advanced = advanceEncounterInvestigator(next, pending.playerId);
     if (!advanced.ok) return advanced;
@@ -1851,6 +1860,31 @@ function continueLocationEncounter(state: GameState, content: GameContent, conte
   }
   next.stateVersion = state.stateVersion;
   return success(next, [resolved, ...events]);
+}
+
+/** Authoritative Research draw; marker identity and outcomes remain server-owned. */
+export function resolveResearchEncounter(state: GameState, playerId: string, markerId: string, content: GameContent, context: EngineContext): CommandResult {
+  if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
+  if (!legalLocationEncounterDecks(state, playerId, content).length || state.pendingLocationEncounter) return failure("WRONG_PHASE", "This investigator cannot resolve Research now.");
+  const player = state.players.find(candidate => candidate.id === playerId)!;
+  const marker = state.boardClues?.find(clue => clue.id === markerId && clue.locationId === player.locationId);
+  if (!marker) return failure("CLUE_UNAVAILABLE", "No such Clue is on this investigator's space.");
+  const physical = state.privateState.tokenPoolById[`board_clue:${markerId}`];
+  const held = state.privateState.tokenPoolById[heldClueKey(playerId)];
+  if (!physical || physical.length !== 1 || !content.clues?.some(clue => clue.id === physical[0]) || !held || held.length !== player.clues) return failure("CLUE_CONTENT_MISSING", "Research requires consistent physical Clue holdings.");
+  if (!state.ancientOneId) return failure("ANCIENT_ONE_REQUIRED", "Research requires the selected Ancient One.");
+  const deck: ResearchEncounterDeckId = `research_${state.ancientOneId}`;
+  const order = state.privateState.deckOrderById[`encounter:${deck}`];
+  if (!order?.length) return failure("ENCOUNTER_DECK_MISSING", "The selected Ancient One's Research deck is unavailable.");
+  const cardId = order[0]!;
+  const card = content.researchEncounters?.find(card => card.id === cardId && card.deck === deck);
+  const section = content.map.locationTypes[player.locationId!];
+  const instruction = bindResearchInstruction(card?.sections[section ?? ""], markerId);
+  if (!instruction || player.assetIds.length) return failure("ENCOUNTER_UNSUPPORTED", "This Research section needs unsupported effects or possession bonuses.");
+  const next = structuredClone(state);
+  next.currentLocationEncounterCardId = cardId;
+  next.pendingLocationEncounter = { playerId, cardId, deck, queue: [instruction], dice: [], successes: 0 };
+  return continueLocationEncounter(next, content, context);
 }
 
 /** Draws a modeled location encounter and resolves until a choice, test, or defeat. */
@@ -2121,6 +2155,10 @@ export function executeCommand(
   if (command.type === "RESOLVE_LOCATION_ENCOUNTER") {
     if (!context) return failure("RANDOM_INPUT_REQUIRED", "Encounter resolution requires server randomness.");
     return resolveLocationEncounter(state, actorPlayerId, command.deck, content, context);
+  }
+  if (command.type === "RESOLVE_RESEARCH_ENCOUNTER") {
+    if (!context) return failure("RANDOM_INPUT_REQUIRED", "Research encounters require server randomness.");
+    return resolveResearchEncounter(state, actorPlayerId, command.clueId, content, context);
   }
   if (command.type === "ADVANCE_MYTHOS") {
     if (state.phase !== "mythos" || actorPlayerId !== state.leadInvestigatorId) return failure("WRONG_PHASE", "Only the Lead Investigator can advance the Mythos phase.");
@@ -2894,6 +2932,12 @@ export function executeCommand(
     if (content.locationEncounters?.length) {
       const decks = buildLocationEncounterDecks(content.locationEncounters, context.shuffle);
       for (const [deck, cards] of Object.entries(decks)) next.privateState.deckOrderById[`encounter:${deck}`] = cards;
+    }
+    if (content.researchEncounters?.length && next.ancientOneId) {
+      const deck: ResearchEncounterDeckId = `research_${next.ancientOneId}`;
+      const ids = content.researchEncounters.filter(card => card.deck === deck).map(card => card.id);
+      if (new Set(ids).size !== ids.length) return failure("ENCOUNTER_CONTENT_MISSING", "Research card IDs must be unique.");
+      if (ids.length) next.privateState.deckOrderById[`encounter:${deck}`] = context.shuffle(ids);
     }
     if (content.monsters?.some(monster => monster.count !== undefined)) {
       if (!ancient) return failure("ANCIENT_ONE_REQUIRED", "Ancient One setup is required for the Monster cup.");

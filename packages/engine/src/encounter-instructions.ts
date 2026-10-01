@@ -1,6 +1,7 @@
 import { skillIds, type SkillId } from "@eldritch/protocol";
 
 export type LocationEncounterEffect =
+  | { kind: "collect_encountered_clue"; markerId: string }
   | { kind: "clues" | "health" | "sanity" | "recover_health" | "recover_sanity"; amount: number }
   | { kind: "spawn_clues"; amount: number; target?: "chosen_space" }
   | { kind: "condition"; condition: string; accepted?: boolean }
@@ -24,7 +25,8 @@ export function parseLocationEncounterInstruction(value: unknown, depth = 0): Lo
     const effects: LocationEncounterEffect[] = [];
     for (const raw of value.effects as unknown[]) {
       if (!raw || typeof raw !== "object" || !("kind" in raw)) return undefined;
-      if (raw.kind === "delay") effects.push({ kind: "delay" });
+      if (raw.kind === "collect_encountered_clue" && "markerId" in raw && typeof raw.markerId === "string" && raw.markerId) effects.push({ kind: "collect_encountered_clue", markerId: raw.markerId });
+      else if (raw.kind === "delay") effects.push({ kind: "delay" });
       else if (raw.kind === "discard" && "target" in raw && (raw.target === "madness" || raw.target === "blessed")) effects.push({ kind: "discard", target: raw.target });
       else if (raw.kind === "condition" && "condition" in raw && typeof raw.condition === "string" && raw.condition) effects.push({ kind: "condition", condition: raw.condition });
       else if (raw.kind === "improve" && "skill" in raw && (raw.skill === "chosen" || isSkill(raw.skill))) effects.push({ kind: "improve", skill: raw.skill });
@@ -68,6 +70,7 @@ export function encounterInstructionLabel(instruction: LocationEncounterInstruct
   if (instruction.kind === "sequence") return instruction.steps.map(encounterInstructionLabel).join("; then ");
   if (instruction.kind !== "effects") return "Resolve the printed encounter choice";
   return instruction.effects.map(effect => {
+    if (effect.kind === "collect_encountered_clue") return "Gain this Clue";
     if (effect.kind === "condition") return `Gain ${effect.condition.replaceAll("_", " ")}`;
     if (effect.kind === "delay") return "Become Delayed";
     if (effect.kind === "discard") return `Discard a ${effect.target} Condition`;
