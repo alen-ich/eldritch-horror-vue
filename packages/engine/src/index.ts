@@ -1643,12 +1643,8 @@ function finishLocationEncounter(
   const events: GameEvent[] = [];
   const player = next.players.find(candidate => candidate.id === playerId);
   if (!player) return failure("PLAYER_NOT_FOUND", "The encounter investigator is missing.");
-  const healthLoss = -effects.filter((effect): effect is { kind: "health"; amount: number } => effect.kind === "health").reduce((total, effect) => total + effect.amount, 0);
-  const sanityLoss = -effects.filter((effect): effect is { kind: "sanity"; amount: number } => effect.kind === "sanity").reduce((total, effect) => total + effect.amount, 0);
-  if ((healthLoss > 0 && (player.health ?? 0) <= healthLoss) || (sanityLoss > 0 && (player.sanity ?? 0) <= sanityLoss)) {
-    return failure("ENCOUNTER_UNSUPPORTED", "An encounter defeat needs an interruptible resolution path.");
-  }
-  for (const effect of effects) {
+  for (let index = 0; index < effects.length; index++) {
+    const effect = effects[index]!;
     if (effect.kind !== "condition" && effect.amount === 0) continue;
     if (effect.kind === "condition") {
       const gained = gainCondition(next, playerId, effect.condition, content, context);
@@ -1661,10 +1657,25 @@ function finishLocationEncounter(
       next = gained.state;
       events.push(...gained.events);
     } else if (effect.kind === "health" || effect.kind === "sanity") {
-      const damaged = damageInvestigator(next, playerId, effect.kind === "health" ? -effect.amount : 0, effect.kind === "sanity" ? -effect.amount : 0, content);
+      let healthLoss = effect.kind === "health" ? -effect.amount : 0;
+      let sanityLoss = effect.kind === "sanity" ? -effect.amount : 0;
+      // One printed loss of Health and Sanity is simultaneous. A depleted
+      // investigator stops resolving the encounter, including later effects.
+      while (effects[index + 1]?.kind === "health" || effects[index + 1]?.kind === "sanity") {
+        const additional = effects[++index]!;
+        if (additional.kind === "health") healthLoss -= additional.amount;
+        else if (additional.kind === "sanity") sanityLoss -= additional.amount;
+      }
+      const recipient = next.players.find(candidate => candidate.id === playerId)!;
+      const lethal = (healthLoss > 0 && healthLoss >= (recipient.health ?? 0)) || (sanityLoss > 0 && sanityLoss >= (recipient.sanity ?? 0));
+      if (lethal && (next.doom ?? 1) <= 1 && next.ancientOneId !== "azathoth") {
+        return failure("AWAKENING_UNSUPPORTED", "This defeat requires an unimplemented Ancient One awakening.");
+      }
+      const damaged = damageInvestigator(next, playerId, healthLoss, sanityLoss, content);
       if (!damaged.ok) return damaged;
       next = damaged.state;
       events.push(...damaged.events);
+      if (next.pendingDefeat || next.gameResult) break;
     } else {
       const recipient = next.players.find(candidate => candidate.id === playerId)!;
       const resource = effect.kind === "recover_health" ? "health" : "sanity";
@@ -1678,6 +1689,10 @@ function finishLocationEncounter(
   next.privateState.deckOrderById[`encounter:${deck}`] = [...order.slice(1), cardId];
   next.lastLocationEncounterCardId = cardId;
   next.currentLocationEncounterCardId = undefined;
+  if (next.pendingDefeat || next.gameResult) {
+    next.stateVersion = state.stateVersion;
+    return success(next, [{ type: "LOCATION_ENCOUNTER_RESOLVED", playerId, cardId, deck, dice, successes }, ...events]);
+  }
   const advanced = advanceEncounterInvestigator(next, playerId);
   if (!advanced.ok) return advanced;
   advanced.state.stateVersion = state.stateVersion;

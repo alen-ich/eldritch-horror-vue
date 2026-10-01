@@ -753,6 +753,34 @@ describe("authoritative game room", () => {
     assert.equal(room.state.phase, "encounter");
   });
 
+  it("pauses a lethal location encounter for defeat and resumes the encounter order", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "encounter";
+    state.ancientOneId = "cthulhu";
+    state.doom = 12;
+    state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
+    Object.assign(state.players[0]!, { investigatorId: "akachi_onyele", locationId: "space_2", health: 5, sanity: 1 });
+    Object.assign(state.players[1]!, { investigatorId: "trish_scarborough", locationId: "space_16", health: 7, sanity: 5 });
+    state.privateState.deckOrderById["encounter:general"] = ["encounter_general_07"];
+    internal.applyEngineState(state);
+    sendCommand(room, host, { type: "RESOLVE_LOCATION_ENCOUNTER", deck: "general" });
+    await room.waitForMessage(commandMessageType);
+    const after = internal.toEngineState();
+    assert.equal(after.activePlayerId, state.players[0]!.id);
+    assert.equal(after.doom, 11);
+    assert.equal(after.lastLocationEncounterCardId, "encounter_general_07");
+    assert.deepEqual(after.players[0]!.conditionIds, []);
+    assert.ok(after.pendingDefeat);
+    sendCommand(room, host, { type: "RESOLVE_DEFEAT", cause: "sanity", cityId: after.pendingDefeat.cityIds[0]!, leadPlayerId: state.players[1]!.id });
+    await room.waitForMessage(commandMessageType);
+    assert.equal(internal.toEngineState().activePlayerId, state.players[1]!.id);
+    assert.equal(internal.toEngineState().pendingDefeat, undefined);
+  });
+
   it("keeps a location encounter test pending for the owner and resumes it after a decision", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });

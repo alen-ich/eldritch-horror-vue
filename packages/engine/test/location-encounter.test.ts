@@ -13,14 +13,14 @@ const content: GameContent = {
   ],
   conditions: [{ id: "condition_leg_injury_01", kind: "leg_injury" }],
   clues: [{ id: "clue_arkham", locationId: "arkham" }, { id: "clue_london", locationId: "london" }],
-  map: { adjacentLocationIds: {}, routes: [], locationTypes: { space_2: "sea", arkham: "city", london: "city" } },
+  map: { adjacentLocationIds: { space_2: ["arkham", "london"] }, routes: [], locationTypes: { space_2: "sea", arkham: "city", london: "city" } },
   investigators: { akachi_onyele: { startingLocationId: "space_2", health: 5, sanity: 7, skills: { lore: 3, influence: 2, observation: 2, strength: 2, will: 4 }, startingAssetIds: [], startingClues: 0 } },
   assets: [], mysteryIdsByAncientOne: {}, mysteryTargetsById: {},
 };
 
 function state(): GameState {
   return {
-    stateVersion: 2, phase: "encounter", activePlayerId: "host", leadInvestigatorId: "host", turnNumber: 1,
+    stateVersion: 2, phase: "encounter", activePlayerId: "host", leadInvestigatorId: "host", turnNumber: 1, ancientOneId: "cthulhu", doom: 12,
     players: [
       { id: "host", investigatorId: "akachi_onyele", locationId: "space_2", health: 5, sanity: 7, maxHealth: 5, maxSanity: 7, assetIds: [], clues: 0, skillImprovements: {} },
       { id: "guest", investigatorId: "akachi_onyele", locationId: "space_2", health: 5, sanity: 7, assetIds: [], clues: 0, skillImprovements: {} },
@@ -86,7 +86,7 @@ describe("guarded location encounter", () => {
     if (finished.ok) expect(finished.state.players[0]?.clues).toBe(1);
   });
 
-  it("applies capped recovery and nonlethal loss, but does not silently advance through defeat", () => {
+  it("applies recovery and loss, then pauses lethal damage for defeat before advancing", () => {
     const before = state();
     before.privateState.deckOrderById["encounter:general"] = ["encounter_general_resource"];
     before.players[0]!.sanity = 6;
@@ -100,9 +100,30 @@ describe("guarded location encounter", () => {
     expect(failed).toMatchObject({ ok: true, state: { activePlayerId: "guest" } });
     if (failed.ok) expect(failed.state.players[0]?.sanity).toBe(5);
     before.players[0]!.sanity = 1;
-    expect(resolveLocationEncounter(before, "host", "general", content, createDeterministicEngineContext({ dice: [1, 1] })))
-      .toMatchObject({ ok: false, error: { code: "ENCOUNTER_UNSUPPORTED" } });
+    const defeated = resolveLocationEncounter(before, "host", "general", content, createDeterministicEngineContext({ dice: [1, 1] }));
+    expect(defeated).toMatchObject({ ok: true, state: { stateVersion: 3, activePlayerId: "host", doom: 11,
+      pendingDefeat: { playerId: "host", causes: ["sanity"], cityIds: ["arkham", "london"] }, lastLocationEncounterCardId: "encounter_general_resource" } });
+    if (!defeated.ok) return;
+    const resolved = executeCommand(JSON.parse(JSON.stringify(defeated.state)) as GameState, "host", { type: "RESOLVE_DEFEAT", cityId: "arkham", cause: "sanity", leadPlayerId: "guest" }, content);
+    expect(resolved).toMatchObject({ ok: true, state: { stateVersion: 4, activePlayerId: "guest", leadInvestigatorId: "guest", pendingDefeat: undefined } });
     expect(before.privateState.deckOrderById["encounter:general"]).toEqual(["encounter_general_resource"]);
+  });
+
+  it("combines simultaneous depletion, cancels later effects, and refuses unsupported awakening atomically", () => {
+    const before = state();
+    before.players[0]!.health = before.players[0]!.sanity = 1;
+    const lethalContent: GameContent = { ...content, locationEncounters: [{ id: "lethal", deck: "general", sections: { sea: { kind: "effects", effects: [
+      { kind: "health", amount: -1 }, { kind: "sanity", amount: -1 }, { kind: "clues", amount: 1 },
+    ] } } }] };
+    before.privateState.deckOrderById["encounter:general"] = ["lethal"];
+    const result = resolveLocationEncounter(before, "host", "general", lethalContent, createDeterministicEngineContext({}));
+    expect(result).toMatchObject({ ok: true, state: { pendingDefeat: { causes: ["health", "sanity"] } } });
+    if (result.ok) expect(result.state.players[0]?.clues).toBe(0);
+    before.doom = 1;
+    const snapshot = structuredClone(before);
+    expect(resolveLocationEncounter(before, "host", "general", lethalContent, createDeterministicEngineContext({})))
+      .toMatchObject({ ok: false, error: { code: "AWAKENING_UNSUPPORTED" } });
+    expect(before).toEqual(snapshot);
   });
 
   it("resolves General 4 city failure through the physical Condition supply", () => {
