@@ -48,7 +48,7 @@ const baseGameContent: GameContent = {
   locationEncounters: baseGameScannedLocationEncounters.map(({ id, deck }) => ({ id, deck, sections: baseGameLocationEncounterRules.find(card => card.id === id)?.sections })),
   gates: baseGameGates.map(({ id, omenSymbol, locationId }) => ({ id, omenSymbol, locationId })),
   clues: baseGameClues.map(({ id, locationId }) => ({ id, locationId })),
-  conditions: baseGameConditions.map(({ id, kind }) => ({ id, kind, backEffect: privateConditionBackEffectById[id] })),
+  conditions: baseGameConditions.map(({ id, kind, trait }) => ({ id, kind, trait, backEffect: privateConditionBackEffectById[id] })),
   monsters: baseGameMonsters.map(({ id, type, count, horrorCheck, damageCheck, toughness, specialEffect, spawnEffect, reckoningEffect }) => ({
     id, type, count, horrorCheck, damageCheck, toughness, specialEffect, reckoningEffect,
     spawnEffect: typedMonsterSpawnEffect(id, Boolean(spawnEffect)),
@@ -218,7 +218,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
   private toEngineState(): GameState {
     const monsters = JSON.parse(this.state.monsters) as NonNullable<GameState["monsters"]>;
     return {
-      ...JSON.parse(this.state.investigatorLifecycle) as Pick<GameState, "pendingDefeat" | "pendingMythosDamage" | "pendingHeatWave" | "pendingTideOfDespair" | "pendingUnexpectedBetrayal" | "defeatedInvestigators" | "replacementWindow" | "awakened">,
+      ...JSON.parse(this.state.investigatorLifecycle) as Pick<GameState, "pendingDefeat" | "pendingMythosDamage" | "pendingFromBadToWorse" | "pendingHeatWave" | "pendingTideOfDespair" | "pendingUnexpectedBetrayal" | "defeatedInvestigators" | "replacementWindow" | "awakened">,
       doom: this.state.doom,
       omen: this.state.omen,
       greenOmenTokens: this.state.greenOmenTokens,
@@ -284,7 +284,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
 
   private applyEngineState(engineState: GameState): void {
     if (engineState.phase !== "lobby") this.autoDispose = false;
-    this.state.investigatorLifecycle = JSON.stringify({ pendingDefeat: engineState.pendingDefeat, pendingMythosDamage: engineState.pendingMythosDamage, pendingHeatWave: engineState.pendingHeatWave, pendingTideOfDespair: engineState.pendingTideOfDespair, pendingUnexpectedBetrayal: engineState.pendingUnexpectedBetrayal, defeatedInvestigators: engineState.defeatedInvestigators, replacementWindow: engineState.replacementWindow, awakened: engineState.awakened });
+    this.state.investigatorLifecycle = JSON.stringify({ pendingDefeat: engineState.pendingDefeat, pendingMythosDamage: engineState.pendingMythosDamage, pendingFromBadToWorse: engineState.pendingFromBadToWorse, pendingHeatWave: engineState.pendingHeatWave, pendingTideOfDespair: engineState.pendingTideOfDespair, pendingUnexpectedBetrayal: engineState.pendingUnexpectedBetrayal, defeatedInvestigators: engineState.defeatedInvestigators, replacementWindow: engineState.replacementWindow, awakened: engineState.awakened });
     this.state.doom = engineState.doom ?? 0;
     this.state.omen = engineState.omen ?? 0;
     this.state.greenOmenTokens = engineState.greenOmenTokens ?? 0;

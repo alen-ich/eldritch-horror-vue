@@ -495,6 +495,41 @@ describe("authoritative game room", () => {
     assert.equal(resolved.replacementWindow, true);
   });
 
+  it("persists From Bad to Worse damage and physical Clue discards through defeat", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "mythos";
+    state.leadInvestigatorId = state.activePlayerId = state.players[0]!.id;
+    state.ancientOneId = "azathoth";
+    state.doom = 8;
+    state.currentMythosCardId = "mythos_yellow_17";
+    state.currentMythosIconIndex = 3;
+    state.players[0] = { ...state.players[0]!, investigatorId: "jim_culver", locationId: "arkham", health: 1, sanity: 4, clues: 2, conditionIds: ["condition_leg_injury_01", "condition_debt_01"] };
+    state.players[1] = { ...state.players[1]!, investigatorId: "trish_scarborough", locationId: "london", health: 4, sanity: 4, clues: 0, conditionIds: ["condition_paranoia_01"] };
+    state.privateState.tokenPoolById.clues = ["clue_unused"];
+    state.privateState.tokenPoolById[`held_clues:${state.players[0]!.id}`] = ["clue_one", "clue_two"];
+    state.privateState.tokenPoolById[`held_clues:${state.players[1]!.id}`] = [];
+    internal.applyEngineState(state);
+    sendCommand(room, host, { type: "ADVANCE_MYTHOS" });
+    await room.waitForMessage(commandMessageType);
+    const paused = internal.toEngineState();
+    assert.equal(paused.pendingDefeat?.playerId, state.players[0]!.id);
+    assert.equal(paused.players[0]?.clues, 1);
+    assert.deepEqual(paused.privateState.tokenPoolById.clue_discard, ["clue_one"]);
+    assert.deepEqual(paused.pendingFromBadToWorse?.remainingPlayerIds, [state.players[1]!.id]);
+    sendCommand(room, host, { type: "RESOLVE_DEFEAT", cityId: "arkham", cause: "health", leadPlayerId: state.players[1]!.id });
+    await room.waitForMessage(commandMessageType);
+    const resolved = internal.toEngineState();
+    assert.deepEqual(resolved.privateState.tokenPoolById["defeated_clues:jim_culver"], ["clue_two"]);
+    assert.equal(resolved.players[1]?.sanity, 3);
+    assert.equal(resolved.replacementWindow, true);
+    assert.equal(room.state.currentMythosCardId, "");
+    assert.equal(JSON.stringify(room.state).includes("clue_two"), false);
+  });
+
   it("restores the Lead's private Omen of Good Fortune choice after reconnect", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });

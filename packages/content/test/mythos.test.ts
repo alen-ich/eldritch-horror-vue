@@ -36,7 +36,8 @@ describe("base-game Mythos cards", () => {
     expect(baseGameMythosCards.find(card => card.id === "mythos_green_16")?.effect).toEqual({ type: "lead_discard_monster_lose_toughness_health" });
     expect(baseGameMythosCards.find(card => card.id === "mythos_yellow_16")?.effect).toEqual({ type: "each_investigator_tide_of_despair" });
     expect(baseGameMythosCards.find(card => card.id === "mythos_green_11")?.effect).toEqual({ type: "each_investigator_with_ally_betrayed" });
-    expect(baseGameMythosCards.filter(card => card.effectModelStatus === "typed")).toHaveLength(16);
+    expect(baseGameMythosCards.find(card => card.id === "mythos_yellow_17")?.effect).toEqual({ type: "each_investigator_from_bad_to_worse" });
+    expect(baseGameMythosCards.filter(card => card.effectModelStatus === "typed")).toHaveLength(17);
   });
 
   it("records the printed left-to-right icon sequence and blue-card token operands", () => {

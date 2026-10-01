@@ -163,6 +163,7 @@ export type GameEvent =
   | { type: "DOOM_ADVANCED"; amount: number; newDoom: number }
   | { type: "CLUE_SPAWNED"; clueId: string; locationId: LocationId }
   | { type: "CLUE_GAINED"; playerId: string; amount: number }
+  | { type: "CLUES_DISCARDED"; playerId: string; amount: number }
   | { type: "CLUE_COLLECTED"; clueId: string; playerId: string; locationId: LocationId }
   | { type: "OMEN_ADVANCED"; position: number; symbol: "comet" | "constellation" | "eclipse"; doomAdvance: number }
   | { type: "OMEN_MOVED"; position: number; symbol: "comet" | "constellation" | "eclipse"; direction: "counterclockwise" | "chosen"; doomAdvance: number }

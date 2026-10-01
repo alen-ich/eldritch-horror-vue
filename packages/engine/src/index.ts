@@ -147,6 +147,7 @@ export interface GameState {
   pendingHeatWave?: { cardId: string; remainingPlayerIds: string[] };
   pendingTideOfDespair?: { cardId: string; remainingPlayerIds: string[] };
   pendingUnexpectedBetrayal?: { cardId: string; remainingPlayerIds: string[] };
+  pendingFromBadToWorse?: { cardId: string; remainingPlayerIds: string[] };
   replacementWindow?: boolean;
   awakened?: boolean;
   doom?: number;
@@ -223,10 +224,10 @@ export interface GameContent {
   locationEncounters?: readonly { id: string; deck: LocationEncounterDeckId; sections?: Readonly<Record<string, unknown>> }[];
   gates?: readonly { id: string; omenSymbol: "comet" | "constellation" | "eclipse"; locationId: LocationId }[];
   clues?: readonly { id: string; locationId: LocationId }[];
-  conditions?: readonly { id: string; kind: string; backEffect?: ConditionBackEffect }[];
+  conditions?: readonly { id: string; kind: string; trait?: "deal" | "injury" | "madness" | "restriction" | "bane" | "boon"; backEffect?: ConditionBackEffect }[];
   monsters?: readonly MonsterCombatDefinition[];
   ancientOnes?: Readonly<Partial<Record<AncientOneId, AncientSetup>>>;
-  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } | { type: "each_investigator_choose_world_fights_back" } | { type: "lead_gain_ally_asset" } | { type: "each_investigator_trade_debt_for_condition" } | { type: "discard_matching_gates_and_advance_doom" } | { type: "doom_two_unless_lead_gains_dark_pact" } | { type: "spawn_monster_on_each_cultist_space" } | { type: "roll_each_investigator_for_bermuda_triangle" } | { type: "group_discard_gate_then_advance_doom_if_nonmatching" } | { type: "torn_asunder" } | { type: "each_investigator_choose_heat_wave" } | { type: "lead_discard_monster_lose_toughness_health" } | { type: "each_investigator_tide_of_despair" } | { type: "each_investigator_with_ally_betrayed" } }[];
+  mythosCards?: readonly { id: string; color: MythosColor; icons?: readonly { type: string }[]; effect?: { type: "lead_gain_condition"; kind: "blessed" } | { type: "move_omen_counterclockwise_then_advance_doom_for_gates" } | { type: "lead_choose_omen_without_doom" } | { type: "each_investigator_choose_world_fights_back" } | { type: "lead_gain_ally_asset" } | { type: "each_investigator_trade_debt_for_condition" } | { type: "discard_matching_gates_and_advance_doom" } | { type: "doom_two_unless_lead_gains_dark_pact" } | { type: "spawn_monster_on_each_cultist_space" } | { type: "roll_each_investigator_for_bermuda_triangle" } | { type: "group_discard_gate_then_advance_doom_if_nonmatching" } | { type: "torn_asunder" } | { type: "each_investigator_choose_heat_wave" } | { type: "lead_discard_monster_lose_toughness_health" } | { type: "each_investigator_tide_of_despair" } | { type: "each_investigator_with_ally_betrayed" } | { type: "each_investigator_from_bad_to_worse" } }[];
   referenceCards?: readonly { playerCount: number; spawnClues: number; monsterSurge?: number; spawnGates?: number }[];
   map: GameMap;
   investigators: Readonly<Partial<Record<InvestigatorId, InvestigatorSetup>>>;
@@ -1171,6 +1172,7 @@ export function advanceMythosIcon(state: GameState, content: GameContent, contex
       next.pendingDecision = unexpectedBetrayalDecision(next, affected[0]!, content, context);
       return success(next, []);
     }
+    if (card.effect.type === "each_investigator_from_bad_to_worse") return resolveFromBadToWorse(state, content);
     const resolved = card.effect.type === "lead_gain_condition"
       ? gainCondition(state, state.leadInvestigatorId, card.effect.kind, content, context)
       : resolveCounterclockwiseOmenCard(state, content);
@@ -1317,6 +1319,72 @@ function continueMythosDamage(state: GameState, content: GameContent): CommandRe
     if (next.pendingDefeat || next.gameResult) return success(next, events);
   }
   next.pendingMythosDamage = undefined;
+  return finishMythosEvent(state, next, events, content);
+}
+
+function fromBadToWorseLosses(player: EnginePlayer, content: GameContent): { health: number; sanity: number; clues: number } | undefined {
+  const conditions = (player.conditionIds ?? []).map(id => content.conditions?.find(card => card.id === id));
+  if (conditions.some(condition => !condition?.trait)) return undefined;
+  return {
+    health: conditions.filter(condition => condition?.trait === "injury").length,
+    sanity: conditions.filter(condition => condition?.trait === "madness").length,
+    clues: conditions.filter(condition => condition?.trait === "deal").length,
+  };
+}
+
+function resolveFromBadToWorse(state: GameState, content: GameContent): CommandResult {
+  if (state.doom === undefined || !state.ancientOneId) return failure("OMEN_CONTENT_MISSING", "Doom or Ancient One setup is missing.");
+  const ordered = mythosInvestigatorOrder(state);
+  const affected = ordered.map(id => state.players.find(player => player.id === id)!);
+  if (affected.some(player => !player.investigatorId || !player.locationId || player.health === undefined || player.sanity === undefined)) {
+    return failure("INVESTIGATOR_CONTENT_MISSING", "An affected investigator is missing Health or location setup.");
+  }
+  const losses = affected.map(player => fromBadToWorseLosses(player, content));
+  if (losses.some(loss => !loss)) return failure("CONDITION_CONTENT_MISSING", "A held Condition lacks a verified trait.");
+  if (state.privateState.tokenPoolById.clues && affected.some(player => (state.privateState.tokenPoolById[heldClueKey(player.id)]?.length ?? 0) !== player.clues)) {
+    return failure("CLUE_CONTENT_MISSING", "An investigator's physical Clues are unavailable.");
+  }
+  if (state.ancientOneId !== "azathoth" && affected.filter((player, index) =>
+    player.health! <= losses[index]!.health || player.sanity! <= losses[index]!.sanity).length >= state.doom) {
+    return failure("AWAKENING_UNSUPPORTED", "Ancient One awakening is not implemented yet.");
+  }
+  const next = structuredClone(state);
+  next.pendingFromBadToWorse = { cardId: state.currentMythosCardId!, remainingPlayerIds: ordered };
+  return continueFromBadToWorse(next, content);
+}
+
+function continueFromBadToWorse(state: GameState, content: GameContent): CommandResult {
+  const pending = state.pendingFromBadToWorse;
+  const card = content.mythosCards?.find(candidate => candidate.id === state.currentMythosCardId);
+  if (state.phase !== "mythos" || state.pendingDefeat || !pending || pending.cardId !== state.currentMythosCardId
+    || card?.effect?.type !== "each_investigator_from_bad_to_worse" || state.currentMythosIconIndex !== card.icons?.length) {
+    return failure("MYTHOS_CONTENT_MISSING", "The remaining losses are no longer attached to From Bad to Worse.");
+  }
+  let next = structuredClone(state);
+  const events: GameEvent[] = [];
+  while (next.pendingFromBadToWorse?.remainingPlayerIds.length) {
+    const playerId = next.pendingFromBadToWorse.remainingPlayerIds.shift()!;
+    const player = next.players.find(candidate => candidate.id === playerId);
+    if (!player || player.defeated || player.eliminated) continue;
+    const losses = fromBadToWorseLosses(player, content);
+    if (!losses) return failure("CONDITION_CONTENT_MISSING", "A held Condition lacks a verified trait.");
+    if (next.ancientOneId !== "azathoth" && (player.health! <= losses.health || player.sanity! <= losses.sanity) && (next.doom ?? 0) <= 1) {
+      return failure("AWAKENING_UNSUPPORTED", "Ancient One awakening is not implemented yet.");
+    }
+    const damaged = damageInvestigator(next, playerId, losses.health, losses.sanity, content);
+    if (!damaged.ok) return damaged;
+    next = damaged.state;
+    next.stateVersion = state.stateVersion;
+    events.push(...damaged.events);
+    const discarded = Math.min(player.clues, losses.clues);
+    if (discarded) {
+      if (!discardHeldClues(next, playerId, discarded)) return failure("CLUE_CONTENT_MISSING", "The physical Clues to discard are unavailable.");
+      next.players.find(candidate => candidate.id === playerId)!.clues -= discarded;
+      events.push({ type: "CLUES_DISCARDED", playerId, amount: discarded });
+    }
+    if (next.pendingDefeat || next.gameResult) return success(next, events);
+  }
+  next.pendingFromBadToWorse = undefined;
   return finishMythosEvent(state, next, events, content);
 }
 
@@ -1992,6 +2060,12 @@ export function executeCommand(
     if (next.pendingMythosDamage) {
       next.stateVersion = state.stateVersion;
       const continued = continueMythosDamage(next, content);
+      if (!continued.ok) return continued;
+      return { ...continued, events: [...events, ...continued.events] };
+    }
+    if (next.pendingFromBadToWorse) {
+      next.stateVersion = state.stateVersion;
+      const continued = continueFromBadToWorse(next, content);
       if (!continued.ok) return continued;
       return { ...continued, events: [...events, ...continued.events] };
     }

@@ -95,6 +95,88 @@ describe("guarded yellow Reckoning", () => {
 });
 
 describe("typed Mythos card text", () => {
+  const badToWorseContent: GameContent = { ...content,
+    investigators: { jim_culver: { startingLocationId: "arkham", health: 5, sanity: 4, skills: { lore: 3, influence: 3, observation: 2, strength: 2, will: 3 }, startingAssetIds: [], startingClues: 0 } },
+    conditions: [
+      { id: "condition_leg_injury_01", kind: "leg_injury", trait: "injury" },
+      { id: "condition_paranoia_01", kind: "paranoia", trait: "madness" },
+      { id: "condition_debt_01", kind: "debt", trait: "deal" },
+    ],
+    mythosCards: [{ id: "mythos_yellow_17", color: "yellow", icons: [{ type: "advance_omen" }, { type: "resolve_reckoning" }, { type: "spawn_gates" }], effect: { type: "each_investigator_from_bad_to_worse" } }],
+  };
+  function badToWorseReady(): GameState {
+    const before = state();
+    before.currentMythosCardId = "mythos_yellow_17";
+    before.currentMythosIconIndex = 3;
+    before.doom = 8;
+    before.players[1] = { ...before.players[1]!, investigatorId: "jim_culver", locationId: "arkham", health: 5, sanity: 4, clues: 2, conditionIds: ["condition_leg_injury_01", "condition_paranoia_01", "condition_debt_01"] };
+    before.players[0] = { ...before.players[0]!, investigatorId: "jim_culver", locationId: "arkham", health: 5, sanity: 4, clues: 0, conditionIds: [] };
+    before.privateState.tokenPoolById.clues = ["clue_unused"];
+    before.privateState.tokenPoolById["held_clues:guest"] = ["clue_one", "clue_two"];
+    before.privateState.tokenPoolById["held_clues:host"] = [];
+    return before;
+  }
+
+  it("applies From Bad to Worse by printed Condition traits and discards a physical Clue", () => {
+    const before = badToWorseReady();
+    const resolved = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, badToWorseContent, createDeterministicEngineContext({}));
+    if (!resolved.ok) throw new Error(resolved.error.message);
+    expect(resolved.state.players[1]).toMatchObject({ health: 4, sanity: 3, clues: 1 });
+    expect(resolved.state.privateState.tokenPoolById["held_clues:guest"]).toEqual(["clue_two"]);
+    expect(resolved.state.privateState.tokenPoolById.clue_discard).toEqual(["clue_one"]);
+    expect(resolved.events).toContainEqual({ type: "CLUES_DISCARDED", playerId: "guest", amount: 1 });
+    expect(resolved.state.replacementWindow).toBe(true);
+    expect(before.players[1]?.clues).toBe(2);
+  });
+
+  it("resumes From Bad to Worse after defeat and sets aside only remaining Clues", () => {
+    const before = badToWorseReady();
+    before.players[1]!.health = 1;
+    before.players[0]!.conditionIds = ["condition_paranoia_01"];
+    const first = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, badToWorseContent, createDeterministicEngineContext({}));
+    if (!first.ok) throw new Error(first.error.message);
+    expect(first.state.pendingDefeat?.playerId).toBe("guest");
+    expect(first.state.players[1]?.clues).toBe(1);
+    expect(first.state.pendingFromBadToWorse?.remainingPlayerIds).toEqual(["host"]);
+    const continued = executeCommand(first.state, "guest", { type: "RESOLVE_DEFEAT", cityId: "arkham", cause: "health", leadPlayerId: "host" }, badToWorseContent);
+    if (!continued.ok) throw new Error(continued.error.message);
+    expect(continued.state.privateState.tokenPoolById["defeated_clues:jim_culver"]).toEqual(["clue_two"]);
+    expect(continued.state.players[0]?.sanity).toBe(3);
+    expect(continued.state.pendingFromBadToWorse).toBeUndefined();
+    expect(continued.state.replacementWindow).toBe(true);
+  });
+
+  it("rejects missing trait or physical Clue metadata before applying any loss", () => {
+    const before = badToWorseReady();
+    const incomplete: GameContent = { ...badToWorseContent, conditions: badToWorseContent.conditions?.map(condition => condition.kind === "debt" ? { id: condition.id, kind: condition.kind } : condition) };
+    expect(executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, incomplete, createDeterministicEngineContext({})))
+      .toMatchObject({ ok: false, error: { code: "CONDITION_CONTENT_MISSING" } });
+    const missingClue = badToWorseReady();
+    missingClue.privateState.tokenPoolById["held_clues:guest"] = ["clue_one"];
+    expect(executeCommand(missingClue, "guest", { type: "ADVANCE_MYTHOS" }, badToWorseContent, createDeterministicEngineContext({})))
+      .toMatchObject({ ok: false, error: { code: "CLUE_CONTENT_MISSING" } });
+    expect(before.players[1]?.health).toBe(5);
+    expect(missingClue.players[1]?.clues).toBe(2);
+  });
+
+  it("resolves investigators with no Conditions and no physical Clue holding", () => {
+    const before = badToWorseReady();
+    before.players[1]!.conditionIds = [];
+    before.players[1]!.clues = 0;
+    delete before.privateState.tokenPoolById["held_clues:guest"];
+    const resolved = executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, badToWorseContent, createDeterministicEngineContext({}));
+    expect(resolved).toMatchObject({ ok: true, state: { replacementWindow: true } });
+  });
+
+  it("guards From Bad to Worse against unsupported awakening atomically", () => {
+    const before = badToWorseReady();
+    before.players[1]!.health = 1;
+    before.doom = 1;
+    before.ancientOneId = "cthulhu";
+    expect(executeCommand(before, "guest", { type: "ADVANCE_MYTHOS" }, badToWorseContent, createDeterministicEngineContext({})))
+      .toMatchObject({ ok: false, error: { code: "AWAKENING_UNSUPPORTED" } });
+    expect(before.privateState.tokenPoolById["held_clues:guest"]).toEqual(["clue_one", "clue_two"]);
+  });
   const betrayalContent: GameContent = { ...content,
     investigators: { jim_culver: { startingLocationId: "arkham", health: 5, sanity: 4, skills: { lore: 3, influence: 3, observation: 2, strength: 2, will: 3 }, startingAssetIds: [], startingClues: 0 } },
     assets: [
