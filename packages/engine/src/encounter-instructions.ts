@@ -1,6 +1,7 @@
 import { skillIds, type SkillId } from "@eldritch/protocol";
 
 export type LocationEncounterEffect =
+  | { kind: "ambush_horror"; damage: number }
   | { kind: "relocate_encountered_clue"; markerId: string; destination: "nearest_sea"; locationId?: string }
   | { kind: "doom_retreat"; amount: 1 }
   | { kind: "discard_item_assets"; amount: 1 | 2 }
@@ -18,6 +19,8 @@ export type LocationEncounterEffect =
   | { kind: "improve"; skill: SkillId | "chosen"; amount?: 1 | 2 };
 
 export type LocationEncounterInstruction =
+  | { kind: "ambush"; monsterId: "monster_deep_one"; defeated: LocationEncounterInstruction; notDefeated: LocationEncounterInstruction }
+  | { kind: "ambush_result"; monsterId: "monster_deep_one"; damage: number; toughness: number; defeated: LocationEncounterInstruction; notDefeated: LocationEncounterInstruction }
   | { kind: "effects"; effects: LocationEncounterEffect[] }
   | { kind: "sequence"; steps: LocationEncounterInstruction[] }
   | { kind: "choice"; options: LocationEncounterInstruction[] }
@@ -29,6 +32,11 @@ const isSkill = (value: unknown): value is SkillId => skillIds.some(skill => ski
 /** Accept only modeled mechanical nodes. No free-form card text is interpreted. */
 export function parseLocationEncounterInstruction(value: unknown, depth = 0): LocationEncounterInstruction | undefined {
   if (depth > 32 || !value || typeof value !== "object" || !("kind" in value)) return undefined;
+  if (value.kind === "ambush" && "monsterId" in value && value.monsterId === "monster_deep_one" && "defeated" in value && "notDefeated" in value) {
+    const defeated = parseLocationEncounterInstruction(value.defeated, depth + 1);
+    const notDefeated = parseLocationEncounterInstruction(value.notDefeated, depth + 1);
+    return defeated && notDefeated ? { kind: "ambush", monsterId: value.monsterId, defeated, notDefeated } : undefined;
+  }
   if (value.kind === "effects" && "effects" in value && Array.isArray(value.effects)) {
     const effects: LocationEncounterEffect[] = [];
     for (const raw of value.effects as unknown[]) {
@@ -87,10 +95,12 @@ export function parseLocationEncounterInstruction(value: unknown, depth = 0): Lo
 }
 
 export function encounterInstructionLabel(instruction: LocationEncounterInstruction): string {
+  if (instruction.kind === "ambush" || instruction.kind === "ambush_result") return "Resolve a Deep One ambush";
   if (instruction.kind === "test") return `Test ${instruction.skill}${instruction.modifier ? ` (${instruction.modifier > 0 ? "+" : ""}${instruction.modifier})` : ""}`;
   if (instruction.kind === "sequence") return instruction.steps.map(encounterInstructionLabel).join("; then ");
   if (instruction.kind !== "effects") return "Resolve the printed encounter choice";
   return instruction.effects.map(effect => {
+    if (effect.kind === "ambush_horror") return "Resolve ambush Horror loss";
     if (effect.kind === "relocate_encountered_clue") return "Move this Clue to the nearest Sea space";
     if (effect.kind === "doom_retreat") return "Retreat Doom by 1";
     if (effect.kind === "discard_item_assets") return `Discard ${effect.amount} Item Assets`;

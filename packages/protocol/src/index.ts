@@ -168,6 +168,7 @@ export type GameEvent =
   | { type: "COMBAT_RESOLVED"; playerId: string; monsterInstanceId: string; horrorDice: number[]; strengthDice: number[]; sanityLost: number; healthLost: number; monsterHealthLost: number }
   | { type: "MONSTER_DEFEATED"; monsterInstanceId: string; monsterId: string }
   | { type: "DOOM_RETREATED"; amount: number; doom: number }
+  | { type: "NAMED_MONSTER_AMBUSH_RESOLVED"; playerId: string; monsterId: string; successes: number; healthLost: number; defeated: boolean }
   | { type: "MONSTER_DISCARDED"; monsterInstanceId: string; monsterId: string }
   | { type: "MONSTER_SPAWNED"; monsterInstanceId: string; monsterId: string; locationId: LocationId; spawnLocationId: LocationId }
   | { type: "GATE_OPENED"; gateId: string; locationId: LocationId }

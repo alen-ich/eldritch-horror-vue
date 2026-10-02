@@ -24,6 +24,11 @@ export function bindResearchInstruction(value: unknown, markerId: string, depth 
     const fail = bindResearchInstruction(value.fail, markerId, depth + 1);
     return pass && fail ? parseLocationEncounterInstruction({ ...value, pass, fail }) : undefined;
   }
+  if (value.kind === "ambush" && "monsterId" in value && value.monsterId === "monster_deep_one" && "defeated" in value && "notDefeated" in value) {
+    const defeated = bindResearchInstruction(value.defeated, markerId, depth + 1);
+    const notDefeated = bindResearchInstruction(value.notDefeated, markerId, depth + 1);
+    return defeated && notDefeated ? { kind: "ambush", monsterId: value.monsterId, defeated, notDefeated } : undefined;
+  }
   if (value.kind === "optional" && "cost" in value && "reward" in value) {
     if ("decline" in value) return undefined; // Never drop an unimplemented refusal consequence.
     const reward = bindResearchInstruction(value.reward, markerId, depth + 1);

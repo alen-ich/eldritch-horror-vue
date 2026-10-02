@@ -1688,6 +1688,15 @@ function applyLocationEncounterEffects(
   for (let index = 0; index < effects.length; index++) {
     const effect = effects[index]!;
     if ("amount" in effect && effect.amount === 0) continue;
+    if (effect.kind === "ambush_horror") {
+      const loss = Math.max(0, effect.damage - (next.pendingLocationEncounter?.successes ?? 0));
+      if (loss >= (player.sanity ?? 0) && (next.doom ?? 0) <= 1 && next.ancientOneId !== "azathoth") return failure("AWAKENING_UNSUPPORTED", "Ambush defeat requires unsupported awakening.");
+      const damaged = damageInvestigator(next, playerId, 0, loss, content);
+      if (!damaged.ok) return damaged;
+      next = damaged.state; events.push(...damaged.events);
+      if (next.pendingDefeat || next.gameResult) break;
+      continue;
+    }
     if (effect.kind === "doom_retreat") {
       if (!Number.isSafeInteger(next.doom) || next.doom! < 0 || next.doom! > 20) return failure("ENCOUNTER_CONTENT_MISSING", "The Doom track is invalid.");
       if (next.doom! < 20) { next.doom = next.doom! + 1; events.push({ type: "DOOM_RETREATED", amount: 1, doom: next.doom }); }
@@ -1866,6 +1875,28 @@ function continueLocationEncounter(state: GameState, content: GameContent, conte
     const player = next.players.find(candidate => candidate.id === pending.playerId);
     if (!player) return failure("PLAYER_NOT_FOUND", "The encounter investigator is missing.");
     if (player.defeated || player.eliminated || next.gameResult) { pending.queue = []; break; }
+    if (node.kind === "ambush") {
+      const monster = content.monsters?.find(card => card.id === node.monsterId);
+      if (!monster || monster.type !== "normal" || monster.specialEffect || !monster.horrorCheck || monster.horrorCheck === "ancient_one" || !monster.damageCheck || monster.damageCheck === "ancient_one" || monster.toughness === "ancient_one") return failure("MONSTER_CONTENT_MISSING", "The named Monster's combat statistics are unavailable.");
+      if (player.assetIds.length || player.artifactIds?.length) return failure("MONSTER_EFFECT_UNSUPPORTED", "Ambush possession bonuses are not supported.");
+      const result: LocationEncounterInstruction = { kind: "ambush_result", monsterId: node.monsterId, damage: monster.damageCheck.damage, toughness: monster.toughness.base + monster.toughness.perInvestigator * next.players.filter(player => !player.defeated && !player.eliminated).length, defeated: node.defeated, notDefeated: node.notDefeated };
+      const horror: LocationEncounterInstruction = { kind: "effects", effects: [{ kind: "ambush_horror", damage: monster.horrorCheck.damage }] };
+      pending.queue.splice(0, 1,
+        { kind: "test", skill: "will", modifier: monster.horrorCheck.modifier, pass: horror, fail: horror },
+        { kind: "test", skill: "strength", modifier: monster.damageCheck.modifier, pass: result, fail: result });
+      continue;
+    }
+    if (node.kind === "ambush_result") {
+      const loss = Math.max(0, node.damage - pending.successes);
+      if (loss >= (player.health ?? 0) && (next.doom ?? 0) <= 1 && next.ancientOneId !== "azathoth") return failure("AWAKENING_UNSUPPORTED", "Ambush defeat requires unsupported awakening.");
+      const defeated = pending.successes >= node.toughness;
+      events.push({ type: "NAMED_MONSTER_AMBUSH_RESOLVED", playerId: player.id, monsterId: node.monsterId, successes: pending.successes, healthLost: Math.min(player.health ?? 0, loss), defeated });
+      pending.queue.splice(0, 1, defeated ? node.defeated : node.notDefeated);
+      const damaged = damageInvestigator(next, player.id, loss, 0, content);
+      if (!damaged.ok) return damaged;
+      next = damaged.state; events.push(...damaged.events);
+      continue;
+    }
     if (node.kind === "sequence") { pending.queue.splice(0, 1, ...node.steps); continue; }
     if (node.kind === "choice") {
       createEncounterChoice(next, context, "Choose the printed encounter outcome.", node.options.map((option, index) => [`option-${index}`, encounterInstructionLabel(option)]));
@@ -1983,6 +2014,15 @@ function continueLocationEncounter(state: GameState, content: GameContent, conte
 }
 
 /** Authoritative Research draw; marker identity and outcomes remain server-owned. */
+function encounterAmbushes(instruction: LocationEncounterInstruction): Extract<LocationEncounterInstruction, { kind: "ambush" }>[] {
+  if (instruction.kind === "ambush") return [instruction, ...encounterAmbushes(instruction.defeated), ...encounterAmbushes(instruction.notDefeated)];
+  if (instruction.kind === "sequence") return instruction.steps.flatMap(encounterAmbushes);
+  if (instruction.kind === "choice") return instruction.options.flatMap(encounterAmbushes);
+  if (instruction.kind === "test") return [...encounterAmbushes(instruction.pass), ...encounterAmbushes(instruction.fail)];
+  if (instruction.kind === "optional") return encounterAmbushes(instruction.reward);
+  return [];
+}
+
 export function resolveResearchEncounter(state: GameState, playerId: string, markerId: string, content: GameContent, context: EngineContext): CommandResult {
   if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
   if (!legalLocationEncounterDecks(state, playerId, content).length || state.pendingLocationEncounter) return failure("WRONG_PHASE", "This investigator cannot resolve Research now.");
@@ -2001,6 +2041,12 @@ export function resolveResearchEncounter(state: GameState, playerId: string, mar
   const section = content.map.locationTypes[player.locationId!];
   const instruction = bindResearchInstruction(card?.sections[section ?? ""], markerId);
   if (!instruction || player.assetIds.length) return failure("ENCOUNTER_UNSUPPORTED", "This Research section needs unsupported effects or possession bonuses.");
+  const ambushes = encounterAmbushes(instruction);
+  if (ambushes.length && player.artifactIds?.length) return failure("MONSTER_EFFECT_UNSUPPORTED", "Ambush Artifact bonuses are not implemented.");
+  for (const ambush of ambushes) {
+    const definition = content.monsters?.find(monster => monster.id === ambush.monsterId);
+    if (!definition || definition.type !== "normal" || definition.specialEffect || !definition.horrorCheck || definition.horrorCheck === "ancient_one" || !definition.damageCheck || definition.damageCheck === "ancient_one" || definition.toughness === "ancient_one") return failure("MONSTER_CONTENT_MISSING", "The named Monster's statistics are missing or unsupported.");
+  }
   const next = structuredClone(state);
   next.currentLocationEncounterCardId = cardId;
   next.pendingLocationEncounter = { playerId, cardId, deck, queue: [instruction], dice: [], successes: 0 };
