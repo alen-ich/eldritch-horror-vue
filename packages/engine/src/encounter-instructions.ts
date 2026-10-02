@@ -1,6 +1,9 @@
 import { skillIds, type SkillId } from "@eldritch/protocol";
 
 export type LocationEncounterEffect =
+  | { kind: "relocate_encountered_clue"; markerId: string; destination: "nearest_sea"; locationId?: string }
+  | { kind: "doom_retreat"; amount: 1 }
+  | { kind: "discard_item_assets"; amount: 1 | 2 }
   | { kind: "artifact"; id: "artifact_ttka_halot" }
   | { kind: "return_solved_mystery"; selection: "random"; shuffle: true }
   | { kind: "omen_move"; destination: "chosen"; advanceDoom: false; position?: number }
@@ -30,6 +33,9 @@ export function parseLocationEncounterInstruction(value: unknown, depth = 0): Lo
     const effects: LocationEncounterEffect[] = [];
     for (const raw of value.effects as unknown[]) {
       if (!raw || typeof raw !== "object" || !("kind" in raw)) return undefined;
+      if (raw.kind === "relocate_encountered_clue" && "markerId" in raw && typeof raw.markerId === "string" && "destination" in raw && raw.destination === "nearest_sea") { effects.push({ kind: raw.kind, markerId: raw.markerId, destination: raw.destination }); continue; }
+      if (raw.kind === "doom_retreat" && "amount" in raw && raw.amount === 1) { effects.push({ kind: raw.kind, amount: 1 }); continue; }
+      if (raw.kind === "discard_item_assets" && "amount" in raw && (raw.amount === 1 || raw.amount === 2)) { effects.push({ kind: raw.kind, amount: raw.amount }); continue; }
       if (raw.kind === "artifact") {
         if (!("id" in raw) || raw.id !== "artifact_ttka_halot") return undefined;
         effects.push({ kind: "artifact", id: raw.id });
@@ -85,6 +91,9 @@ export function encounterInstructionLabel(instruction: LocationEncounterInstruct
   if (instruction.kind === "sequence") return instruction.steps.map(encounterInstructionLabel).join("; then ");
   if (instruction.kind !== "effects") return "Resolve the printed encounter choice";
   return instruction.effects.map(effect => {
+    if (effect.kind === "relocate_encountered_clue") return "Move this Clue to the nearest Sea space";
+    if (effect.kind === "doom_retreat") return "Retreat Doom by 1";
+    if (effect.kind === "discard_item_assets") return `Discard ${effect.amount} Item Assets`;
     if (effect.kind === "artifact") return "Gain T'tka Halot";
     if (effect.kind === "return_solved_mystery") return "Shuffle a random solved Mystery back into its deck";
     if (effect.kind === "omen_move") return "Move Omen without advancing Doom";

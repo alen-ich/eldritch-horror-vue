@@ -1688,6 +1688,22 @@ function applyLocationEncounterEffects(
   for (let index = 0; index < effects.length; index++) {
     const effect = effects[index]!;
     if ("amount" in effect && effect.amount === 0) continue;
+    if (effect.kind === "doom_retreat") {
+      if (!Number.isSafeInteger(next.doom) || next.doom! < 0 || next.doom! > 20) return failure("ENCOUNTER_CONTENT_MISSING", "The Doom track is invalid.");
+      if (next.doom! < 20) { next.doom = next.doom! + 1; events.push({ type: "DOOM_RETREATED", amount: 1, doom: next.doom }); }
+      continue;
+    }
+    if (effect.kind === "discard_item_assets") {
+      // Live Research currently rejects every carried Asset before rolling.
+      if (player.assetIds.length) return failure("ENCOUNTER_UNSUPPORTED", "Item discard selection is not implemented.");
+      continue;
+    }
+    if (effect.kind === "relocate_encountered_clue") {
+      if (!effect.locationId) return failure("ENCOUNTER_CONTENT_MISSING", "Choose the nearest Sea destination first.");
+      const moved = resolveBoardClueEffect(next, effect.markerId, { kind: "relocate", locationId: effect.locationId as LocationId }, content);
+      if (!moved.ok) return moved;
+      next = moved.state; events.push(...moved.events); continue;
+    }
     if (effect.kind === "artifact") {
       const gained = gainNamedArtifact(next, playerId, effect.id, content);
       if (gained.ok === false) {
@@ -1825,6 +1841,22 @@ function createEncounterChoice(state: GameState, context: EngineContext, prompt:
     optionIds: options.map(([id]) => id), optionLabels: Object.fromEntries(options), minSelections: 1, maxSelections: 1, continuation: "location_encounter_choice" };
 }
 
+function nearestSeaSpaces(state: GameState, markerId: string, content: GameContent): LocationId[] {
+  const origin = state.boardClues?.find(clue => clue.id === markerId)?.locationId;
+  if (!origin) return [];
+  const visited = new Set<LocationId>([origin]);
+  let frontier: LocationId[] = [origin];
+  while (frontier.length) {
+    const sea = frontier.filter(id => content.map.locationTypes[id] === "sea");
+    if (sea.length) return sea;
+    frontier = frontier.flatMap(id => content.map.adjacentLocationIds[id] ?? []).filter(id => {
+      if (visited.has(id)) return false;
+      visited.add(id); return true;
+    });
+  }
+  return [];
+}
+
 /** Resume the printed instruction queue from server-only canonical state. */
 function continueLocationEncounter(state: GameState, content: GameContent, context: EngineContext, events: GameEvent[] = []): CommandResult {
   let next = structuredClone(state);
@@ -1876,6 +1908,13 @@ function continueLocationEncounter(state: GameState, content: GameContent, conte
     }
     const firstEffect = node.effects[0];
     if (!firstEffect) { pending.queue.shift(); continue; }
+    if (firstEffect.kind === "relocate_encountered_clue" && !firstEffect.locationId) {
+      const targets = nearestSeaSpaces(next, firstEffect.markerId, content);
+      if (!targets.length) return failure("ENCOUNTER_CONTENT_MISSING", "No reachable Sea space exists for this Clue.");
+      if (targets.length === 1) { firstEffect.locationId = targets[0]!; continue; }
+      createEncounterChoice(next, context, "Choose among the equally nearest Sea spaces for this Clue.", targets.map(id => [id, id.replaceAll("_", " ")]));
+      next.stateVersion = state.stateVersion; return success(next, events);
+    }
     if (firstEffect.kind === "omen_move" && firstEffect.position === undefined) {
       if (next.omen === undefined || !Number.isInteger(next.omen) || next.omen < 0 || next.omen >= omenTrack.length) return failure("OMEN_CONTENT_MISSING", "The current Omen space is unavailable.");
       createEncounterChoice(next, context, "Choose an Omen space; Doom will not advance.", omenTrack.map((symbol, position) => [`omen-${position}`, `${position}: ${symbol}`]));
@@ -2804,6 +2843,9 @@ export function executeCommand(
         if (selected === "refuse") node.effects.shift();
         else if (selected === "accept") node.effects[0].accepted = true;
         else return failure("INVALID_DECISION_SELECTION", "Choose whether to accept the effect.");
+      } else if (node.kind === "effects" && node.effects[0]?.kind === "relocate_encountered_clue") {
+        if (!nearestSeaSpaces(next, node.effects[0].markerId, content).includes(selected as LocationId)) return failure("INVALID_DECISION_SELECTION", "Choose a nearest Sea space.");
+        node.effects[0].locationId = selected;
       } else if (node.kind === "effects" && node.effects[0]?.kind === "omen_move" && node.effects[0].position === undefined) {
         const position = Number(selected.slice("omen-".length));
         if (!/^omen-[0-3]$/.test(selected)) return failure("INVALID_DECISION_SELECTION", "Choose a physical Omen space.");

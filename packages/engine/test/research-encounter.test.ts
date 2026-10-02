@@ -198,7 +198,7 @@ describe("internal scan-backed Research encounters", () => {
     }
   });
   it("supports all 24 verified Azathoth sections", () => {
-    const supported = baseGameResearchEncounterRules.flatMap(card => Object.entries(card.sections)
+    const supported = baseGameResearchEncounterRules.filter(card => card.deck === "research_azathoth").flatMap(card => Object.entries(card.sections)
       .filter(([, instruction]) => bindResearchInstruction(instruction, "marker"))
       .map(([section]) => `${card.number}:${section}`));
     expect(supported).toHaveLength(24);
