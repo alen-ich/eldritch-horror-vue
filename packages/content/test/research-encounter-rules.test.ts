@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { baseGameResearchEncounterRules as rules, validateResearchEncounterRules } from "../src/research-encounter-rules.js";
+import { baseGameResearchEncounterRules, validateResearchEncounterRules } from "../src/research-encounter-rules.js";
+const rules = baseGameResearchEncounterRules.filter(card => card.deck === "research_azathoth");
 
 describe("scan-verified Azathoth Research rules", () => {
   it("covers all eight printed cards and 24 sections without enabling live execution", () => {
@@ -33,5 +34,23 @@ describe("scan-verified Azathoth Research rules", () => {
     const changed = structuredClone(rules[0]!);
     changed.sections.city = { kind: "effects", effects: [] };
     expect(() => validateResearchEncounterRules([changed])).toThrow();
+  });
+});
+
+describe("scan-verified Cthulhu Research rules", () => {
+  const cards = baseGameResearchEncounterRules.filter(card => card.deck === "research_cthulhu");
+  it("covers all eight cards and preserves every unsupported ambush and named reward", () => {
+    expect(cards.map(card => card.number)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(() => validateResearchEncounterRules(cards)).not.toThrow();
+    expect(cards[0]?.sections.sea).toMatchObject({ kind: "optional", decline: { kind: "sequence" } });
+    expect(cards[2]?.sections.sea).toMatchObject({ modifier: -1, pass: { effects: [{ kind: "artifact", id: "artifact_grotesque_statue" }] } });
+    expect(cards[4]?.sections.sea).toMatchObject({ fail: { kind: "ambush", monsterId: "monster_star_spawn", defeated: { effects: [{ kind: "doom_retreat" }] } } });
+    expect(cards[7]?.sections.sea).toMatchObject({ kind: "sequence", steps: [{ effects: [{ kind: "encountered_clue" }, { kind: "sanity", amount: -1 }] }, { kind: "ambush", defeated: { effects: [{ kind: "artifact", id: "artifact_ruby_of_rlyeh" }] } }] });
+  });
+  it("retains nearest-Sea movement, ordered item loss, and different skill modifiers", () => {
+    expect(cards[0]?.sections.city).toMatchObject({ fail: { effects: [{ operation: "relocate", destination: "nearest_sea" }] } });
+    expect(cards[5]?.sections.wilderness).toMatchObject({ fail: { effects: [{ kind: "discard_item_assets", amount: 2 }, { operation: "relocate" }] } });
+    expect(cards[5]?.sections.sea).toMatchObject({ skill: "influence", modifier: -1 });
+    expect(cards[7]?.sections.city).toMatchObject({ skill: "strength", fail: { effects: [{ kind: "health", amount: -1 }, { condition: "detained" }] } });
   });
 });
