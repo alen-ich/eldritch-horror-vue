@@ -23,6 +23,9 @@ export function bindResearchInstruction(value: unknown, markerId: string, depth 
     const fail = bindResearchInstruction(value.fail, markerId, depth + 1);
     return pass && fail ? parseLocationEncounterInstruction({ ...value, pass, fail }) : undefined;
   }
-  // Optional named Artifact rewards are not supported yet.
+  if (value.kind === "optional" && "cost" in value && "reward" in value) {
+    const reward = bindResearchInstruction(value.reward, markerId, depth + 1);
+    return reward ? parseLocationEncounterInstruction({ ...value, reward }) : undefined;
+  }
   return undefined;
 }

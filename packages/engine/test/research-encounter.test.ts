@@ -22,6 +22,64 @@ function state(number = 1, locationId = "arkham"): GameState {
 const rng = (dice: number[]) => createDeterministicEngineContext({ dice, tokenIndexes: [0], ids: ["test", "decision", "later"] });
 
 describe("internal scan-backed Research encounters", () => {
+  const exchangeContent: GameContent = { ...content, artifacts: [{ id: "artifact_ttka_halot" }], conditions: [{ id: "condition_dark_pact_01", kind: "dark_pact", trait: "deal" }] };
+  function exchangeState() {
+    const before = state(5, "space_2");
+    before.privateState.deckOrderById.artifacts = ["artifact_ttka_halot"];
+    before.privateState.tokenPoolById["condition:dark_pact"] = ["condition_dark_pact_01"];
+    return before;
+  }
+  function exchangeChoice(before: GameState, selected: string, owner = "host") {
+    const offered = resolveResearchEncounter(before, "host", "chosen", exchangeContent, rng([]));
+    if (!offered.ok) throw new Error(offered.error.message);
+    const serialized: GameState = JSON.parse(JSON.stringify(offered.state));
+    return executeCommand(serialized, owner, { type: "RESOLVE_DECISION", decisionId: serialized.pendingDecision!.id, selectedOptionIds: [selected] }, exchangeContent, rng([]));
+  }
+  it("accepts the scan-authored exchange with exact physical costs and rewards", () => {
+    const before = exchangeState(); const snapshot = structuredClone(before);
+    const result = exchangeChoice(before, "accept");
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.state.players[0]).toMatchObject({ conditionIds: ["condition_dark_pact_01"], artifactIds: ["artifact_ttka_halot"], clues: 1 });
+    expect(result.state.privateState.tokenPoolById["held_clues:host"]).toEqual(["clue_arkham"]);
+    expect(result.state.privateState.deckOrderById.artifacts).toEqual([]);
+    expect(result.state.boardClues?.map(clue => clue.id)).toEqual(["other"]);
+    expect(result.state.activePlayerId).toBe("guest");
+    expect(result.state.privateState.deckOrderById["encounter:research_azathoth"]).toEqual(["encounter_research_azathoth_08", "encounter_research_azathoth_05"]);
+    expect(before).toEqual(snapshot);
+  });
+  it("allows refusal and rejects another investigator's acceptance", () => {
+    expect(exchangeChoice(exchangeState(), "accept", "guest")).toMatchObject({ ok: false, error: { code: "NOT_DECISION_OWNER" } });
+    const result = exchangeChoice(exchangeState(), "skip");
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.state.players[0]?.clues).toBe(0);
+    expect(result.state.players[0]?.conditionIds ?? []).toEqual([]);
+    expect(result.state.boardClues).toHaveLength(2);
+    expect(result.state.privateState.deckOrderById.artifacts).toEqual(["artifact_ttka_halot"]);
+  });
+  it("cannot pay an unavailable or already held Dark Pact", () => {
+    for (const owned of [false, true]) {
+      const before = exchangeState(); before.privateState.tokenPoolById["condition:dark_pact"] = [];
+      if (owned) before.players[0]!.conditionIds = ["condition_dark_pact_01"];
+      const result = resolveResearchEncounter(before, "host", "chosen", exchangeContent, rng([]));
+      if (!result.ok) throw new Error(result.error.message);
+      expect(result.state.pendingDecision).toBeUndefined(); expect(result.state.players[0]?.clues).toBe(0);
+      expect(result.state.privateState.deckOrderById.artifacts).toEqual(["artifact_ttka_halot"]);
+    }
+  });
+  it("never duplicates an unavailable named Artifact but still grants the printed Clue", () => {
+    const before = exchangeState(); before.privateState.deckOrderById.artifacts = []; before.players[1]!.artifactIds = ["artifact_ttka_halot"];
+    const result = exchangeChoice(before, "accept");
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.state.players[0]).toMatchObject({ clues: 1, conditionIds: ["condition_dark_pact_01"] });
+    expect(result.state.players[0]?.artifactIds ?? []).toEqual([]);
+    expect(result.state.players[1]?.artifactIds).toEqual(["artifact_ttka_halot"]);
+  });
+  it("rejects inconsistent Artifact supply before offering or paying the exchange", () => {
+    const before = exchangeState(); before.privateState.deckOrderById.artifacts!.push("artifact_ttka_halot");
+    const snapshot = structuredClone(before);
+    expect(resolveResearchEncounter(before, "host", "chosen", exchangeContent, rng([]))).toMatchObject({ ok: false, error: { code: "ARTIFACT_CONTENT_MISSING" } });
+    expect(before).toEqual(snapshot);
+  });
   function mysteryState(): GameState {
     const before = state(5);
     before.completedMysteryIds = ["solved_a", "solved_b"];
@@ -139,13 +197,13 @@ describe("internal scan-backed Research encounters", () => {
       expect(before).toEqual(snapshot);
     }
   });
-  it("supports 23 verified Azathoth sections while retaining the named Artifact blocker", () => {
+  it("supports all 24 verified Azathoth sections", () => {
     const supported = baseGameResearchEncounterRules.flatMap(card => Object.entries(card.sections)
       .filter(([, instruction]) => bindResearchInstruction(instruction, "marker"))
       .map(([section]) => `${card.number}:${section}`));
-    expect(supported).toHaveLength(23);
+    expect(supported).toHaveLength(24);
     expect(supported).toContain("5:city");
-    expect(supported).not.toContain("5:sea");
+    expect(supported).toContain("5:sea");
   });
   it("gains the exact encountered Clue plus an additional supply Clue and cycles once", () => {
     const before = state();
@@ -198,13 +256,11 @@ describe("internal scan-backed Research encounters", () => {
     expect(finished.state.activePlayerId).toBe("guest");
   });
   it("preflights unsupported branches before any card, token, or RNG consumption", () => {
-    const before = state(5, "space_2");
+    const before = state(5, "space_2"); before.players[0]!.assetIds = ["unsupported_asset"];
     const snapshot = structuredClone(before);
     const context = createDeterministicEngineContext({});
     expect(resolveResearchEncounter(before, "host", "chosen", content, context)).toMatchObject({ ok: false, error: { code: "ENCOUNTER_UNSUPPORTED" } });
     expect(before).toEqual(snapshot);
-    const artifact = state(5, "space_2");
-    expect(resolveResearchEncounter(artifact, "host", "chosen", content, context).ok).toBe(false);
   });
   it("rejects wrong owner, remote or missing markers, wrong Ancient One, assets and inconsistent tokens", () => {
     const before = state();

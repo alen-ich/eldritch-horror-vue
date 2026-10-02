@@ -1688,6 +1688,16 @@ function applyLocationEncounterEffects(
   for (let index = 0; index < effects.length; index++) {
     const effect = effects[index]!;
     if ("amount" in effect && effect.amount === 0) continue;
+    if (effect.kind === "artifact") {
+      const gained = gainNamedArtifact(next, playerId, effect.id, content);
+      if (gained.ok === false) {
+        if (gained.error.code === "ARTIFACT_UNAVAILABLE") continue;
+        return gained;
+      }
+      next = gained.state;
+      events.push(...gained.events);
+      continue;
+    }
     if (effect.kind === "return_solved_mystery") {
       if (!next.completedMysteryIds.length) continue;
       const deck = next.privateState.deckOrderById.mysteries;
@@ -1832,6 +1842,13 @@ function continueLocationEncounter(state: GameState, content: GameContent, conte
     }
     if (node.kind === "optional") {
       if (!canPayEncounterCost(next, player, node.cost, content)) { pending.queue.shift(); continue; }
+      if (node.reward.kind === "effects") {
+        for (const effect of node.reward.effects) {
+          if (effect.kind !== "artifact") continue;
+          const probe = gainNamedArtifact(next, player.id, effect.id, content);
+          if (probe.ok === false && probe.error.code !== "ARTIFACT_UNAVAILABLE") return probe;
+        }
+      }
       createEncounterChoice(next, context, "You may pay the printed cost to resolve this encounter effect.", [
         ["accept", `${encounterInstructionLabel({ kind: "effects", effects: node.cost })}; then ${encounterInstructionLabel(node.reward)}`], ["skip", "Decline"],
       ]);
