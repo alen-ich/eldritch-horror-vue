@@ -20,6 +20,54 @@ describe("authoritative game room", () => {
   after(async () => colyseus.shutdown());
   beforeEach(async () => colyseus.cleanup());
 
+  it("restores private Deep One ambush tests without touching physical Monsters", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "encounter"; state.ancientOneId = "cthulhu"; state.doom = 12;
+    state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
+    state.players[0] = { ...state.players[0]!, investigatorId: "akachi_onyele", locationId: "space_2", health: 5, sanity: 7, clues: 1, assetIds: [], skillImprovements: { strength: 1 } };
+    state.monsters = [{ id: "remote", monsterId: "monster_deep_one", locationId: "arkham", damage: 1, setAside: true }];
+    state.boardClues = [{ id: "ambush-clue", locationId: "space_2" }];
+    state.privateState.tokenPoolById = { "board_clue:ambush-clue": ["clue_arkham"], [`held_clues:${state.players[0]!.id}`]: ["clue_london"], clues: ["clue_rome"], monsters: ["monster_deep_one"], "set_aside:monster_deep_one": ["monster_deep_one"] };
+    state.privateState.deckOrderById["encounter:research_cthulhu"] = ["encounter_research_cthulhu_07", "encounter_research_cthulhu_01"];
+    internal.applyEngineState(state);
+    const horrorMessage = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "RESOLVE_RESEARCH_ENCOUNTER", clueId: "ambush-clue" });
+    await room.waitForMessage(commandMessageType);
+    const horror = await horrorMessage as PendingDecision;
+    assert.equal(internal.toEngineState().activeTest?.skill, "will");
+    const paused = internal.toEngineState();
+    paused.activeTest!.dice = paused.activeTest!.dice.map(() => 6); paused.activeTest!.successes = paused.activeTest!.dice.length;
+    const refresh = host.waitForMessage(pendingDecisionMessageType);
+    internal.applyEngineState(JSON.parse(JSON.stringify(paused))); await refresh;
+    const strengthMessage = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: horror.id, selectedOptionIds: [] });
+    await room.waitForMessage(commandMessageType);
+    const strength = await strengthMessage as PendingDecision;
+    const pausedStrength = internal.toEngineState();
+    assert.equal(pausedStrength.activeTest?.skill, "strength");
+    assert.equal(pausedStrength.activeTest?.dice.length, 2);
+    pausedStrength.activeTest!.dice = [6, 6]; pausedStrength.activeTest!.successes = 2;
+    const refreshStrength = host.waitForMessage(pendingDecisionMessageType);
+    internal.applyEngineState(JSON.parse(JSON.stringify(pausedStrength))); await refreshStrength;
+    assert.equal(JSON.stringify(room.state).includes("ambush_result"), false);
+    const rejected = guest.waitForMessage(commandErrorMessageType);
+    sendCommand(room, guest, { type: "RESOLVE_DECISION", decisionId: strength.id, selectedOptionIds: [] });
+    await room.waitForMessage(commandMessageType);
+    assert.equal((await rejected as { code: string }).code, "NOT_DECISION_OWNER");
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: strength.id, selectedOptionIds: [] });
+    await room.waitForMessage(commandMessageType);
+    const after = internal.toEngineState();
+    assert.equal(after.players[0]?.clues, 3); assert.equal(after.players[0]?.sanity, 7);
+    assert.deepEqual(after.monsters, state.monsters);
+    assert.deepEqual(after.privateState.tokenPoolById.monsters, ["monster_deep_one"]);
+    assert.deepEqual(after.privateState.tokenPoolById["set_aside:monster_deep_one"], ["monster_deep_one"]);
+    assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.activePlayerId, after.players[1]?.id);
+  });
+
   it("resolves Cthulhu Research with private serialized rerolls and exact Clue relocation", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
