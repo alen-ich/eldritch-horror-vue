@@ -20,6 +20,39 @@ describe("authoritative game room", () => {
   after(async () => colyseus.shutdown());
   beforeEach(async () => colyseus.cleanup());
 
+  it("resolves Cthulhu Research with private serialized rerolls and exact Clue relocation", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "encounter"; state.ancientOneId = "cthulhu"; state.doom = 12;
+    state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
+    state.players[0] = { ...state.players[0]!, investigatorId: "akachi_onyele", locationId: "arkham", health: 5, sanity: 7, clues: 1, assetIds: [] };
+    state.boardClues = [{ id: "cthulhu-clue", locationId: "arkham" }];
+    state.privateState.tokenPoolById["board_clue:cthulhu-clue"] = ["clue_arkham"];
+    state.privateState.tokenPoolById[`held_clues:${state.players[0]!.id}`] = ["clue_london"];
+    state.privateState.deckOrderById["encounter:research_cthulhu"] = ["encounter_research_cthulhu_01", "encounter_research_cthulhu_02"];
+    internal.applyEngineState(state);
+    const rerollMessage = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "RESOLVE_RESEARCH_ENCOUNTER", clueId: "cthulhu-clue" });
+    await room.waitForMessage(commandMessageType);
+    const reroll = await rerollMessage as PendingDecision;
+    const paused = internal.toEngineState();
+    paused.activeTest!.dice = paused.activeTest!.dice.map(() => 1); paused.activeTest!.successes = 0;
+    const refreshed = host.waitForMessage(pendingDecisionMessageType);
+    internal.applyEngineState(JSON.parse(JSON.stringify(paused))); await refreshed;
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: reroll.id, selectedOptionIds: [] });
+    await room.waitForMessage(commandMessageType);
+    const after = internal.toEngineState();
+    assert.equal(after.boardClues?.[0]?.locationId, "space_8");
+    assert.deepEqual(after.privateState.tokenPoolById["board_clue:cthulhu-clue"], ["clue_arkham"]);
+    assert.deepEqual(after.privateState.deckOrderById["encounter:research_cthulhu"], ["encounter_research_cthulhu_02", "encounter_research_cthulhu_01"]);
+    assert.equal(after.activePlayerId, after.players[1]?.id);
+    assert.equal(after.players[0]?.clues, 1);
+    assert.equal(JSON.stringify(room.state).includes("encounter_research_cthulhu_02"), false);
+  });
+
   it("resolves the private Sea Research Dark Pact exchange through authenticated intent", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });

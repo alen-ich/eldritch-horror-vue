@@ -30,7 +30,7 @@ Tests enforce base-only counts, complete numbering, crop readability, source/bac
 
 ## Guarded Research engine slice
 
-The authenticated `RESOLVE_RESEARCH_ENCOUNTER` command accepts only an opaque on-space Clue marker ID. Setup shuffles the selected Ancient One's available Research catalog into a private deck. Currently only Azathoth has transcribed rules; all 24 sections are supported. The entire selected section is checked before rolling or consuming components. Carried Assets are still blocked pending encounter possession bonuses.
+The authenticated `RESOLVE_RESEARCH_ENCOUNTER` command accepts only an opaque on-space Clue marker ID. Setup shuffles the selected Ancient One's available Research catalog into a private deck. Azathoth and Cthulhu now have transcribed rules; all 24 Azathoth and 15 Cthulhu sections are supported. The entire selected section is checked before rolling or consuming components. Carried Assets are still blocked pending encounter possession bonuses.
 
 Supported sections reuse the ordered location instruction continuation, physical Condition/damage/Delay/spawn effects, and owner-only test rerolls. `encountered_clue` binds to the chosen exact marker; extra Clues draw from supply independently. Failed tests leave uncollected Clues on the board. An unconditional Clue grant before a test makes that token immediately available to reroll that later test. The card stays on top while decisions are pending, cycles once on completion or defeat, and advances the encounter seat after the existing defeat lifecycle. Only the current/last revealed card and public marker state synchronize; the queue, physical identities, and undrawn order remain private.
 
@@ -50,4 +50,12 @@ Internal `gainNamedArtifact` transfers the single T'tka Halot copy from supply w
 
 T'tka Halot's Action now supports authoritative Lore testing/Clue rerolls, optional spending of 1 Sanity, and owner-private selection of an on-space Monster to lose 3 Health without combat rewards. Numeric toughness without unimplemented special abilities is supported, including partial Epic damage. Defeated normal tokens return to the cup unless set aside. Completion consumes one action and records once-per-physical-card use for the round. Carried Assets/other Artifacts guard unsupported test bonuses. Seven engine tests and a multiplayer test cover costs, refusal, failure, ownership, serialization, damage, conservation and turn handoff.
 
-Next: transcribe and execute Cthulhu Research from the supplied scans. Other Artifact effects remain pending. No additional scans are required for that next slice.
+## Cthulhu Research
+
+All eight cards (24 sections) are transcribed from their imported English crops in printed-number order. New typed nodes retain named Monster ambush outcomes, refusal consequences, Mists of Releh, Grotesque Statue and Ruby of R'lyeh rather than dropping unsupported text. Executable sections: 1 City; 2 all; 3 City/Wilderness; 4 Wilderness/Sea; 5 City/Wilderness; 6 Wilderness/Sea; 7 Wilderness; 8 City/Wilderness. The remaining nine reject the whole section before dice/token consumption.
+
+Nearest-Sea relocation measures path count over all map routes, not geographic proximity or ticket cost. It relocates only the encountered opaque marker, preserving its private physical identity. Equal shortest-distance destinations use a serializable owner-private choice and revalidate on acceptance. Retreat Doom adds 1, capped at the printed track's 20, without Omen movement/awakening. Printed Item discards are currently no-ops only for investigators with zero Assets; the existing carried-Asset preflight remains in force. Condition gains, ordered damage and Delay reuse existing handlers, including their current reverse-effect guards.
+
+Two content tests, 19 engine tests (including both branches of every supported section), and a room test cover transcription, unsupported preflight, modifiers, rewards, nearest-Sea movement, ties/privacy/serialization, Doom boundaries, exact-token retention and card cycling. No family-wide executable claim is made: Cthulhu awakening, possession bonuses, named Spells/Artifacts and ambush combat still require implementation.
+
+Next: implement named Monster ambush continuation, starting with Deep One encounters, using existing scans. No new scans are required.
