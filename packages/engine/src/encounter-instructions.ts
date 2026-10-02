@@ -19,8 +19,8 @@ export type LocationEncounterEffect =
   | { kind: "improve"; skill: SkillId | "chosen"; amount?: 1 | 2 };
 
 export type LocationEncounterInstruction =
-  | { kind: "ambush"; monsterId: "monster_deep_one"; defeated: LocationEncounterInstruction; notDefeated: LocationEncounterInstruction }
-  | { kind: "ambush_result"; monsterId: "monster_deep_one"; damage: number; toughness: number; defeated: LocationEncounterInstruction; notDefeated: LocationEncounterInstruction }
+  | { kind: "ambush"; monsterId: "monster_deep_one" | "monster_star_spawn"; defeated: LocationEncounterInstruction; notDefeated: LocationEncounterInstruction }
+  | { kind: "ambush_result"; monsterId: "monster_deep_one" | "monster_star_spawn"; damage: number; toughness: number; defeated: LocationEncounterInstruction; notDefeated: LocationEncounterInstruction }
   | { kind: "effects"; effects: LocationEncounterEffect[] }
   | { kind: "sequence"; steps: LocationEncounterInstruction[] }
   | { kind: "choice"; options: LocationEncounterInstruction[] }
@@ -32,7 +32,7 @@ const isSkill = (value: unknown): value is SkillId => skillIds.some(skill => ski
 /** Accept only modeled mechanical nodes. No free-form card text is interpreted. */
 export function parseLocationEncounterInstruction(value: unknown, depth = 0): LocationEncounterInstruction | undefined {
   if (depth > 32 || !value || typeof value !== "object" || !("kind" in value)) return undefined;
-  if (value.kind === "ambush" && "monsterId" in value && value.monsterId === "monster_deep_one" && "defeated" in value && "notDefeated" in value) {
+  if (value.kind === "ambush" && "monsterId" in value && (value.monsterId === "monster_deep_one" || value.monsterId === "monster_star_spawn") && "defeated" in value && "notDefeated" in value) {
     const defeated = parseLocationEncounterInstruction(value.defeated, depth + 1);
     const notDefeated = parseLocationEncounterInstruction(value.notDefeated, depth + 1);
     return defeated && notDefeated ? { kind: "ambush", monsterId: value.monsterId, defeated, notDefeated } : undefined;
@@ -95,7 +95,7 @@ export function parseLocationEncounterInstruction(value: unknown, depth = 0): Lo
 }
 
 export function encounterInstructionLabel(instruction: LocationEncounterInstruction): string {
-  if (instruction.kind === "ambush" || instruction.kind === "ambush_result") return "Resolve a Deep One ambush";
+  if (instruction.kind === "ambush" || instruction.kind === "ambush_result") return `Resolve a ${instruction.monsterId === "monster_star_spawn" ? "Star Spawn" : "Deep One"} ambush`;
   if (instruction.kind === "test") return `Test ${instruction.skill}${instruction.modifier ? ` (${instruction.modifier > 0 ? "+" : ""}${instruction.modifier})` : ""}`;
   if (instruction.kind === "sequence") return instruction.steps.map(encounterInstructionLabel).join("; then ");
   if (instruction.kind !== "effects") return "Resolve the printed encounter choice";
