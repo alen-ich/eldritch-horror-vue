@@ -20,6 +20,50 @@ describe("authoritative game room", () => {
   after(async () => colyseus.shutdown());
   beforeEach(async () => colyseus.cleanup());
 
+  it("resolves the private Sea Research Dark Pact exchange through authenticated intent", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "encounter"; state.ancientOneId = "azathoth"; state.doom = 15;
+    state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
+    state.players[0] = { ...state.players[0]!, investigatorId: "akachi_onyele", locationId: "space_2", health: 5, sanity: 7, assetIds: [], clues: 0 };
+    state.boardClues = [{ id: "sea-research", locationId: "space_2" }];
+    state.privateState.tokenPoolById["board_clue:sea-research"] = ["clue_arkham"];
+    state.privateState.tokenPoolById[`held_clues:${state.players[0]!.id}`] = [];
+    state.privateState.tokenPoolById["condition:dark_pact"] = ["condition_dark_pact_01"];
+    state.privateState.deckOrderById.artifacts = baseGameArtifacts.map(card => card.id);
+    state.privateState.deckOrderById["encounter:research_azathoth"] = ["encounter_research_azathoth_05", "encounter_research_azathoth_01"];
+    internal.applyEngineState(state);
+    const offerMessage = host.waitForMessage(pendingDecisionMessageType);
+    let exchangeError: unknown;
+    host.onMessage(commandErrorMessageType, message => { exchangeError = message; });
+    sendCommand(room, host, { type: "RESOLVE_RESEARCH_ENCOUNTER", clueId: "sea-research" });
+    await room.waitForMessage(commandMessageType);
+    assert.equal(exchangeError, undefined, JSON.stringify(exchangeError));
+    assert.equal(room.state.pendingDecision?.kind, "encounter_choice");
+    const offer = await offerMessage as PendingDecision;
+    assert.deepEqual(offer.optionIds, ["accept", "skip"]);
+    assert.ok(offer.optionLabels?.accept.includes("T'tka Halot"));
+    assert.equal("optionIds" in room.state.pendingDecision!, false);
+    const refresh = host.waitForMessage(pendingDecisionMessageType);
+    internal.applyEngineState(JSON.parse(JSON.stringify(internal.toEngineState())));
+    await refresh;
+    const rejected = guest.waitForMessage(commandErrorMessageType);
+    sendCommand(room, guest, { type: "RESOLVE_DECISION", decisionId: offer.id, selectedOptionIds: ["accept"] });
+    await room.waitForMessage(commandMessageType);
+    assert.equal((await rejected as { code: string }).code, "NOT_DECISION_OWNER");
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: offer.id, selectedOptionIds: ["accept"] });
+    await room.waitForMessage(commandMessageType);
+    const after = internal.toEngineState();
+    assert.deepEqual(after.players[0]?.artifactIds, ["artifact_ttka_halot"]);
+    assert.equal(after.players[0]?.clues, 1);
+    assert.equal(after.players[0]?.conditionIds?.length, 1);
+    assert.equal(after.privateState.deckOrderById.artifacts?.length, 13);
+    assert.equal(after.activePlayerId, after.players[1]?.id);
+  });
+
   it("keeps the Artifact target choice private and preserves its round usage", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
