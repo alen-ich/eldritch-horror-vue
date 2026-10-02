@@ -30,7 +30,7 @@ Tests enforce base-only counts, complete numbering, crop readability, source/bac
 
 ## Guarded Research engine slice
 
-The authenticated `RESOLVE_RESEARCH_ENCOUNTER` command accepts only an opaque on-space Clue marker ID. Setup shuffles the selected Ancient One's available Research catalog into a private deck. Azathoth and Cthulhu now have transcribed rules; all 24 Azathoth and 17 Cthulhu sections are supported. The entire selected section is checked before rolling or consuming components. Carried Assets are still blocked pending encounter possession bonuses.
+The authenticated `RESOLVE_RESEARCH_ENCOUNTER` command accepts only an opaque on-space Clue marker ID. Setup shuffles the selected Ancient One's available Research catalog into a private deck. Azathoth and Cthulhu now have transcribed rules; all 24 Azathoth and 18 Cthulhu sections are supported. The entire selected section is checked before rolling or consuming components. Carried Assets are still blocked pending encounter possession bonuses.
 
 Supported sections reuse the ordered location instruction continuation, physical Condition/damage/Delay/spawn effects, and owner-only test rerolls. `encountered_clue` binds to the chosen exact marker; extra Clues draw from supply independently. Failed tests leave uncollected Clues on the board. An unconditional Clue grant before a test makes that token immediately available to reroll that later test. The card stays on top while decisions are pending, cycles once on completion or defeat, and advances the encounter seat after the existing defeat lifecycle. Only the current/last revealed card and public marker state synchronize; the queue, physical identities, and undrawn order remain private.
 
@@ -52,7 +52,7 @@ T'tka Halot's Action now supports authoritative Lore testing/Clue rerolls, optio
 
 ## Cthulhu Research
 
-All eight cards (24 sections) are transcribed from their imported English crops in printed-number order. Typed nodes retain named Monster ambush outcomes, refusal consequences, Mists of Releh, Grotesque Statue and Ruby of R'lyeh rather than dropping unsupported text. Executable sections: 1 City; 2 all; 3 City/Wilderness; 4 all; 5 City/Wilderness; 6 Wilderness/Sea; 7 Wilderness/Sea; 8 City/Wilderness. The remaining seven reject the whole section before dice/token consumption.
+All eight cards (24 sections) are transcribed from their imported English crops in printed-number order. Typed nodes retain named Monster ambush outcomes, refusal consequences, Mists of Releh, Grotesque Statue and Ruby of R'lyeh rather than dropping unsupported text. Executable sections: 1 City; 2 all; 3 City/Wilderness; 4 all; 5 all; 6 Wilderness/Sea; 7 Wilderness/Sea; 8 City/Wilderness. The remaining six reject the whole section before dice/token consumption.
 
 Nearest-Sea relocation measures path count over all map routes, not geographic proximity or ticket cost. It relocates only the encountered opaque marker, preserving its private physical identity. Equal shortest-distance destinations use a serializable owner-private choice and revalidate on acceptance. Retreat Doom adds 1, capped at the printed track's 20, without Omen movement/awakening. Printed Item discards are currently no-ops only for investigators with zero Assets; the existing carried-Asset preflight remains in force. Condition gains, ordered damage and Delay reuse existing handlers, including their current reverse-effect guards.
 
@@ -64,4 +64,10 @@ Reference Guide page 2 was re-extracted and visually checked: a named Monster am
 
 The interpreter expands a supported ambush into ordered combat tests, then selects the printed defeated/not-defeated continuation. Investigator defeat at either stage terminates the card before rewards or failure Conditions; it cycles exactly once and enters the existing defeat lifecycle. Named-stat and unsupported possession guards run before the initial Research test. Cthulhu card 4 City and card 7 Sea are now enabled, raising coverage to 17/24. The other Deep One sections remain blocked by their named Artifact rewards. Eight additional engine cases and a room test cover the new sections, independent rerolls, serialization/ownership, both forms of defeat, thresholds, token preservation and missing-stat preflight. Ordinary board combat's Clue rerolls are not changed by this slice.
 
-Next: extend named ambush continuation to Star Spawn and Cthulhu card 5 Sea, with Doom retreat after victory. Cultists, random ambush sourcing and named Spell/Artifact effects remain separate work. No new scans are required.
+### Star Spawn ambush continuation
+
+Cthulhu card 5 Sea is now enabled (18/24 sections). Successful Observation collects this Clue without combat. Failure retains it and resolves a named Star Spawn ambush using Will -1/Horror 3, Strength -3/Damage 3 and toughness 5. Victory retreats Doom by 1, capped at 20, but does not award the Clue; survival without victory leaves Doom unchanged. Investigator defeat interrupts the card and applies the normal defeat Doom penalty, not the victory reward. Star Spawn's Reckoning does not execute during an ambush, and its physical set-aside/cup/board tokens and existing damage remain untouched.
+
+The same private serializable test continuation supports owner-only physical-Clue rerolls. Six additional engine cases cover the newly supported section, printed stats, victory/cap, failure, token conservation, rerolls, both defeat timings and preflight guards; a room test restores each of the Observation/Will/Strength checkpoints and rejects the other player's choices. Victory uses a synthetic high-Strength test investigator to isolate toughness rules; this does not enable pending possession combat bonuses for real investigators.
+
+Next: Ancient One-specific Cultist ambush attributes and Cthulhu cards 1 Wilderness/7 City. Random ambush sourcing, named Spell/Artifact effects and possession bonuses remain separate work. No new scans are required.
