@@ -29,7 +29,7 @@ export type LocationEncounterInstruction =
   | { kind: "sequence"; steps: LocationEncounterInstruction[] }
   | { kind: "choice"; options: LocationEncounterInstruction[] }
   | { kind: "optional"; cost: LocationEncounterEffect[]; reward: LocationEncounterInstruction; decline?: LocationEncounterInstruction }
-  | { kind: "test"; skill: SkillId; modifier: number; pass: LocationEncounterInstruction; fail: LocationEncounterInstruction };
+  | { kind: "test"; skill: SkillId; modifier: number; diceBonus?: "held_clues"; pass: LocationEncounterInstruction; fail: LocationEncounterInstruction };
 
 const isSkill = (value: unknown): value is SkillId => skillIds.some(skill => skill === value);
 
@@ -85,9 +85,10 @@ export function parseLocationEncounterInstruction(value: unknown, depth = 0): Lo
     return value.kind === "sequence" ? { kind: "sequence", steps: parsed as LocationEncounterInstruction[] } : { kind: "choice", options: parsed as LocationEncounterInstruction[] };
   }
   if (value.kind === "test" && "skill" in value && isSkill(value.skill) && "modifier" in value && typeof value.modifier === "number" && Number.isInteger(value.modifier) && "pass" in value && "fail" in value) {
+    if ("diceBonus" in value && value.diceBonus !== "held_clues") return undefined;
     const pass = parseLocationEncounterInstruction(value.pass, depth + 1);
     const fail = parseLocationEncounterInstruction(value.fail, depth + 1);
-    if (pass && fail) return { kind: "test", skill: value.skill, modifier: value.modifier, pass, fail };
+    if (pass && fail) return { kind: "test", skill: value.skill, modifier: value.modifier, ...("diceBonus" in value ? { diceBonus: "held_clues" as const } : {}), pass, fail };
   }
   if (value.kind === "optional" && "cost" in value && "reward" in value) {
     const cost = parseLocationEncounterInstruction({ kind: "effects", effects: value.cost }, depth + 1);
@@ -104,7 +105,7 @@ export function parseLocationEncounterInstruction(value: unknown, depth = 0): Lo
 
 export function encounterInstructionLabel(instruction: LocationEncounterInstruction): string {
   if (instruction.kind === "ambush" || instruction.kind === "ambush_result") return `Resolve a ${instruction.monsterId === "monster_star_spawn" ? "Star Spawn" : "Deep One"} ambush`;
-  if (instruction.kind === "test") return `Test ${instruction.skill}${instruction.modifier ? ` (${instruction.modifier > 0 ? "+" : ""}${instruction.modifier})` : ""}`;
+  if (instruction.kind === "test") return `Test ${instruction.skill}${instruction.modifier ? ` (${instruction.modifier > 0 ? "+" : ""}${instruction.modifier})` : ""}${instruction.diceBonus ? "; roll 1 additional die per held Clue" : ""}`;
   if (instruction.kind === "sequence") return instruction.steps.map(encounterInstructionLabel).join("; then ");
   if (instruction.kind !== "effects") return "Resolve the printed encounter choice";
   return instruction.effects.map(effect => {

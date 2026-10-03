@@ -7,20 +7,20 @@ const effect = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("clues"), amount: z.number().int() }).strict(),
   z.object({ kind: z.literal("sanity"), amount: z.number().int().negative() }).strict(),
   z.object({ kind: z.literal("health"), amount: z.number().int().negative() }).strict(),
-  z.object({ kind: z.literal("condition"), condition: z.literal("paranoia") }).strict(),
+  z.object({ kind: z.literal("condition"), condition: z.enum(["paranoia", "hallucinations"]) }).strict(),
   z.object({ kind: z.literal("delay") }).strict(),
   z.object({ kind: z.literal("doom_advance"), amount: z.literal(1) }).strict(),
 ]);
 type Effect = z.infer<typeof effect>;
 type Instruction = { kind: "effects"; effects: Effect[] } | { kind: "sequence"; steps: Instruction[] } | { kind: "choice"; options: Instruction[] }
   | { kind: "optional"; cost: Effect[]; reward: Instruction; decline?: Instruction }
-  | { kind: "test"; skill: "observation" | "lore" | "will" | "influence" | "strength"; modifier: number; pass: Instruction; fail: Instruction };
+  | { kind: "test"; skill: "observation" | "lore" | "will" | "influence" | "strength"; modifier: number; diceBonus?: "held_clues"; pass: Instruction; fail: Instruction };
 const instruction: z.ZodType<Instruction> = z.lazy(() => z.union([
   z.object({ kind: z.literal("effects"), effects: z.array(effect) }).strict(),
   z.object({ kind: z.literal("sequence"), steps: z.array(instruction) }).strict(),
   z.object({ kind: z.literal("choice"), options: z.array(instruction).min(1) }).strict(),
   z.object({ kind: z.literal("optional"), cost: z.array(effect).min(1), reward: instruction, decline: instruction.optional() }).strict(),
-  z.object({ kind: z.literal("test"), skill: z.enum(["observation", "lore", "will", "influence", "strength"]), modifier: z.number().int(), pass: instruction, fail: instruction }).strict(),
+  z.object({ kind: z.literal("test"), skill: z.enum(["observation", "lore", "will", "influence", "strength"]), modifier: z.number().int(), diceBonus: z.literal("held_clues").optional(), pass: instruction, fail: instruction }).strict(),
 ]));
 const e = (...effects: Effect[]): Instruction => ({ kind: "effects", effects });
 const t = (skill: "observation" | "lore" | "will" | "influence" | "strength", pass: Instruction, fail = e(), modifier = 0): Instruction => ({ kind: "test", skill, modifier, pass, fail });
@@ -55,6 +55,11 @@ export const baseGameOtherWorldEncounterRules = [
     number: 5, name: "The Past",
     initial: t("influence", { kind: "sequence", steps: [{ kind: "optional", cost: [{ kind: "delay" }], reward: e({ kind: "clues", amount: 2 }) }, e(close)] },
       t("strength", e(), e({ kind: "health", amount: -6 })), -1),
+  },
+  {
+    number: 7, name: "The Dreamlands",
+    initial: { ...t("will", t("strength", e(close), e({ kind: "health", amount: -2 }, { kind: "delay" })),
+      e({ kind: "delay" }, { kind: "condition", condition: "hallucinations" }), -1), diceBonus: "held_clues" as const },
   },
 ].map(({ number, name, initial }) => {
   const scan = baseGameScannedTokenEncounters.find(card => card.deck === "other_world" && card.number === number)!;

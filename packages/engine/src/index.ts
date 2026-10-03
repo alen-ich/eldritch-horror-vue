@@ -1911,11 +1911,36 @@ function nearestSeaSpaces(state: GameState, markerId: string, content: GameConte
   return [];
 }
 
+/** Validate state-dependent printed mechanics before dice or restored payments. */
+function validateEncounterDynamicInstructions(state: GameState, nodes: readonly LocationEncounterInstruction[], content: GameContent): CommandResult | undefined {
+  for (const node of nodes) {
+    if (node.kind === "test" && node.diceBonus === "held_clues") {
+      if (state.players.some(player => !Number.isSafeInteger(player.clues) || player.clues < 0)) return failure("CLUE_CONTENT_MISSING", "Clue counts must be nonnegative integers.");
+      const invalid = validateArtifactClues(state, content);
+      if (invalid) return invalid;
+    }
+    if (node.kind === "effects" && node.effects.some(effect => effect.kind === "condition" && effect.condition === "hallucinations")) {
+      const catalog = content.conditions?.filter(card => card.kind === "hallucinations").map(card => card.id);
+      const pool = state.privateState.tokenPoolById[conditionPoolKey("hallucinations")];
+      const owned = state.players.flatMap(player => player.conditionIds ?? []).filter(id => catalog?.includes(id));
+      const physical = [...(pool ?? []), ...owned];
+      if (!catalog?.length || new Set(catalog).size !== catalog.length || !pool || pool.some(id => !catalog.includes(id)) || new Set(physical).size !== physical.length) return failure("CONDITION_CONTENT_MISSING", "Hallucinations supply or holdings are inconsistent.");
+    }
+    const children = node.kind === "test" ? [node.pass, node.fail] : node.kind === "sequence" ? node.steps : node.kind === "choice" ? node.options
+      : node.kind === "optional" ? [node.reward, ...(node.decline ? [node.decline] : [])] : node.kind === "ambush" || node.kind === "ambush_result" ? [node.defeated, node.notDefeated] : [];
+    const invalid = validateEncounterDynamicInstructions(state, children, content);
+    if (invalid) return invalid;
+  }
+  return undefined;
+}
+
 /** Resume the printed instruction queue from server-only canonical state. */
 function continueLocationEncounter(state: GameState, content: GameContent, context: EngineContext, events: GameEvent[] = []): CommandResult {
   if (state.pendingLocationEncounter?.deck === "other_world" && !otherWorldBindingIsValid(state, content)) return failure("ENCOUNTER_CONTENT_MISSING", "The bound Gate or Other World deck changed.");
   const invalidDoom = validateEncounterDoomInstructions(state, state.pendingLocationEncounter?.queue ?? []);
   if (invalidDoom) return invalidDoom;
+  const invalidDynamic = validateEncounterDynamicInstructions(state, state.pendingLocationEncounter?.queue ?? [], content);
+  if (invalidDynamic) return invalidDynamic;
   let next = structuredClone(state);
   while (next.pendingLocationEncounter?.queue.length) {
     const pending = next.pendingLocationEncounter;
@@ -1997,7 +2022,7 @@ function continueLocationEncounter(state: GameState, content: GameContent, conte
       const investigator = player.investigatorId && content.investigators[player.investigatorId];
       if (!investigator) return failure("INVESTIGATOR_CONTENT_MISSING", "Investigator skills are unavailable.");
       const dicePool = calculateDicePool({ skill: node.skill, baseSkill: investigator.skills[node.skill], improvement: player.skillImprovements[node.skill], modifier: node.modifier,
-        otherBonuses: [nonCombatEncounterAuraBonus(next, player, content), ...assetEffectsForPlayer(player, content).flatMap(effect => effect.type === "skill_bonus" && effect.skill === node.skill ? [effect.amount] : [])] }).dicePool;
+        otherBonuses: [node.diceBonus === "held_clues" ? player.clues : 0, nonCombatEncounterAuraBonus(next, player, content), ...assetEffectsForPlayer(player, content).flatMap(effect => effect.type === "skill_bonus" && effect.skill === node.skill ? [effect.amount] : [])] }).dicePool;
       const dice = Array.from({ length: dicePool }, () => context.rollDie());
       const successes = countTestSuccesses(dice, conditionSuccessThreshold(player.conditionIds ?? []));
       pending.dice = dice;
@@ -2715,6 +2740,8 @@ export function executeCommand(
   }
   if (command.type === "RESOLVE_DECISION" && state.pendingLocationEncounter?.deck === "other_world" && !otherWorldBindingIsValid(state, content)) return failure("ENCOUNTER_CONTENT_MISSING", "The bound Gate or Other World deck changed.");
   if (command.type === "RESOLVE_DECISION" && state.pendingLocationEncounter) {
+    const invalidDynamic = validateEncounterDynamicInstructions(state, state.pendingLocationEncounter.queue, content);
+    if (invalidDynamic) return invalidDynamic;
     const invalid = validateEncounterDoomInstructions(state, state.pendingLocationEncounter.queue);
     if (invalid) return invalid;
   }

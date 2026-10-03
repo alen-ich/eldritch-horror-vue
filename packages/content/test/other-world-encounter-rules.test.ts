@@ -2,10 +2,15 @@ import { expect, it } from "vitest";
 import { baseGameOtherWorldEncounterRules, validateOtherWorldEncounterContent } from "../src/other-world-encounter-rules.js";
 import { baseGameScannedTokenEncounters } from "../src/token-encounters.js";
 
-it("links the first five mechanical transcriptions to the existing base-only scans", () => {
-  expect(baseGameOtherWorldEncounterRules.map(card => card.number)).toEqual([1, 2, 3, 4, 5]);
+it("links six mechanical transcriptions to the existing base-only scans", () => {
+  expect(baseGameOtherWorldEncounterRules.map(card => card.number)).toEqual([1, 2, 3, 4, 5, 7]);
   for (const card of baseGameOtherWorldEncounterRules) expect(baseGameScannedTokenEncounters.find(scan => scan.id === card.id)).toMatchObject({ sourceScan: card.sourceScan, sourceCellIndex: card.sourceCellIndex, deck: "other_world" });
   expect(baseGameScannedTokenEncounters.filter(card => card.deck === "other_world")).toHaveLength(24);
+});
+it("preserves Dreamlands' Initial-only Clue bonus and ordered failure effects", () => {
+  expect(baseGameOtherWorldEncounterRules[5]!.sections.initial).toMatchObject({ skill: "will", modifier: -1, diceBonus: "held_clues",
+    pass: { skill: "strength", modifier: 0, pass: { effects: [{ kind: "close_encountered_gate" }] }, fail: { effects: [{ kind: "health", amount: -2 }, { kind: "delay" }] } },
+    fail: { effects: [{ kind: "delay" }, { kind: "condition", condition: "hallucinations" }] } });
 });
 it("preserves The Past's offer-before-closure and failed Strength Health consequence", () => {
   expect(baseGameOtherWorldEncounterRules[4]!.sections.initial).toMatchObject({ skill: "influence", modifier: -1,
