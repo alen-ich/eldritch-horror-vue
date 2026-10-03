@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { ColyseusTestServer, boot } from "@colyseus/testing";
 import { gainNamedArtifact, type GameState, type GameContent } from "@eldritch/engine";
-import { baseGameArtifacts } from "@eldritch/content";
+import { baseGameArtifacts, baseGameClues } from "@eldritch/content";
 import {
   commandErrorMessageType,
   commandMessageType,
@@ -19,6 +19,52 @@ describe("authoritative game room", () => {
   before(async () => { colyseus = await boot(appConfig); });
   after(async () => colyseus.shutdown());
   beforeEach(async () => colyseus.cleanup());
+
+  for (const accept of [false, true]) {
+    it(`restores Cultes des Goules' owner-only payment and ${accept ? "gains physical Clues" : "declines"}`, async () => {
+      const room = await colyseus.createRoom<GameRoom>("game", {});
+      const host = await colyseus.connectTo(room, { displayName: "Host" });
+      const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+      const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+      const state = internal.toEngineState(), source = "artifact_cultes_des_goules";
+      state.phase = "action"; state.ancientOneId = "cthulhu"; state.doom = 12; state.actionsRemaining = 2;
+      state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
+      Object.assign(state.players[0]!, { investigatorId: "akachi_onyele", locationId: "arkham", health: 5, sanity: 7, clues: 1, assetIds: [], artifactIds: [source] });
+      state.privateState.deckOrderById.artifacts = baseGameArtifacts.filter(card => card.id !== source).map(card => card.id);
+      state.privateState.tokenPoolById.clues = baseGameClues.map(card => card.id);
+      state.privateState.tokenPoolById.clue_discard = [];
+      state.privateState.tokenPoolById[`held_clues:${state.players[0]!.id}`] = [state.privateState.tokenPoolById.clues.shift()!];
+      internal.applyEngineState(state);
+      const testMessage = host.waitForMessage(pendingDecisionMessageType);
+      sendCommand(room, host, { type: "USE_ARTIFACT_ACTION", artifactId: source }); await room.waitForMessage(commandMessageType);
+      const testDecision = await testMessage as PendingDecision;
+      const rolled = internal.toEngineState(); assert.equal(rolled.activeTest?.sourceArtifactId, source);
+      rolled.activeTest!.dice = rolled.activeTest!.dice.map(() => 6); rolled.activeTest!.successes = rolled.activeTest!.dice.length;
+      const refreshedTest = host.waitForMessage(pendingDecisionMessageType);
+      internal.applyEngineState(JSON.parse(JSON.stringify(rolled))); await refreshedTest;
+      const paymentMessage = host.waitForMessage(pendingDecisionMessageType);
+      sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: testDecision.id, selectedOptionIds: [] }); await room.waitForMessage(commandMessageType);
+      const payment = await paymentMessage as PendingDecision;
+      assert.equal(payment.kind, "artifact_payment"); assert.deepEqual(payment.optionIds, ["cultes:accept", "cultes:skip"]);
+      const checkpoint = internal.toEngineState(); assert.equal(checkpoint.players[0]?.sanity, 7); assert.equal(checkpoint.actionsRemaining, 2);
+      assert.equal(JSON.stringify(room.state).includes("cultes:accept"), false);
+      assert.equal(JSON.stringify(room.state).includes(baseGameClues[0]!.id), false);
+      assert.equal(JSON.stringify(room.state).includes("artifact_grotesque_statue"), false);
+      const restored = host.waitForMessage(pendingDecisionMessageType);
+      internal.applyEngineState(JSON.parse(JSON.stringify(checkpoint))); await restored;
+      const denied = guest.waitForMessage(commandErrorMessageType);
+      sendCommand(room, guest, { type: "RESOLVE_DECISION", decisionId: payment.id, selectedOptionIds: ["cultes:accept"] }); await room.waitForMessage(commandMessageType);
+      assert.equal((await denied as { code: string }).code, "NOT_DECISION_OWNER");
+      sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: payment.id, selectedOptionIds: [accept ? "cultes:accept" : "cultes:skip"] }); await room.waitForMessage(commandMessageType);
+      const after = internal.toEngineState();
+      assert.equal(after.stateVersion, checkpoint.stateVersion + 1); assert.equal(after.actionsRemaining, 1);
+      assert.equal(after.players[0]?.sanity, accept ? 6 : 7); assert.equal(after.players[0]?.clues, accept ? 3 : 1);
+      assert.equal(after.privateState.tokenPoolById[`held_clues:${state.players[0]!.id}`]?.length, accept ? 3 : 1);
+      assert.equal(after.privateState.tokenPoolById.clues?.length, baseGameClues.length - (accept ? 3 : 1));
+      assert.deepEqual(after.players[0]?.artifactIds, [source]); assert.deepEqual(after.usedArtifactActionIds, [source]);
+      assert.equal(after.pendingDecision, undefined); assert.equal(after.activeTest, undefined);
+    });
+  }
 
   for (const pass of [false, true]) {
     it(`restores Puzzle Box's private reroll and ${pass ? "Artifact gain" : "failure"} before the remaining Witch Doctor bonus`, async () => {

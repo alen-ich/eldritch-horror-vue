@@ -46,7 +46,7 @@ function serverMythosContext(): EngineContext {
   };
 }
 const baseGameContent: GameContent = {
-  artifacts: baseGameArtifacts.map(({ id }) => ({ id })),
+  artifacts: baseGameArtifacts.map(({ id, engineEffects }) => ({ id, engineEffects })),
   researchEncounters: baseGameResearchEncounterRules,
   locationEncounters: baseGameScannedLocationEncounters.map(({ id, deck }) => ({ id, deck, sections: baseGameLocationEncounterRules.find(card => card.id === id)?.sections })),
   gates: baseGameGates.map(({ id, omenSymbol, locationId }) => ({ id, omenSymbol, locationId })),
@@ -181,7 +181,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       });
       return;
     }
-    const context = parsed.data.command.type === "USE_ARTIFACT_ACTION" || this.activeTest?.continuation === "artifact_action" || this.pendingDecision?.kind === "artifact_target" || parsed.data.command.type === "ADVANCE_MYTHOS" || parsed.data.command.type === "RESOLVE_LOCATION_ENCOUNTER" || parsed.data.command.type === "RESOLVE_RESEARCH_ENCOUNTER" || parsed.data.command.type === "FIGHT_MONSTER" || parsed.data.command.type === "USE_INVESTIGATOR_ACTION"
+    const context = parsed.data.command.type === "USE_ARTIFACT_ACTION" || this.activeTest?.continuation === "artifact_action" || this.pendingDecision?.kind === "artifact_target" || this.pendingDecision?.kind === "artifact_payment" || parsed.data.command.type === "ADVANCE_MYTHOS" || parsed.data.command.type === "RESOLVE_LOCATION_ENCOUNTER" || parsed.data.command.type === "RESOLVE_RESEARCH_ENCOUNTER" || parsed.data.command.type === "FIGHT_MONSTER" || parsed.data.command.type === "USE_INVESTIGATOR_ACTION"
       || (parsed.data.command.type === "RESOLVE_DECISION" && (this.activeTest?.continuation === "location_encounter" || this.pendingDecision?.continuation === "location_encounter_choice" || this.pendingDecision?.continuation === "mythos_world_fights_back" || this.pendingDecision?.continuation === "mythos_debt_trade" || this.pendingDecision?.continuation === "mythos_desperate_times" || this.pendingDecision?.continuation === "mythos_that_which_consumes" || this.pendingDecision?.continuation === "mythos_heat_wave" || this.pendingDecision?.continuation === "mythos_blood_flows" || this.pendingDecision?.continuation === "mythos_tide_of_despair" || this.pendingDecision?.continuation === "mythos_unexpected_betrayal"))
       || (parsed.data.command.type === "RESOLVE_DEFEAT" && Boolean(this.toEngineState().pendingHeatWave || this.toEngineState().pendingTideOfDespair || this.toEngineState().pendingUnexpectedBetrayal))
       ? serverMythosContext()
