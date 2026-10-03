@@ -17,7 +17,7 @@ import { calculateDicePool, countTestSuccesses } from "./skill-tests.js";
 import { loseResource, recoverResource } from "./resources.js";
 import { buildArtifactDeck, buildGateStack, buildLocationEncounterDecks, buildMonsterPool, buildMythosDeck, type AncientSetup, type LocationEncounterDeckId, type EncounterDeckId, type ResearchEncounterDeckId, type MythosColor } from "./setup.js";
 import { bindResearchInstruction } from "./research-instructions.js";
-import { encounterItemAssetIds, encounterItemsAreConserved, nonCombatEncounterAuraBonus, supportsEncounterAssets } from "./encounter-assets.js";
+import { encounterItemAssetIds, encounterItemsAreConserved, encounterHealthPreventions, physicalAssetIsUnique, nonCombatEncounterAuraBonus, supportsEncounterAssets } from "./encounter-assets.js";
 import { resolveStandardCombat, type CombatCheck } from "./combat.js";
 import { conditionSuccessThreshold, publicConditionId, resolveBoonBaneGain } from "./conditions.js";
 import { advanceOmenTrack, omenTrack } from "./omen.js";
@@ -215,6 +215,7 @@ export interface InvestigatorSetup {
 }
 
 export type AssetEngineEffect =
+  | { type: "discard_prevent_health_loss"; amount: 2 }
   | { type: "round_test_reroll" }
   | { type: "test_reroll"; skill: "influence" | "strength" }
   | { type: "city_test_aura"; amount: 1 }
@@ -244,7 +245,7 @@ export interface GameContent {
   referenceCards?: readonly { playerCount: number; spawnClues: number; monsterSurge?: number; spawnGates?: number }[];
   map: GameMap;
   investigators: Readonly<Partial<Record<InvestigatorId, InvestigatorSetup>>>;
-  assets: readonly { id: string; name?: string; value: number; traits?: readonly string[]; engineEffects: readonly AssetEngineEffect[]; nonCombatEncounterSupport?: "unsupported" | "irrelevant" | "city_test_aura" | "skill_test" }[];
+  assets: readonly { id: string; name?: string; value: number; traits?: readonly string[]; engineEffects: readonly AssetEngineEffect[]; nonCombatEncounterSupport?: "unsupported" | "irrelevant" | "city_test_aura" | "skill_test" | "health_prevention" }[];
   mysteryIdsByAncientOne: Readonly<Partial<Record<AncientOneId, readonly string[]>>>;
   mysteryTargetsById: Readonly<Record<string, "investigator_count" | "half_investigator_count" | "twice_investigator_count" | "one">>;
 }
@@ -1882,6 +1883,25 @@ function continueLocationEncounter(state: GameState, content: GameContent, conte
     const player = next.players.find(candidate => candidate.id === pending.playerId);
     if (!player) return failure("PLAYER_NOT_FOUND", "The encounter investigator is missing.");
     if (player.defeated || player.eliminated || next.gameResult) { pending.queue = []; break; }
+    if (node.kind === "damage_reaction") {
+      const source = node.healthLoss > 0 ? encounterHealthPreventions(next, player, content).find(candidate => !node.declinedPlayerIds.includes(candidate.playerId)) : undefined;
+      if (source) {
+        if (!physicalAssetIsUnique(next, source.assetId)) return failure("ENCOUNTER_CONTENT_MISSING", "The prevention Asset identity is inconsistent.");
+        const name = content.assets.find(asset => asset.id === source.assetId)?.name ?? source.assetId;
+        const options: [string, string][] = [[source.assetId, `Discard ${name}: prevent ${Math.min(source.amount, node.healthLoss)} Health loss`]];
+        if (node.healthLoss > 1) options.push([`${source.assetId}:prevent-1`, `Discard ${name}: prevent 1 Health loss`]);
+        options.push(["skip", "Decline prevention"]);
+        createEncounterChoice(next, context, `${player.investigatorId?.replaceAll("_", " ") ?? player.id} would lose ${node.healthLoss} Health and ${node.sanityLoss} Sanity. You may discard ${name} to prevent up to ${source.amount} Health loss.`, options);
+        next.pendingDecision!.playerId = source.playerId;
+        next.stateVersion = state.stateVersion;
+        return success(next, events);
+      }
+      pending.queue.shift();
+      const applied = applyLocationEncounterEffects(next, player.id, [{ kind: "health", amount: -node.healthLoss }, { kind: "sanity", amount: -node.sanityLoss }], content, context);
+      if (!applied.ok) return applied;
+      next = applied.state; events.push(...applied.events);
+      continue;
+    }
     if (node.kind === "ambush") {
       const monster = content.monsters?.find(card => card.id === node.monsterId);
       if (!monster || monster.type !== "normal" || monster.specialEffect || !monster.horrorCheck || monster.horrorCheck === "ancient_one" || !monster.damageCheck || monster.damageCheck === "ancient_one" || monster.toughness === "ancient_one") return failure("MONSTER_CONTENT_MISSING", "The named Monster's combat statistics are unavailable.");
@@ -2003,6 +2023,12 @@ function continueLocationEncounter(state: GameState, content: GameContent, conte
     const effects = [node.effects.shift()!];
     if (firstEffect.kind === "health" || firstEffect.kind === "sanity") {
       while (node.effects[0]?.kind === "health" || node.effects[0]?.kind === "sanity") effects.push(node.effects.shift()!);
+      const healthLoss = effects.reduce((sum, effect) => sum + (effect.kind === "health" ? -effect.amount : 0), 0);
+      const sanityLoss = effects.reduce((sum, effect) => sum + (effect.kind === "sanity" ? -effect.amount : 0), 0);
+      if (healthLoss > 0 && encounterHealthPreventions(next, player, content).length) {
+        pending.queue.unshift({ kind: "damage_reaction", healthLoss, sanityLoss, declinedPlayerIds: [] });
+        continue;
+      }
     }
     const applied = applyLocationEncounterEffects(next, player.id, effects, content, context);
     if (!applied.ok) return applied;
@@ -2900,13 +2926,26 @@ export function executeCommand(
       if (!context) return failure("RANDOM_INPUT_REQUIRED", "Encounter choices require server randomness.");
       const pending = next.pendingLocationEncounter;
       const node = pending?.queue[0];
-      if (!pending || pending.playerId !== actorPlayerId || !node || next.currentLocationEncounterCardId !== pending.cardId) {
+      if (!pending || !node || (node.kind !== "damage_reaction" && pending.playerId !== actorPlayerId) || next.currentLocationEncounterCardId !== pending.cardId) {
         return failure("ENCOUNTER_CONTENT_MISSING", "The encounter choice no longer matches its card.");
       }
       const selected = selections[0]!;
       const events: GameEvent[] = [{ type: "DECISION_RESOLVED", decisionId: decision.id, playerId: actorPlayerId, selectedOptionIds: [...selections] }];
       next.pendingDecision = undefined;
-      if (node.kind === "choice") {
+      if (node.kind === "damage_reaction") {
+        const recipient = next.players.find(player => player.id === pending.playerId);
+        const sources = recipient ? encounterHealthPreventions(next, recipient, content).filter(source => source.playerId === actorPlayerId && !node.declinedPlayerIds.includes(source.playerId)) : [];
+        if (!recipient || recipient.defeated || recipient.eliminated || node.healthLoss <= 0 || !sources.length) return failure("INVALID_DECISION_SELECTION", "This damage prevention is no longer available.");
+        if (selected === "skip") node.declinedPlayerIds.push(actorPlayerId);
+        else {
+          const source = sources.find(source => selected === source.assetId || selected === `${source.assetId}:prevent-1`);
+          if (!source || !physicalAssetIsUnique(next, source.assetId)) return failure("INVALID_DECISION_SELECTION", "That physical prevention Asset is unavailable.");
+          actor.assetIds.splice(actor.assetIds.indexOf(source.assetId), 1);
+          next.assetDiscardIds.push(source.assetId);
+          node.healthLoss = Math.max(0, node.healthLoss - (selected.endsWith(":prevent-1") ? 1 : source.amount));
+          events.push({ type: "ASSET_DISCARDED", playerId: actorPlayerId, assetId: source.assetId, reason: "encounter" });
+        }
+      } else if (node.kind === "choice") {
         const option = node.options[Number(selected.slice("option-".length))];
         if (!option) return failure("INVALID_DECISION_SELECTION", "The printed choice is unavailable.");
         pending.queue.splice(0, 1, option);

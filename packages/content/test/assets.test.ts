@@ -69,10 +69,12 @@ describe("base-game Asset cards", () => {
       { type: "skill_bonus", skill: "strength", amount: 1 }, { type: "test_reroll", skill: "strength" },
     ]);
     expect(baseGameAssets.find(({ id }) => id === "asset_hired_muscle")?.traits).toEqual(["ally"]);
-    expect(baseGameAssets.filter(({ engineEffects }) => engineEffects.length > 0)).toHaveLength(7);
+    expect(baseGameAssets.find(({ id }) => id === "asset_bandages")?.engineEffects).toEqual([{ type: "discard_prevent_health_loss", amount: 2 }]);
+    expect(baseGameAssets.find(({ id }) => id === "asset_bandages")?.traits).toEqual(["item"]);
+    expect(baseGameAssets.filter(({ engineEffects }) => engineEffects.length > 0)).toHaveLength(8);
   });
 
-  it("explicitly scopes eleven scan-verified Assets to non-combat encounters", () => {
+  it("explicitly scopes twelve scan-verified Assets to non-combat encounters", () => {
     expect(baseGameAssets.filter(asset => asset.nonCombatEncounterSupport === "irrelevant").map(asset => asset.id).sort()).toEqual([
       "asset_38_revolver", "asset_45_automatic", "asset_arcane_manuscripts", "asset_fine_clothes", "asset_holy_cross", "asset_king_james_bible", "asset_protective_amulet",
     ]);
@@ -80,6 +82,7 @@ describe("base-game Asset cards", () => {
     expect(baseGameAssets.find(asset => asset.id === "asset_personal_assistant")?.nonCombatEncounterSupport).toBe("skill_test");
     expect(baseGameAssets.find(asset => asset.id === "asset_lucky_rabbits_foot")?.nonCombatEncounterSupport).toBe("skill_test");
     expect(baseGameAssets.find(asset => asset.id === "asset_hired_muscle")?.nonCombatEncounterSupport).toBe("skill_test");
+    expect(baseGameAssets.find(asset => asset.id === "asset_bandages")?.nonCombatEncounterSupport).toBe("health_prevention");
   });
 
   it("rejects incomplete and duplicate catalogs", () => {
