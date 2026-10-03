@@ -1708,6 +1708,18 @@ function applyLocationEncounterEffects(
   if (!player) return failure("PLAYER_NOT_FOUND", "The encounter investigator is missing.");
   for (let index = 0; index < effects.length; index++) {
     const effect = effects[index]!;
+    if (effect.kind === "doom_advance") {
+      const invalid = validateEncounterDoomAdvance(next);
+      if (invalid) return invalid;
+      next.doom = next.doom! - effect.amount;
+      events.push({ type: "DOOM_ADVANCED", amount: effect.amount, newDoom: next.doom });
+      if (next.doom === 0) {
+        next.gameResult = "investigators_lose";
+        events.push({ type: "GAME_ENDED", result: "investigators_lose", reason: "azathoth_awakened" });
+        break;
+      }
+      continue;
+    }
     if (effect.kind === "close_encountered_gate") {
       const pending = next.pendingLocationEncounter;
       if (pending?.deck !== "other_world" || pending.playerId !== playerId || !pending.gateId || pending.gateClosed || !otherWorldBindingIsValid(next, content)) return failure("ENCOUNTER_CONTENT_MISSING", "Gate closure requires the original bound Other World encounter.");
@@ -1902,6 +1914,8 @@ function nearestSeaSpaces(state: GameState, markerId: string, content: GameConte
 /** Resume the printed instruction queue from server-only canonical state. */
 function continueLocationEncounter(state: GameState, content: GameContent, context: EngineContext, events: GameEvent[] = []): CommandResult {
   if (state.pendingLocationEncounter?.deck === "other_world" && !otherWorldBindingIsValid(state, content)) return failure("ENCOUNTER_CONTENT_MISSING", "The bound Gate or Other World deck changed.");
+  const invalidDoom = validateEncounterDoomInstructions(state, state.pendingLocationEncounter?.queue ?? []);
+  if (invalidDoom) return invalidDoom;
   let next = structuredClone(state);
   while (next.pendingLocationEncounter?.queue.length) {
     const pending = next.pendingLocationEncounter;
@@ -2100,6 +2114,27 @@ function encounterAmbushes(instruction: LocationEncounterInstruction): Extract<L
   if (instruction.kind === "test") return [...encounterAmbushes(instruction.pass), ...encounterAmbushes(instruction.fail)];
   if (instruction.kind === "optional") return [...encounterAmbushes(instruction.reward), ...(instruction.decline ? encounterAmbushes(instruction.decline) : [])];
   return [];
+}
+
+function validateEncounterDoomAdvance(state: GameState): CommandResult | undefined {
+  if (!state.ancientOneId || !Number.isSafeInteger(state.doom) || state.doom! < 1 || state.doom! > 20) return failure("OMEN_CONTENT_MISSING", "Encounter Doom advancement requires a valid Doom track and Ancient One.");
+  if (state.awakened || (state.doom === 1 && state.ancientOneId !== "azathoth")) return failure("AWAKENING_UNSUPPORTED", "Encounter awakening or awakened Doom replacement is not implemented.");
+  return undefined;
+}
+
+/** Check all remaining branches before dice, payment, or prefix effects. */
+function validateEncounterDoomInstructions(state: GameState, instructions: readonly LocationEncounterInstruction[]): CommandResult | undefined {
+  for (const node of instructions) {
+    if (node.kind === "effects" && node.effects.some(effect => effect.kind === "doom_advance") || node.kind === "optional" && node.cost.some(effect => effect.kind === "doom_advance")) {
+      const invalid = validateEncounterDoomAdvance(state);
+      if (invalid) return invalid;
+    }
+    const children = node.kind === "sequence" ? node.steps : node.kind === "choice" ? node.options : node.kind === "test" ? [node.pass, node.fail]
+      : node.kind === "optional" ? [node.reward, ...(node.decline ? [node.decline] : [])] : node.kind === "ambush" || node.kind === "ambush_result" ? [node.defeated, node.notDefeated] : [];
+    const invalid = validateEncounterDoomInstructions(state, children);
+    if (invalid) return invalid;
+  }
+  return undefined;
 }
 
 function otherWorldBindingIsValid(state: GameState, content: GameContent): boolean {
@@ -2679,6 +2714,10 @@ export function executeCommand(
     return resolveOtherWorldEncounter(state, actorPlayerId, command.gateId, content, context);
   }
   if (command.type === "RESOLVE_DECISION" && state.pendingLocationEncounter?.deck === "other_world" && !otherWorldBindingIsValid(state, content)) return failure("ENCOUNTER_CONTENT_MISSING", "The bound Gate or Other World deck changed.");
+  if (command.type === "RESOLVE_DECISION" && state.pendingLocationEncounter) {
+    const invalid = validateEncounterDoomInstructions(state, state.pendingLocationEncounter.queue);
+    if (invalid) return invalid;
+  }
   if (command.type === "ADVANCE_MYTHOS") {
     if (state.phase !== "mythos" || actorPlayerId !== state.leadInvestigatorId) return failure("WRONG_PHASE", "Only the Lead Investigator can advance the Mythos phase.");
     if (!context) return failure("RANDOM_INPUT_REQUIRED", "Mythos resolution requires server randomness.");

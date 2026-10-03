@@ -104,7 +104,8 @@ describe("Gate-bound Other World card 2", () => {
       before.privateState.deckOrderById["encounter:other_world"] = [top, ...ids.filter(id => id !== top)];
     }
     const snapshot = structuredClone(before);
-    expect(resolveOtherWorldEncounter(before, "host", "gate_arkham", content, rng([])).ok).toBe(false); expect(before).toEqual(snapshot);
+    const guardedContent = scenario === "card-4" ? { ...content, otherWorldEncounters: baseGameOtherWorldEncounterRules.filter(card => card.number !== 4) } : content;
+    expect(resolveOtherWorldEncounter(before, "host", "gate_arkham", guardedContent, rng([])).ok).toBe(false); expect(before).toEqual(snapshot);
   });
   it.each(["gate", "location", "deck", "card", "possession", "akachi"])("revalidates restored %s before rolling a reroll", field => {
     const before = accepted(resolveOtherWorldEncounter(state(1), "host", "gate_arkham", content, rng([1]))).state;
@@ -120,6 +121,109 @@ describe("Gate-bound Other World card 2", () => {
   it("retains card 1's Spell alternative rather than enabling a partial tree", () => {
     expect(JSON.stringify(baseGameOtherWorldEncounterRules[0])).toContain('"kind":"spell"');
     expect(parseLocationEncounterInstruction(baseGameOtherWorldEncounterRules[0]!.sections.initial)).toBeUndefined();
+  });
+});
+
+describe("Other World card 4: Lost Carcosa", () => {
+  function card4(clues = 0) {
+    const before = state(clues);
+    before.privateState.deckOrderById["encounter:other_world"] = [ids[2]!, ...ids.filter(id => id !== ids[2])];
+    return before;
+  }
+  function choose(before: GameState, option: string, owner = "host") {
+    return executeCommand(JSON.parse(JSON.stringify(before)), owner, { type: "RESOLVE_DECISION", decisionId: before.pendingDecision!.id, selectedOptionIds: [option] }, content, rng([]));
+  }
+  it.each(["accept", "skip"])("closes before the optional Delay choice and honors %s", option => {
+    const before = card4(); const snapshot = structuredClone(before);
+    const offered = accepted(resolveOtherWorldEncounter(before, "host", "gate_arkham", content, rng([6])));
+    expect(offered.state.activeGateIds).toEqual([]); expect(offered.state.discardedGateIds).toEqual(["gate_arkham"]);
+    expect(offered.state.players[0]?.delayed).toBeFalsy(); expect(offered.state.players[0]?.clues).toBe(0);
+    expect(offered.state.activePlayerId).toBe("host"); expect(offered.state.pendingLocationEncounter?.gateClosed).toBe(true);
+    expect(offered.state.pendingDecision?.optionLabels?.accept).toContain("Become Delayed");
+    expect(choose(offered.state, option, "guest")).toMatchObject({ ok: false, error: { code: "NOT_DECISION_OWNER" } });
+    const result = accepted(choose(offered.state, option));
+    expect(result.state.players[0]?.delayed ?? false).toBe(option === "accept");
+    expect(result.state.players[0]?.clues).toBe(option === "accept" ? 2 : 0);
+    expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.activePlayerId).toBe("guest");
+    expect(result.state.privateState.deckOrderById["encounter:other_world"]?.at(-1)).toBe(ids[2]);
+    expect(result.state.doom).toBe(15); expect(result.state.stateVersion).toBe(4); expect(before).toEqual(snapshot);
+  });
+  it.each([1, 6])("retains the Gate after Initial failure and Influence (%i)", die => {
+    const result = accepted(resolveOtherWorldEncounter(card4(), "host", "gate_arkham", content, rng([1, die])));
+    expect(result.state.activeGateIds).toEqual(["gate_arkham"]); expect(result.state.discardedGateIds).toEqual([]);
+    expect(result.state.doom).toBe(die === 6 ? 15 : 14); expect(result.state.omen).toBe(0);
+    expect(result.state.players[0]?.delayed).toBeFalsy(); expect(result.state.players[0]?.clues).toBe(0);
+    expect(result.events.filter(event => event.type === "DOOM_ADVANCED")).toEqual(die === 6 ? [] : [{ type: "DOOM_ADVANCED", amount: 1, newDoom: 14 }]);
+    expect(result.state.activePlayerId).toBe("guest"); expect(result.state.stateVersion).toBe(3);
+  });
+  it("does not pay Delay again for an already Delayed investigator", () => {
+    const before = card4(); before.players[0]!.delayed = true;
+    const result = accepted(resolveOtherWorldEncounter(before, "host", "gate_arkham", content, rng([6])));
+    expect(result.state.pendingDecision).toBeUndefined(); expect(result.state.players[0]?.clues).toBe(0);
+    expect(result.state.players[0]?.delayed).toBe(true); expect(result.state.activeGateIds).toEqual([]);
+  });
+  it("Mark's accepted optional Delay cost cannot be refused while retaining its reward", () => {
+    const before = card4(); before.players[0]!.investigatorId = "mark_harrigan";
+    const markContent: GameContent = { ...content, investigators: { ...content.investigators, mark_harrigan: { ...content.investigators.trish_scarborough!, health: 8, sanity: 4 } } };
+    const offered = accepted(resolveOtherWorldEncounter(before, "host", "gate_arkham", markContent, rng([6])));
+    const result = accepted(executeCommand(offered.state, "host", { type: "RESOLVE_DECISION", decisionId: offered.state.pendingDecision!.id, selectedOptionIds: ["accept"] }, markContent, rng([])));
+    expect(result.state.players[0]).toMatchObject({ delayed: true, clues: 2 }); expect(result.state.pendingDecision).toBeUndefined();
+  });
+  it("pays Delay even when the finite Clue supply has no reward tokens left", () => {
+    const before = card4(); before.privateState.tokenPoolById.clues = []; before.players[1]!.clues = 3; before.privateState.tokenPoolById["held_clues:guest"] = ["clue_a", "clue_b", "clue_c"];
+    const offered = accepted(resolveOtherWorldEncounter(before, "host", "gate_arkham", content, rng([6])));
+    const result = accepted(choose(offered.state, "accept"));
+    expect(result.state.players[0]).toMatchObject({ delayed: true, clues: 0 });
+  });
+  it("restores both tests and physical Clue rerolls before the single Doom consequence", () => {
+    const initial = accepted(resolveOtherWorldEncounter(card4(1), "host", "gate_arkham", content, rng([1])));
+    expect(initial.state.activeTest).toMatchObject({ skill: "lore", modifier: -1, dicePool: 1 });
+    const follow = accepted(keep(initial.state, [1]));
+    expect(follow.state.activeTest).toMatchObject({ skill: "influence", modifier: 0, dicePool: 1 });
+    const result = accepted(executeCommand(JSON.parse(JSON.stringify(follow.state)), "host", { type: "RESOLVE_DECISION", decisionId: follow.state.pendingDecision!.id, selectedOptionIds: ["die-0"] }, content, rng([1])));
+    expect(result.state.doom).toBe(14); expect(result.state.players[0]?.clues).toBe(0);
+    expect(result.state.privateState.tokenPoolById.clue_discard).toEqual(["clue_a"]);
+    expect(result.events.filter(event => event.type === "DOOM_ADVANCED")).toHaveLength(1);
+  });
+  it("Azathoth loses immediately at zero Doom, cycles once, and does not hand off", () => {
+    const before = card4(); before.doom = 1;
+    const result = accepted(resolveOtherWorldEncounter(before, "host", "gate_arkham", content, rng([1, 1])));
+    expect(result.state).toMatchObject({ doom: 0, gameResult: "investigators_lose", activePlayerId: "host" });
+    expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.activeGateIds).toEqual(["gate_arkham"]);
+    expect(result.events).toContainEqual({ type: "GAME_ENDED", result: "investigators_lose", reason: "azathoth_awakened" });
+    expect(result.state.privateState.deckOrderById["encounter:other_world"]?.at(-1)).toBe(ids[2]);
+    expect(resolveOtherWorldEncounter(result.state, "host", "gate_arkham", content, rng([]))).toMatchObject({ ok: false, error: { code: "GAME_ENDED" } });
+  });
+  it.each([undefined, NaN, 0, -1, 21, 1.5])("guards invalid Doom %s before RNG or closure", doom => {
+    const before = card4(); before.doom = doom; const snapshot = structuredClone(before);
+    expect(resolveOtherWorldEncounter(before, "host", "gate_arkham", content, rng([]))).toMatchObject({ ok: false, error: { code: "OMEN_CONTENT_MISSING" } });
+    expect(before).toEqual(snapshot);
+  });
+  it.each(["cthulhu", "shub_niggurath"] as const)("guards %s awakening even on the potentially successful Initial branch", ancientOneId => {
+    const before = card4(); before.doom = 1; before.ancientOneId = ancientOneId;
+    expect(resolveOtherWorldEncounter(before, "host", "gate_arkham", content, rng([]))).toMatchObject({ ok: false, error: { code: "AWAKENING_UNSUPPORTED" } });
+    expect(before.activeGateIds).toEqual(["gate_arkham"]);
+  });
+  it.each(["cthulhu", "shub_niggurath"] as const)("advances %s Doom safely from 2 to 1 without awakening", ancientOneId => {
+    const before = card4(); before.doom = 2; before.ancientOneId = ancientOneId;
+    const result = accepted(resolveOtherWorldEncounter(before, "host", "gate_arkham", content, rng([1, 1])));
+    expect(result.state.doom).toBe(1); expect(result.state.gameResult).toBeUndefined();
+    expect(result.state.activeGateIds).toEqual(["gate_arkham"]); expect(result.state.activePlayerId).toBe("guest");
+  });
+  it.each(["missing-ancient", "awakened"])("guards %s before RNG", scenario => {
+    const before = card4(); if (scenario === "missing-ancient") before.ancientOneId = undefined; else before.awakened = true;
+    expect(resolveOtherWorldEncounter(before, "host", "gate_arkham", content, rng([])).ok).toBe(false);
+  });
+  it("rejects changed Doom before a restored reroll consumes RNG or a Clue", () => {
+    const before = accepted(resolveOtherWorldEncounter(card4(1), "host", "gate_arkham", content, rng([1]))).state;
+    before.doom = 1; before.ancientOneId = "cthulhu"; const snapshot = structuredClone(before);
+    expect(executeCommand(before, "host", { type: "RESOLVE_DECISION", decisionId: before.pendingDecision!.id, selectedOptionIds: ["die-0"] }, content, rng([]))).toMatchObject({ ok: false, error: { code: "AWAKENING_UNSUPPORTED" } });
+    expect(before).toEqual(snapshot);
+  });
+  it("rejects a restored newly-Delayed payment without granting Clues", () => {
+    const offered = accepted(resolveOtherWorldEncounter(card4(), "host", "gate_arkham", content, rng([6]))).state;
+    offered.players[0]!.delayed = true; const snapshot = structuredClone(offered);
+    expect(choose(offered, "accept").ok).toBe(false); expect(offered).toEqual(snapshot);
   });
 });
 
