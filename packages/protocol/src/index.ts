@@ -98,6 +98,8 @@ export interface ActiveTest {
   dice: number[];
   successes: number;
   successThreshold: number;
+  /** Physical Asset reroll sources already consumed for this test. */
+  usedRerollAssetIds?: string[];
   continuation: "acquire_assets" | "condition_action" | "condition_reckoning" | "location_encounter" | "artifact_action";
   sourceArtifactId?: string;
   sourceConditionId?: string;

@@ -213,6 +213,7 @@ export interface InvestigatorSetup {
 }
 
 export type AssetEngineEffect =
+  | { type: "test_reroll"; skill: "influence" }
   | { type: "city_test_aura"; amount: 1 }
   | { type: "skill_bonus"; skill: "influence"; amount: 1 }
   | { type: "acquire_six_counts_as_two" }
@@ -240,7 +241,7 @@ export interface GameContent {
   referenceCards?: readonly { playerCount: number; spawnClues: number; monsterSurge?: number; spawnGates?: number }[];
   map: GameMap;
   investigators: Readonly<Partial<Record<InvestigatorId, InvestigatorSetup>>>;
-  assets: readonly { id: string; value: number; traits?: readonly string[]; engineEffects: readonly AssetEngineEffect[]; nonCombatEncounterSupport?: "unsupported" | "irrelevant" | "city_test_aura" }[];
+  assets: readonly { id: string; value: number; traits?: readonly string[]; engineEffects: readonly AssetEngineEffect[]; nonCombatEncounterSupport?: "unsupported" | "irrelevant" | "city_test_aura" | "skill_test" }[];
   mysteryIdsByAncientOne: Readonly<Partial<Record<AncientOneId, readonly string[]>>>;
   mysteryTargetsById: Readonly<Record<string, "investigator_count" | "half_investigator_count" | "twice_investigator_count" | "one">>;
 }
@@ -365,7 +366,7 @@ export function projectStateForPlayer(state: GameState, viewerPlayerId?: string)
     reserveAssetIds: [...publicState.reserveAssetIds],
     assetDiscardIds: [...publicState.assetDiscardIds],
     completedMysteryIds: [...publicState.completedMysteryIds],
-    activeTest: publicState.activeTest ? { ...publicState.activeTest, sourceConditionId: undefined, dice: [...publicState.activeTest.dice] } : undefined,
+    activeTest: publicState.activeTest ? { ...publicState.activeTest, sourceConditionId: undefined, dice: [...publicState.activeTest.dice], usedRerollAssetIds: publicState.activeTest.usedRerollAssetIds?.slice() } : undefined,
     pendingDecision: pendingDecision
       ? pendingDecision.visibility === "public" || pendingDecision.playerId === viewerPlayerId
         ? cloneDecision(pendingDecision)
@@ -1923,18 +1924,19 @@ function continueLocationEncounter(state: GameState, content: GameContent, conte
       const investigator = player.investigatorId && content.investigators[player.investigatorId];
       if (!investigator) return failure("INVESTIGATOR_CONTENT_MISSING", "Investigator skills are unavailable.");
       const dicePool = calculateDicePool({ skill: node.skill, baseSkill: investigator.skills[node.skill], improvement: player.skillImprovements[node.skill], modifier: node.modifier,
-        otherBonuses: [nonCombatEncounterAuraBonus(next, player, content)] }).dicePool;
+        otherBonuses: [nonCombatEncounterAuraBonus(next, player, content), ...assetEffectsForPlayer(player, content).flatMap(effect => effect.type === "skill_bonus" && effect.skill === node.skill ? [effect.amount] : [])] }).dicePool;
       const dice = Array.from({ length: dicePool }, () => context.rollDie());
       const successes = countTestSuccesses(dice, conditionSuccessThreshold(player.conditionIds ?? []));
       pending.dice = dice;
       pending.successes = successes;
-      if (player.clues > 0) {
+      if (player.clues > 0 || assetEffectsForPlayer(player, content).some(effect => effect.type === "test_reroll" && effect.skill === node.skill)) {
         const test: ActiveTest = { id: context.createId(), playerId: player.id, skill: node.skill, modifier: node.modifier, dicePool, dice, successes,
           successThreshold: conditionSuccessThreshold(player.conditionIds ?? []), continuation: "location_encounter", sourceEncounterCardId: pending.cardId, sourceEncounterDeck: pending.deck };
-        next.activeTest = test;
-        createTestRerollDecision(next, test, context);
-        next.stateVersion = state.stateVersion;
-        return success(next, [...events, { type: "TEST_ROLLED", testId: test.id, playerId: player.id, skill: test.skill, modifier: test.modifier, dice, successes }]);
+        if (createTestRerollDecision(next, test, content, context)) {
+          next.activeTest = test;
+          next.stateVersion = state.stateVersion;
+          return success(next, [...events, { type: "TEST_ROLLED", testId: test.id, playerId: player.id, skill: test.skill, modifier: test.modifier, dice, successes }]);
+        }
       }
       pending.queue.splice(0, 1, successes ? node.pass : node.fail);
       continue;
@@ -2177,18 +2179,32 @@ function countActiveTestSuccesses(test: ActiveTest, player: EnginePlayer, conten
     : countTestSuccesses(test.dice, test.successThreshold);
 }
 
-function createTestRerollDecision(state: GameState, test: ActiveTest, context: EngineContext): void {
+function createTestRerollDecision(state: GameState, test: ActiveTest, content: GameContent, context: EngineContext): boolean {
+  const player = state.players.find(player => player.id === test.playerId);
+  if (!player) return false;
+  const optionIds = player.clues > 0 ? test.dice.map((_, index) => `die-${index}`) : [];
+  const optionLabels: Record<string, string> = Object.fromEntries(optionIds.map((id, index) => [id, `Spend 1 Clue: reroll die ${index + 1}`]));
+  for (const assetId of player.assetIds) {
+    if (test.usedRerollAssetIds?.includes(assetId)) continue;
+    if (!content.assets.find(asset => asset.id === assetId)?.engineEffects.some(effect => effect.type === "test_reroll" && effect.skill === test.skill)) continue;
+    test.dice.forEach((_, index) => {
+      const id = `asset-reroll:${assetId}:${index}`;
+      optionIds.push(id); optionLabels[id] = `Personal Assistant: reroll die ${index + 1} (no Clue)`;
+    });
+  }
+  if (!optionIds.length) return false;
   state.pendingDecision = {
     id: context.createId(),
     kind: "select_rerolls",
     playerId: test.playerId,
     visibility: "owner",
-    prompt: "Spend 1 Clue to reroll one die, or keep the current result.",
-    optionIds: test.dice.map((_, index) => `die-${index}`),
+    prompt: "Choose a reroll source and die, or keep the current result.",
+    optionIds, optionLabels,
     minSelections: 0,
     maxSelections: 1,
     continuation: "test_reroll",
   };
+  return true;
 }
 
 function createAcquireAssetsDecision(state: GameState, test: ActiveTest, content: GameContent, context: EngineContext): GameEvent[] {
@@ -2308,8 +2324,7 @@ function beginSkillTest(
     dice: [...test.dice],
     successes: test.successes,
   }];
-  if (player.clues > 0) createTestRerollDecision(state, test, context);
-  else events.push(...finishSkillTest(state, test, content, context));
+  if (!createTestRerollDecision(state, test, content, context)) events.push(...finishSkillTest(state, test, content, context));
   return events;
 }
 
@@ -2400,7 +2415,7 @@ export function executeCommand(
     assetDiscardIds: [...state.assetDiscardIds],
     completedMysteryIds: [...state.completedMysteryIds],
     pendingDecision: state.pendingDecision ? cloneDecision(state.pendingDecision) : undefined,
-    activeTest: state.activeTest ? { ...state.activeTest, dice: [...state.activeTest.dice] } : undefined,
+    activeTest: state.activeTest ? { ...state.activeTest, dice: [...state.activeTest.dice], usedRerollAssetIds: state.activeTest.usedRerollAssetIds?.slice() } : undefined,
     pendingLocationEncounter: state.pendingLocationEncounter ? structuredClone(state.pendingLocationEncounter) : undefined,
     privateState: {
       deckOrderById: Object.fromEntries(
@@ -2937,18 +2952,27 @@ export function executeCommand(
       const activeTest = next.activeTest!;
       const selectedDie = selections[0];
       if (selectedDie) {
-        if (actor.clues < 1) return failure("CLUE_REQUIRED", "A Clue is required to reroll a test die.");
-        const dieIndex = Number.parseInt(selectedDie.slice("die-".length), 10);
-        if (!discardHeldClues(next, actorPlayerId, 1)) return failure("CLUE_CONTENT_MISSING", "The physical Clue for this reroll is unavailable.");
-        actor.clues -= 1;
+        const assetChoice = selectedDie.startsWith("asset-reroll:") ? selectedDie.split(":") : undefined;
+        const dieIndex = Number(assetChoice ? assetChoice[2] : selectedDie.slice("die-".length));
+        if (!Number.isInteger(dieIndex) || dieIndex < 0 || dieIndex >= activeTest.dice.length) return failure("INVALID_DECISION_SELECTION", "That test die is unavailable.");
+        if (assetChoice) {
+          const assetId = assetChoice[1]!;
+          if (!actor.assetIds.includes(assetId) || activeTest.usedRerollAssetIds?.includes(assetId)
+            || !content.assets.find(asset => asset.id === assetId)?.engineEffects.some(effect => effect.type === "test_reroll" && effect.skill === activeTest.skill)) return failure("INVALID_DECISION_SELECTION", "That Asset reroll is unavailable for this test.");
+          activeTest.usedRerollAssetIds = [...(activeTest.usedRerollAssetIds ?? []), assetId];
+        } else {
+          if (actor.clues < 1) return failure("CLUE_REQUIRED", "A Clue is required to reroll a test die.");
+          if (!discardHeldClues(next, actorPlayerId, 1)) return failure("CLUE_CONTENT_MISSING", "The physical Clue for this reroll is unavailable.");
+          actor.clues -= 1;
+          events.push({ type: "CLUE_SPENT_FOR_REROLL", testId: activeTest.id, playerId: actorPlayerId, dieIndex });
+        }
         activeTest.dice[dieIndex] = context.rollDie();
         activeTest.successes = countActiveTestSuccesses(activeTest, actor, content);
         events.push(
-          { type: "CLUE_SPENT_FOR_REROLL", testId: activeTest.id, playerId: actorPlayerId, dieIndex },
           { type: "TEST_DIE_REROLLED", testId: activeTest.id, playerId: actorPlayerId, dieIndex, result: activeTest.dice[dieIndex]!, successes: activeTest.successes },
         );
       }
-      if (selectedDie && actor.clues > 0) createTestRerollDecision(next, activeTest, context);
+      if (selectedDie && createTestRerollDecision(next, activeTest, content, context)) { /* Keep the authoritative test open. */ }
       else if (activeTest.continuation === "location_encounter") {
         const pending = next.pendingLocationEncounter;
         const instruction = pending?.queue[0];

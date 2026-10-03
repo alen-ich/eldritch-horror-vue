@@ -28,6 +28,75 @@ function state(held: string[] = [], locationId: "arkham" | "space_2" = "arkham")
 const context = () => createDeterministicEngineContext({ dice: Array(10).fill(1), ids: ["test", "reroll"], tokenIndexes: [0] });
 
 describe("scoped non-combat encounter Assets", () => {
+  const influenceContent: GameContent = { ...content, locationEncounters: [{ id: "encounter_general_01", deck: "general", sections: {
+    city: { kind: "test", skill: "influence", modifier: 0, pass: empty, fail: empty },
+  } }] };
+  function assistantTest(clues = 0) {
+    const before = state(["asset_personal_assistant", "asset_urban_guide"]);
+    before.players[0]!.clues = clues;
+    if (!clues) before.privateState.tokenPoolById["held_clues:host"] = [];
+    const result = resolveLocationEncounter(before, "host", "general", influenceContent, context());
+    if (!result.ok) throw new Error(result.error.message);
+    return result.state;
+  }
+  function reroll(before: GameState, option: string | undefined, die = 6) {
+    const result = executeCommand(before, "host", { type: "RESOLVE_DECISION", decisionId: before.pendingDecision!.id, selectedOptionIds: option ? [option] : [] }, influenceContent, createDeterministicEngineContext({ dice: [die], ids: ["next-reroll"] }));
+    if (!result.ok) throw new Error(result.error.message);
+    return result;
+  }
+  it("offers a free Influence reroll without Clues and combines both Ally bonuses", () => {
+    const before = assistantTest();
+    expect(before.activeTest?.dicePool).toBe(4); // Influence 2 + Assistant 1 + Urban Guide 1
+    expect(before.pendingDecision?.optionIds).toEqual(Array.from({ length: 4 }, (_, index) => `asset-reroll:asset_personal_assistant:${index}`));
+    const snapshot = structuredClone(before);
+    const result = reroll(before, "asset-reroll:asset_personal_assistant:3");
+    expect(result.events.some(event => event.type === "CLUE_SPENT_FOR_REROLL")).toBe(false);
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "TEST_DIE_REROLLED", dieIndex: 3, result: 6, successes: 1 }));
+    expect(result.state.pendingDecision).toBeUndefined(); expect(result.state.activeTest).toBeUndefined();
+    expect(result.state.players[0]?.clues).toBe(0); expect(before).toEqual(snapshot);
+  });
+  it.each([true, false])("restores source usage and permits Clue and Asset rerolls in either order (Asset first=%s)", assetFirst => {
+    const before = assistantTest(1);
+    const first = reroll(before, assetFirst ? "asset-reroll:asset_personal_assistant:0" : "die-0", 1).state;
+    const restored: GameState = JSON.parse(JSON.stringify(first));
+    expect(restored.players[0]?.clues).toBe(assetFirst ? 1 : 0);
+    expect(restored.activeTest?.usedRerollAssetIds ?? []).toEqual(assetFirst ? ["asset_personal_assistant"] : []);
+    expect(restored.pendingDecision?.optionIds.every(id => id.startsWith(assetFirst ? "die-" : "asset-reroll:"))).toBe(true);
+    const rejected = executeCommand(restored, "guest", { type: "RESOLVE_DECISION", decisionId: restored.pendingDecision!.id, selectedOptionIds: [] }, influenceContent, context());
+    expect(rejected).toMatchObject({ ok: false, error: { code: "NOT_DECISION_OWNER" } });
+    if (assetFirst) {
+      expect(executeCommand(restored, "host", { type: "RESOLVE_DECISION", decisionId: restored.pendingDecision!.id, selectedOptionIds: ["asset-reroll:asset_personal_assistant:0"] }, influenceContent, context()).ok).toBe(false);
+    }
+    const result = reroll(restored, assetFirst ? "die-0" : "asset-reroll:asset_personal_assistant:0");
+    expect(result.state.players[0]?.clues).toBe(0); expect(result.state.privateState.tokenPoolById.clue_discard).toEqual(["clue_london"]);
+    expect(result.state.activePlayerId).toBe("guest"); expect(result.state.pendingDecision).toBeUndefined();
+  });
+  it("can decline the free reroll and resets its usage for a new test", () => {
+    const before = assistantTest();
+    const ended = reroll(before, undefined).state;
+    expect(ended.pendingDecision).toBeUndefined();
+    ended.activePlayerId = "host";
+    const again = resolveLocationEncounter(ended, "host", "general", influenceContent, context());
+    if (!again.ok) throw new Error(again.error.message);
+    expect(again.state.pendingDecision?.optionIds).toContain("asset-reroll:asset_personal_assistant:0");
+  });
+  it("does not grant Personal Assistant bonuses or free rerolls to Observation tests", () => {
+    const before = state(["asset_personal_assistant"]); before.players[0]!.clues = 0;
+    const result = resolveLocationEncounter(before, "host", "general", content, context());
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.state.pendingDecision).toBeUndefined(); expect(result.state.activePlayerId).toBe("guest");
+  });
+  it("recounts a free Acquire Assets reroll using Fine Clothes without spending a Clue", () => {
+    const before = state(["asset_personal_assistant", "asset_fine_clothes"]);
+    before.phase = "action"; before.actionsRemaining = 2; before.players[0]!.clues = 0;
+    before.privateState.tokenPoolById["held_clues:host"] = [];
+    const started = executeCommand(before, "host", { type: "ACQUIRE_ASSETS" }, influenceContent, context());
+    if (!started.ok) throw new Error(started.error.message);
+    expect(started.state.activeTest?.dicePool).toBe(3);
+    const finished = reroll(started.state, "asset-reroll:asset_personal_assistant:0");
+    expect(finished.state.pendingDecision).toMatchObject({ kind: "select_acquired_cards", selectionBudget: 2 });
+    expect(finished.state.activeTest).toBeUndefined(); expect(finished.state.players[0]?.clues).toBe(0);
+  });
   it.each(baseGameAssets.filter(asset => asset.nonCombatEncounterSupport === "irrelevant"))("allows $name without applying its combat/Spell/Action effects", asset => {
     for (const research of [false, true]) {
       const before = state([asset.id]); const snapshot = structuredClone(before);
@@ -82,7 +151,7 @@ describe("scoped non-combat encounter Assets", () => {
     expect(result.state.privateState.tokenPoolById["held_clues:host"]).toEqual(["clue_arkham"]);
     expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.activePlayerId).toBe("guest");
   });
-  it.each(["asset_personal_assistant", "asset_bandages", "asset_unknown"])("retains atomic guards for %s", id => {
+  it.each(["asset_bandages", "asset_unknown"])("retains atomic guards for %s", id => {
     for (const research of [false, true]) {
       const before = state([id]); const snapshot = structuredClone(before);
       const result = research ? resolveResearchEncounter(before, "host", "chosen", content, createDeterministicEngineContext({})) : resolveLocationEncounter(before, "host", "general", content, createDeterministicEngineContext({}));
