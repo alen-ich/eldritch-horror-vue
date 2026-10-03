@@ -47,6 +47,9 @@ describe("remaining base-game scan import", () => {
     }
     expect(baseGameArtifacts.every(card => card.rulesStatus === "transcribed_pending_execution")).toBe(true);
     expect(baseGameArtifacts.find(card => card.id === "artifact_sword_of_saint_jerome")).toMatchObject({ traits: ["item", "weapon", "magical"] });
+    expect(baseGameArtifacts.find(card => card.id === "artifact_cultes_des_goules")?.engineEffects).toEqual([{ type: "action_lore_spend_sanity_gain_clues", amount: 2 }]);
+    const cultes = baseGameArtifacts.find(card => card.id === "artifact_cultes_des_goules")!;
+    expect(() => validateArtifactContent([{ ...cultes, engineEffects: undefined }])).toThrow(/mapping/);
   });
 
   it("rejects duplicates, expansion numbers, mismatched backs and false execution status", () => {

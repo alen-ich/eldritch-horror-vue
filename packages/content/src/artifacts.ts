@@ -24,13 +24,15 @@ const artifactSchema = z.object({
   imageUrl: z.string().startsWith("/cards/artifacts/"), backImageUrl: z.literal("/cards/artifacts/back.webp"),
   sourceScan: z.string().startsWith("source-assets/artifacts/"), sourceCellIndex: z.number().int().nonnegative(),
   verification: z.literal("artwork_verified_from_scan"), rulesStatus: z.literal("transcribed_pending_execution"),
+  engineEffects: z.array(z.object({ type: z.literal("action_lore_spend_sanity_gain_clues"), amount: z.literal(2) }).strict()).optional(),
 }).strict();
 export type ArtifactCardData = z.infer<typeof artifactSchema>;
 export const baseGameArtifacts: readonly ArtifactCardData[] = definitions.map(([slug, name, traits, effectText]) => {
   const sheet = scans.decks.find(deck => deck.family === "artifact")?.sheets.find(sheet => sheet.ids?.includes(slug));
   if (!sheet?.ids) throw new Error(`Artifact scan missing: ${slug}`);
   return artifactSchema.parse({ id: `artifact_${slug}`, name, traits, effectText, imageUrl: `/cards/artifacts/${slug}.webp`, backImageUrl: "/cards/artifacts/back.webp",
-    sourceScan: `source-assets/${sheet.file}`, sourceCellIndex: sheet.ids.indexOf(slug), verification: "artwork_verified_from_scan", rulesStatus: "transcribed_pending_execution" });
+    sourceScan: `source-assets/${sheet.file}`, sourceCellIndex: sheet.ids.indexOf(slug), verification: "artwork_verified_from_scan", rulesStatus: "transcribed_pending_execution",
+    ...(slug === "cultes_des_goules" ? { engineEffects: [{ type: "action_lore_spend_sanity_gain_clues", amount: 2 }] } : {}) });
 });
 
 export function validateArtifactContent(cards: readonly ArtifactCardData[]): void {

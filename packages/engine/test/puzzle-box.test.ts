@@ -33,6 +33,14 @@ function withClue(state = fixture()) {
 }
 
 describe("Puzzle Box Rest test", () => {
+  it("draws Cultes des Goules only when it is the true supported top card", () => {
+    const state = fixture(); const cultes = "artifact_cultes_des_goules";
+    state.privateState.deckOrderById.artifacts = [cultes, ...baseGameArtifacts.filter(card => card.id !== cultes).map(card => card.id)];
+    const after = unwrap(attempt(rest(state)));
+    expect(after.players[0]?.artifactIds).toEqual([cultes]);
+    expect(after.privateState.deckOrderById.artifacts).toEqual(state.privateState.deckOrderById.artifacts!.slice(1));
+    expect(after.assetDiscardIds).toEqual([box]);
+  });
   it("offers an optional owner-only test without changing hidden order or charging Rest yet", () => {
     const before = fixture(), snapshot = structuredClone(before), paused = rest(before);
     expect(before).toEqual(snapshot);

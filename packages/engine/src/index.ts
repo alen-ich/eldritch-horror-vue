@@ -241,7 +241,7 @@ export type ConditionBackEffect =
   | { type: "discard_all_clues_then_discard" };
 
 export interface GameContent {
-  artifacts?: readonly { id: string }[];
+  artifacts?: readonly { id: string; engineEffects?: readonly { type: "action_lore_spend_sanity_gain_clues"; amount: 2 }[] }[];
   researchEncounters?: readonly { id: string; deck: ResearchEncounterDeckId; sections: Readonly<Record<string, unknown>> }[];
   locationEncounters?: readonly { id: string; deck: LocationEncounterDeckId; sections?: Readonly<Record<string, unknown>> }[];
   gates?: readonly { id: string; omenSymbol: "comet" | "constellation" | "eclipse"; locationId: LocationId }[];
@@ -575,7 +575,7 @@ export function gainNamedArtifact(state: GameState, playerId: string, artifactId
   const player = state.players.find(player => player.id === playerId);
   if (!player) return failure("PLAYER_NOT_FOUND", "Investigator not found.");
   if (player.defeated || player.eliminated) return failure("INVESTIGATOR_DEFEATED", "This investigator cannot gain an Artifact.");
-  if (artifactId !== "artifact_ttka_halot") return failure("ARTIFACT_EFFECT_UNSUPPORTED", "This Artifact's printed gain/effects are not supported.");
+  if (!supportedArtifact(artifactId, content)) return failure("ARTIFACT_EFFECT_UNSUPPORTED", "This Artifact's printed gain/effects are not supported.");
   const catalog = content.artifacts?.map(card => card.id);
   const deck = state.privateState.deckOrderById.artifacts;
   const physical = [...(deck ?? []), ...state.players.flatMap(player => player.artifactIds ?? []), ...(state.defeatedInvestigators ?? []).flatMap(player => player.artifactIds ?? [])];
@@ -2234,14 +2234,14 @@ function validatePuzzleBoxTest(state: GameState, actor: EnginePlayer, source: st
     : [];
   if ([...actor.assetIds, ...auraSources].some(id => !physicalAssetIsUnique(state, id))) return failure("ASSET_CONTENT_MISSING", "The test possession identities are inconsistent.");
   if (actor.assetIds.some(id => !content.assets.find(card => card.id === id)?.nonCombatEncounterSupport || content.assets.find(card => card.id === id)?.nonCombatEncounterSupport === "unsupported")
-    || actor.artifactIds?.some(id => id !== "artifact_ttka_halot")) return failure("ARTIFACT_EFFECT_UNSUPPORTED", "Carried possessions have unsupported test effects.");
+    || actor.artifactIds?.some(id => !supportedArtifact(id, content))) return failure("ARTIFACT_EFFECT_UNSUPPORTED", "Carried possessions have unsupported test effects.");
   const catalog = content.artifacts?.map(card => card.id);
   const deck = state.privateState.deckOrderById.artifacts;
   const physical = [...(deck ?? []), ...state.players.flatMap(player => player.artifactIds ?? []), ...(state.defeatedInvestigators ?? []).flatMap(player => player.artifactIds ?? [])];
   if (!catalog || !deck || new Set(catalog).size !== catalog.length || new Set(physical).size !== physical.length || physical.length !== catalog.length || physical.some(id => !catalog.includes(id))) {
     return failure("ARTIFACT_CONTENT_MISSING", "The physical Artifact supply is inconsistent.");
   }
-  if (deck.length && deck[0] !== "artifact_ttka_halot") return failure("ARTIFACT_EFFECT_UNSUPPORTED", "The next Artifact's gain/effects are not implemented; skip Puzzle Box to finish Rest.");
+  if (deck.length && !supportedArtifact(deck[0]!, content)) return failure("ARTIFACT_EFFECT_UNSUPPORTED", "The next Artifact's gain/effects are not implemented; skip Puzzle Box to finish Rest.");
   return undefined;
 }
 
@@ -2404,8 +2404,33 @@ function artifactTargets(state: GameState, player: EnginePlayer, content: GameCo
   });
 }
 
-function completeArtifactAction(state: GameState, playerId: string, events: GameEvent[]): void {
-  state.usedArtifactActionIds = [...(state.usedArtifactActionIds ?? []), "artifact_ttka_halot"];
+function supportedArtifact(id: string, content: GameContent): boolean {
+  return id === "artifact_ttka_halot" || id === "artifact_cultes_des_goules" && !!content.artifacts?.find(card => card.id === id)?.engineEffects?.some(effect => effect.type === "action_lore_spend_sanity_gain_clues" && effect.amount === 2);
+}
+
+/** Revalidate the original physical source on every restored/resumed command. */
+function validateClueArtifactAction(state: GameState, player: EnginePlayer, content: GameContent): CommandResult | undefined {
+  const source = "artifact_cultes_des_goules";
+  const physical = [...(state.privateState.deckOrderById.artifacts ?? []), ...state.players.flatMap(holder => holder.artifactIds ?? []), ...(state.defeatedInvestigators ?? []).flatMap(holder => holder.artifactIds ?? [])];
+  if (!supportedArtifact(source, content) || !player.artifactIds?.includes(source) || physical.filter(id => id === source).length !== 1
+    || state.phase !== "action" || state.activePlayerId !== player.id || state.actionsRemaining < 1 || player.defeated || player.eliminated || player.delayed
+    || player.conditionIds?.some(id => content.conditions?.find(card => card.id === id)?.kind === "detained")
+    || state.usedArtifactActionIds?.includes(source)) return failure("ARTIFACT_UNAVAILABLE", "The Cultes des Goules action is no longer available.");
+  if (player.assetIds.length || player.artifactIds.some(id => !supportedArtifact(id, content))) return failure("ARTIFACT_EFFECT_UNSUPPORTED", "Possession bonuses for this Lore test are not executable yet.");
+  return undefined;
+}
+
+function validateArtifactClues(state: GameState, content: GameContent): CommandResult | undefined {
+  const pools = state.privateState.tokenPoolById;
+  const physical = Object.entries(pools).filter(([key]) => key === "clues" || key === "clue_discard" || key.startsWith("held_clues:") || key.startsWith("board_clue:") || key.startsWith("defeated_clues:")).flatMap(([, ids]) => ids);
+  if (!pools.clues || !content.clues || new Set(content.clues.map(card => card.id)).size !== content.clues.length || physical.length !== content.clues.length
+    || new Set(physical).size !== physical.length || physical.some(id => !content.clues!.some(card => card.id === id))
+    || state.players.some(player => (pools[heldClueKey(player.id)]?.length ?? 0) !== player.clues)) return failure("CLUE_CONTENT_MISSING", "Physical Clue supply or holdings are inconsistent.");
+  return undefined;
+}
+
+function completeArtifactAction(state: GameState, playerId: string, events: GameEvent[], artifactId = "artifact_ttka_halot"): void {
+  state.usedArtifactActionIds = [...(state.usedArtifactActionIds ?? []), artifactId];
   completeAction(state, state.players.findIndex(player => player.id === playerId), "component", events);
 }
 
@@ -2440,6 +2465,12 @@ function finishSkillTest(state: GameState, test: ActiveTest, content: GameConten
     state.activeTest = undefined;
     const player = state.players.find(candidate => candidate.id === test.playerId)!;
     const events: GameEvent[] = [{ type: "TEST_RESOLVED", testId: test.id, playerId: player.id, successes: test.successes, continuation: test.continuation }];
+    if (test.sourceArtifactId === "artifact_cultes_des_goules") {
+      if (test.successes > 0 && (player.sanity ?? 0) > 1) {
+        state.pendingDecision = { id: context.createId(), kind: "artifact_payment", playerId: player.id, visibility: "owner", prompt: "Cultes des Goules: spend 1 Sanity to gain 2 Clues, or decline.", optionIds: ["cultes:accept", "cultes:skip"], optionLabels: { "cultes:accept": "Spend 1 Sanity: gain 2 Clues", "cultes:skip": "Decline" }, minSelections: 1, maxSelections: 1 };
+      } else completeArtifactAction(state, player.id, events, test.sourceArtifactId);
+      return events;
+    }
     const targets = artifactTargets(state, player, content);
     if (test.successes > 0 && (player.sanity ?? 0) > 1 && targets.length) {
       state.pendingDecision = { id: context.createId(), kind: "artifact_target", playerId: player.id, visibility: "owner", prompt: "T'tka Halot: spend 1 Sanity for a Monster on your space to lose 3 Health, or decline.", optionIds: ["skip", ...targets.map(instance => instance.id)], optionLabels: Object.fromEntries([["skip", "Decline"], ...targets.map(instance => [instance.id, instance.monsterId])]), minSelections: 1, maxSelections: 1 };
@@ -3045,6 +3076,28 @@ export function executeCommand(
       continued.state.stateVersion = state.stateVersion + 1;
       return { ...continued, events: [...events, ...continued.events] };
     }
+    if (decision.kind === "artifact_payment") {
+      const invalid = validateClueArtifactAction(next, actor, content);
+      if (invalid) return invalid;
+      const selected = selections[0]!;
+      if (selected !== "cultes:accept" && selected !== "cultes:skip") return failure("INVALID_DECISION_SELECTION", "Unknown Artifact payment.");
+      const events: GameEvent[] = [{ type: "DECISION_RESOLVED", decisionId: decision.id, playerId: actorPlayerId, selectedOptionIds: [...selections] }];
+      if (selected === "cultes:accept") {
+        if ((actor.sanity ?? 0) <= 1) return failure("INVALID_DECISION_SELECTION", "Not enough spendable Sanity.");
+        if (!context) return failure("RANDOM_INPUT_REQUIRED", "Clue gain requires server token draws.");
+        const inconsistent = validateArtifactClues(next, content);
+        if (inconsistent) return inconsistent;
+        const gained = gainCluesFromPool(next, actor.id, 2, content, context);
+        if (!gained.ok) return gained;
+        next.privateState = gained.state.privateState;
+        actor.clues = gained.state.players.find(player => player.id === actor.id)!.clues;
+        actor.sanity = actor.sanity! - 1;
+        events.push(...gained.events);
+      }
+      next.pendingDecision = undefined;
+      completeArtifactAction(next, actor.id, events, "artifact_cultes_des_goules");
+      return success(next, events);
+    }
     if (decision.kind === "artifact_target") {
       if (next.phase !== "action" || next.activePlayerId !== actorPlayerId || !actor.artifactIds?.includes("artifact_ttka_halot") || next.usedArtifactActionIds?.includes("artifact_ttka_halot")) return failure("ARTIFACT_UNAVAILABLE", "The Artifact action is no longer available.");
       const selected = selections[0]!;
@@ -3160,6 +3213,10 @@ export function executeCommand(
         return failure("ACTIVE_TEST_MISSING", "The skill test for this reroll is no longer active.");
       }
       if (!context) return failure("RANDOM_INPUT_REQUIRED", "Resolving a test reroll requires deterministic dice and ID input.");
+      if (test.continuation === "artifact_action" && test.sourceArtifactId === "artifact_cultes_des_goules") {
+        const invalid = validateClueArtifactAction(next, actor, content);
+        if (invalid) return invalid;
+      }
       if (test.continuation === "rest_asset") {
         const rest = next.pendingRest;
         if (!rest || rest.playerId !== actorPlayerId || !rest.testingAssetId || !rest.remainingAssetIds.includes(rest.testingAssetId)) return failure("ASSET_CONTENT_MISSING", "The Rest test continuation is missing.");
@@ -3586,7 +3643,11 @@ export function executeCommand(
   }
 
   if (command.type === "USE_ARTIFACT_ACTION") {
-    if (actor.assetIds.length || actor.artifactIds?.some(id => id !== command.artifactId)) return failure("ARTIFACT_EFFECT_UNSUPPORTED", "Possession bonuses for this Lore test are not executable yet.");
+    if (command.artifactId === "artifact_cultes_des_goules") {
+      const invalid = validateClueArtifactAction(next, actor, content);
+      if (invalid) return invalid;
+    }
+    if (actor.assetIds.length || actor.artifactIds?.some(id => !supportedArtifact(id, content))) return failure("ARTIFACT_EFFECT_UNSUPPORTED", "Possession bonuses for this Lore test are not executable yet.");
     if (!actor.artifactIds?.includes(command.artifactId) || !content.artifacts?.some(card => card.id === command.artifactId)) return failure("ARTIFACT_UNAVAILABLE", "The investigator does not hold this Artifact.");
     if (next.usedArtifactActionIds?.includes(command.artifactId)) return failure("ACTION_ALREADY_PERFORMED", "This Artifact action was already performed this round.");
     if (!actor.investigatorId || !content.investigators[actor.investigatorId]) return failure("INVESTIGATOR_CONTENT_MISSING", "The investigator's Lore is missing.");

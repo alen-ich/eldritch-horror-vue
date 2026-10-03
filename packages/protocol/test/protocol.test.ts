@@ -52,6 +52,9 @@ describe("gameCommandSchema", () => {
     })).toThrow();
   });
   it("validates supported Artifact intents without accepting forged identity or damage", () => {
+    expect(gameCommandSchema.safeParse({ type: "USE_ARTIFACT_ACTION", artifactId: "artifact_cultes_des_goules" }).success).toBe(true);
+    expect(gameCommandSchema.safeParse({ type: "USE_ARTIFACT_ACTION", artifactId: "artifact_cultes_des_goules", clues: 99 }).success).toBe(false);
+    expect(gameCommandSchema.safeParse({ type: "USE_ARTIFACT_ACTION", artifactId: "artifact_cultes_des_goules", sanityCost: 0 }).success).toBe(false);
     expect(gameCommandSchema.parse({ type: "USE_ARTIFACT_ACTION", artifactId: "artifact_ttka_halot" })).toEqual({ type: "USE_ARTIFACT_ACTION", artifactId: "artifact_ttka_halot" });
     for (const command of [
       { type: "USE_ARTIFACT_ACTION", artifactId: "unknown" },

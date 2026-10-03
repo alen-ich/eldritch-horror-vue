@@ -44,6 +44,7 @@ export const pendingDecisionKinds = [
   "choose_heat_wave",
   "encounter_choice",
   "artifact_target",
+  "artifact_payment",
 ] as const;
 export type PendingDecisionKind = (typeof pendingDecisionKinds)[number];
 
@@ -134,7 +135,7 @@ export const gameCommandSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("PREPARE_TRAVEL"), ticketType: z.enum(["train", "ship"]) }).strict(),
   z.object({ type: z.literal("ACQUIRE_ASSETS") }).strict(),
   z.object({ type: z.literal("USE_CONDITION_ACTION"), targetPlayerId: z.string().min(1), conditionKind: z.enum(conditionKindIds) }).strict(),
-  z.object({ type: z.literal("USE_ARTIFACT_ACTION"), artifactId: z.literal("artifact_ttka_halot") }).strict(),
+  z.object({ type: z.literal("USE_ARTIFACT_ACTION"), artifactId: z.enum(["artifact_ttka_halot", "artifact_cultes_des_goules"]) }).strict(),
   z.object({ type: z.literal("USE_INVESTIGATOR_ACTION") }).strict(),
   z.object({ type: z.literal("END_ACTIONS") }).strict(),
   z.object({ type: z.literal("ADVANCE_MYTHOS") }).strict(),
