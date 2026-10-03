@@ -20,6 +20,67 @@ describe("authoritative game room", () => {
   after(async () => colyseus.shutdown());
   beforeEach(async () => colyseus.cleanup());
 
+  for (const branch of ["accept", "skip", "close", "paranoia", "mark", "defeat"]) {
+    it(`restores Lost Carcosa card 12's ${branch} branch with owner-only choices`, async () => {
+      const room = await colyseus.createRoom<GameRoom>("game", {});
+      const host = await colyseus.connectTo(room, { displayName: "Host" });
+      const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+      const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+      const state = internal.toEngineState();
+      state.phase = "encounter"; state.ancientOneId = "azathoth"; state.doom = 15;
+      state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
+      Object.assign(state.players[0]!, { investigatorId: branch === "mark" ? "mark_harrigan" : "trish_scarborough", locationId: "arkham", health: 7, sanity: branch === "defeat" ? 2 : 4, maxHealth: 8, maxSanity: 5, clues: 1, assetIds: [] });
+      Object.assign(state.players[1]!, { locationId: "london", clues: 0, assetIds: [] });
+      state.activeGateIds = ["gate_arkham"]; state.discardedGateIds = [];
+      state.privateState.deckOrderById.gates = baseGameGates.filter(gate => gate.id !== "gate_arkham").map(gate => gate.id);
+      const cardId = "encounter_other_world_12";
+      state.privateState.deckOrderById["encounter:other_world"] = [cardId, ...baseGameScannedTokenEncounters.filter(card => card.deck === "other_world" && card.id !== cardId).map(card => card.id)];
+      state.privateState.tokenPoolById.clues = baseGameClues.filter(clue => clue.id !== "clue_arkham").map(clue => clue.id);
+      state.privateState.tokenPoolById.clue_discard = [];
+      state.privateState.tokenPoolById[`held_clues:${state.players[0]!.id}`] = ["clue_arkham"];
+      state.privateState.tokenPoolById[`held_clues:${state.players[1]!.id}`] = [];
+      state.privateState.tokenPoolById["condition:paranoia"] = baseGameConditions.filter(card => card.kind === "paranoia").map(card => card.id);
+      internal.applyEngineState(state);
+      const initialMessage = host.waitForMessage(pendingDecisionMessageType);
+      sendCommand(room, host, { type: "RESOLVE_OTHER_WORLD_ENCOUNTER", gateId: "gate_arkham" }); await room.waitForMessage(commandMessageType); await initialMessage;
+      const initial = internal.toEngineState();
+      assert.equal(initial.activeTest?.skill, "observation"); assert.equal(initial.activeTest?.modifier, 0);
+      const passInitial = branch === "close" || branch === "paranoia";
+      initial.activeTest!.dice = initial.activeTest!.dice.map(() => passInitial ? 6 : 1); initial.activeTest!.successes = passInitial ? initial.activeTest!.dice.length : 0;
+      const restoredInitialMessage = host.waitForMessage(pendingDecisionMessageType);
+      internal.applyEngineState(JSON.parse(JSON.stringify(initial))); const initialChoice = await restoredInitialMessage as PendingDecision;
+      const followMessage = host.waitForMessage(pendingDecisionMessageType);
+      sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: initialChoice.id, selectedOptionIds: [] }); await room.waitForMessage(commandMessageType); await followMessage;
+      const follow = internal.toEngineState(); assert.deepEqual(follow.activeGateIds, ["gate_arkham"]);
+      if (passInitial) {
+        assert.equal(follow.activeTest?.skill, "lore"); assert.equal(follow.activeTest?.modifier, 0);
+        follow.activeTest!.dice = follow.activeTest!.dice.map(() => branch === "close" ? 6 : 1); follow.activeTest!.successes = branch === "close" ? follow.activeTest!.dice.length : 0;
+      } else assert.equal(follow.pendingDecision?.kind, "encounter_choice");
+      const restoredFollowMessage = host.waitForMessage(pendingDecisionMessageType);
+      internal.applyEngineState(JSON.parse(JSON.stringify(follow))); const choice = await restoredFollowMessage as PendingDecision;
+      const options = passInitial ? [] : [branch === "accept" || branch === "mark" ? "accept" : "skip"];
+      const denied = guest.waitForMessage(commandErrorMessageType);
+      sendCommand(room, guest, { type: "RESOLVE_DECISION", decisionId: choice.id, selectedOptionIds: options }); await room.waitForMessage(commandMessageType);
+      assert.equal((await denied as { code: string }).code, "NOT_DECISION_OWNER"); assert.deepEqual(internal.toEngineState(), follow);
+      sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: choice.id, selectedOptionIds: options }); await room.waitForMessage(commandMessageType);
+      const after = internal.toEngineState();
+      assert.equal(after.players[0]!.clues, 1); assert.deepEqual(after.privateState.tokenPoolById.clue_discard, []);
+      assert.equal(after.players[0]!.sanity, branch === "defeat" ? 0 : branch === "skip" ? 2 : 4);
+      assert.equal(after.players[0]!.delayed ?? false, branch === "accept" || branch === "mark");
+      assert.equal(after.players[0]!.conditionIds?.length ?? 0, branch === "paranoia" ? 1 : 0);
+      assert.deepEqual(after.activeGateIds, branch === "close" ? [] : ["gate_arkham"]);
+      assert.equal(after.activePlayerId, state.players[branch === "defeat" ? 0 : 1]!.id);
+      assert.equal(Boolean(after.pendingDefeat), branch === "defeat"); assert.equal(after.pendingLocationEncounter, undefined);
+      assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 24);
+      assert.equal(new Set(after.privateState.deckOrderById["encounter:other_world"]).size, 24);
+      assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.at(-1), cardId);
+      assert.equal(JSON.stringify(room.state).includes("condition_paranoia_0"), false);
+      assert.equal(JSON.stringify(room.state).includes("encounter_other_world_24"), false);
+      const publicHost = [...room.state.players.values()].find(player => player.id === state.players[0]!.id)!;
+      assert.equal(publicHost.conditionIds, branch === "paranoia" ? "condition_paranoia" : "");
+    });
+  }
+
   for (const branch of ["accept", "skip", "close", "mark-refuse"]) {
     it(`restores card 11's ${branch} branch with owner-only choices`, async () => {
       const room = await colyseus.createRoom<GameRoom>("game", {});
