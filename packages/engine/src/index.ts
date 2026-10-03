@@ -145,6 +145,8 @@ export interface MonsterCombatDefinition {
 }
 
 export interface GameState {
+  /** Private continuation: every Rest trigger resolves at most once before one action is charged. */
+  pendingRest?: { playerId: string; remainingAssetIds: string[]; testingAssetId?: string };
   pendingLocationEncounter?: { playerId: string; cardId: string; deck: EncounterDeckId; queue: LocationEncounterInstruction[]; dice: number[]; successes: number };
   defeatedInvestigators?: { investigatorId: InvestigatorId; locationId: LocationId; cause: "health" | "sanity"; assetIds: string[]; artifactIds?: string[]; clues: number; travelTickets: TravelTicketType[] }[];
   pendingDefeat?: { playerId: string; cityIds: LocationId[]; causes: ("health" | "sanity")[] };
@@ -197,7 +199,7 @@ export interface GameState {
   privateState: PrivateGameState;
 }
 
-export type PublicEngineGameState = Omit<GameState, "privateState" | "pendingDecision" | "pendingLocationEncounter"> & {
+export type PublicEngineGameState = Omit<GameState, "privateState" | "pendingDecision" | "pendingLocationEncounter" | "pendingRest"> & {
   pendingDecision?: PendingDecision | PendingDecisionSummary;
 };
 
@@ -227,6 +229,7 @@ export type AssetEngineEffect =
   | { type: "acquire_six_counts_as_two" }
   | { type: "rest_recover_additional_sanity"; amount: 1 }
   | { type: "rest_health_or_discard_cursed"; amount: 1 }
+  | { type: "rest_test_gain_artifact"; skill: "observation"; modifier: -2 }
   | { type: "on_gain_recover_all_and_discard" };
 
 /** Only verified, atomic reverse effects; supplied by the server, never public content. */
@@ -355,7 +358,7 @@ function cloneDecision(decision: PendingDecision): PendingDecision {
 }
 
 export function projectStateForPlayer(state: GameState, viewerPlayerId?: string): PublicEngineGameState {
-  const { privateState: _privateState, pendingLocationEncounter: _pendingLocationEncounter, pendingDecision, ...publicState } = state;
+  const { privateState: _privateState, pendingLocationEncounter: _pendingLocationEncounter, pendingRest: _pendingRest, pendingDecision, ...publicState } = state;
   return {
     ...publicState,
     players: publicState.players.map((player) => ({
@@ -2157,8 +2160,8 @@ function completeAction(state: GameState, actorIndex: number, action: ActionType
 
 function restAssetSources(state: GameState, actor: EnginePlayer, content: GameContent): string[] {
   return state.players.filter(player => !player.defeated && !player.eliminated && !!actor.locationId && player.locationId === actor.locationId)
-    .flatMap(player => player.assetIds)
-    .filter(id => content.assets.find(card => card.id === id)?.engineEffects?.some(effect => effect.type === "rest_health_or_discard_cursed"));
+    .flatMap(player => player.assetIds.filter(id => content.assets.find(card => card.id === id)?.engineEffects?.some(effect =>
+      effect.type === "rest_health_or_discard_cursed" || effect.type === "rest_test_gain_artifact" && player.id === actor.id)));
 }
 
 function restCursedId(actor: EnginePlayer, content: GameContent): string | undefined {
@@ -2177,23 +2180,69 @@ function validateRestAssets(state: GameState, actor: EnginePlayer, content: Game
   return undefined;
 }
 
-function finishRest(state: GameState, actorIndex: number, content: GameContent, context: EngineContext | undefined, events: GameEvent[]): CommandResult {
+function prepareRestContinuation(state: GameState, actorIndex: number, content: GameContent, context: EngineContext | undefined, events: GameEvent[]): CommandResult | undefined {
   const actor = state.players[actorIndex]!;
   const invalid = validateRestAssets(state, actor, content);
   if (invalid) return invalid;
-  const source = restAssetSources(state, actor, content)[0];
-  if (source) {
+  const eligible = restAssetSources(state, actor, content);
+  const rest = state.pendingRest ?? { playerId: actor.id, remainingAssetIds: eligible };
+  if (rest.playerId !== actor.id || rest.remainingAssetIds.some(id => !eligible.includes(id))) return failure("ASSET_CONTENT_MISSING", "A remaining Rest source is no longer available.");
+  if (rest.remainingAssetIds.length) {
     if (!context) return failure("RANDOM_INPUT_REQUIRED", "The Rest bonus requires a decision ID.");
-    const health = `${source}:health`, cursed = `${source}:discard-cursed`, skip = `${source}:skip`;
+    state.pendingRest = rest;
+    const optionLabels: Record<string, string> = {};
+    for (const source of rest.remainingAssetIds) {
+      if (content.assets.find(card => card.id === source)?.engineEffects.some(effect => effect.type === "rest_test_gain_artifact")) {
+        optionLabels[`${source}:attempt`] = "Puzzle Box: attempt Observation −2";
+        optionLabels[`${source}:skip`] = "Skip Puzzle Box";
+      } else {
+        optionLabels[`${source}:health`] = "Recover 1 additional Health";
+        if (restCursedId(actor, content)) optionLabels[`${source}:discard-cursed`] = "Discard Cursed";
+        optionLabels[`${source}:skip`] = "Skip bonus";
+      }
+    }
     state.pendingDecision = {
-      id: context.createId(), kind: "rest_asset_choice", continuation: "witch_doctor_rest",
-      playerId: actor.id, visibility: "owner", prompt: "Witch Doctor: choose an optional bonus for your Rest action.",
-      optionIds: [health, ...(restCursedId(actor, content) ? [cursed] : []), skip],
-      optionLabels: { [health]: "Recover 1 additional Health", ...(restCursedId(actor, content) ? { [cursed]: "Discard Cursed" } : {}), [skip]: "Skip bonus" },
+      id: context.createId(), kind: "rest_asset_choice", continuation: "rest_asset_effect",
+      playerId: actor.id, visibility: "owner", prompt: "Choose a Rest effect to resolve next, or skip that source.",
+      optionIds: Object.keys(optionLabels), optionLabels,
       minSelections: 1, maxSelections: 1,
     };
-  } else completeAction(state, actorIndex, "rest", events);
-  return success(state, events);
+  } else {
+    state.pendingRest = undefined;
+    completeAction(state, actorIndex, "rest", events);
+  }
+  return undefined;
+}
+
+function finishRest(state: GameState, actorIndex: number, content: GameContent, context: EngineContext | undefined, events: GameEvent[]): CommandResult {
+  return prepareRestContinuation(state, actorIndex, content, context, events) ?? success(state, events);
+}
+
+/** Do not discard the Box, peek publicly, or search past an unsupported draw. */
+function validatePuzzleBoxTest(state: GameState, actor: EnginePlayer, source: string, content: GameContent): CommandResult | undefined {
+  if (state.phase !== "action" || state.activePlayerId !== actor.id || actor.defeated || actor.eliminated || actor.delayed
+    || state.actionsRemaining < 1 || state.performedActions.includes("rest") || (actor.locationId && state.monsterLocationIds.includes(actor.locationId))
+    || actor.conditionIds?.some(id => content.conditions?.find(card => card.id === id)?.kind === "detained")
+    || !actor.investigatorId || !content.investigators[actor.investigatorId]?.skills
+    || !actor.assetIds.includes(source) || !physicalAssetIsUnique(state, source)
+    || !content.assets.find(card => card.id === source)?.engineEffects.some(effect => effect.type === "rest_test_gain_artifact")) {
+    return failure("ASSET_CONTENT_MISSING", "The Puzzle Box Rest test is no longer available.");
+  }
+  const auraSources = content.map.locationTypes[actor.locationId!] === "city"
+    ? state.players.filter(holder => !holder.defeated && !holder.eliminated && holder.locationId === actor.locationId)
+      .flatMap(holder => holder.assetIds.filter(id => content.assets.find(card => card.id === id)?.engineEffects.some(effect => effect.type === "city_test_aura")))
+    : [];
+  if ([...actor.assetIds, ...auraSources].some(id => !physicalAssetIsUnique(state, id))) return failure("ASSET_CONTENT_MISSING", "The test possession identities are inconsistent.");
+  if (actor.assetIds.some(id => !content.assets.find(card => card.id === id)?.nonCombatEncounterSupport || content.assets.find(card => card.id === id)?.nonCombatEncounterSupport === "unsupported")
+    || actor.artifactIds?.some(id => id !== "artifact_ttka_halot")) return failure("ARTIFACT_EFFECT_UNSUPPORTED", "Carried possessions have unsupported test effects.");
+  const catalog = content.artifacts?.map(card => card.id);
+  const deck = state.privateState.deckOrderById.artifacts;
+  const physical = [...(deck ?? []), ...state.players.flatMap(player => player.artifactIds ?? []), ...(state.defeatedInvestigators ?? []).flatMap(player => player.artifactIds ?? [])];
+  if (!catalog || !deck || new Set(catalog).size !== catalog.length || new Set(physical).size !== physical.length || physical.length !== catalog.length || physical.some(id => !catalog.includes(id))) {
+    return failure("ARTIFACT_CONTENT_MISSING", "The physical Artifact supply is inconsistent.");
+  }
+  if (deck.length && deck[0] !== "artifact_ttka_halot") return failure("ARTIFACT_EFFECT_UNSUPPORTED", "The next Artifact's gain/effects are not implemented; skip Puzzle Box to finish Rest.");
+  return undefined;
 }
 
 function remainingTickets(player: EnginePlayer, bundle: TradeBundle): TravelTicketType[] | undefined {
@@ -2362,6 +2411,31 @@ function completeArtifactAction(state: GameState, playerId: string, events: Game
 
 function finishSkillTest(state: GameState, test: ActiveTest, content: GameContent, context: EngineContext): GameEvent[] {
   if (test.continuation === "acquire_assets") return createAcquireAssetsDecision(state, test, content, context);
+  if (test.continuation === "rest_asset") {
+    const rest = state.pendingRest!;
+    const source = rest.testingAssetId!;
+    const player = state.players.find(candidate => candidate.id === test.playerId)!;
+    state.activeTest = undefined;
+    state.pendingDecision = undefined;
+    const events: GameEvent[] = [{ type: "TEST_RESOLVED", testId: test.id, playerId: player.id, successes: test.successes, continuation: test.continuation }];
+    if (test.successes > 0) {
+      player.assetIds = player.assetIds.filter(id => id !== source);
+      state.assetDiscardIds.push(source);
+      events.push({ type: "ASSET_DISCARDED", playerId: player.id, assetId: source, reason: "rest" });
+      const artifact = state.privateState.deckOrderById.artifacts![0];
+      if (artifact) {
+        // Acceptance and every resumed test command preflight this exact top card.
+        state.privateState.deckOrderById.artifacts!.shift();
+        player.artifactIds = [...(player.artifactIds ?? []), artifact];
+        events.push({ type: "ARTIFACT_GAINED", playerId: player.id, artifactId: artifact });
+      }
+    }
+    rest.testingAssetId = undefined;
+    rest.remainingAssetIds = rest.remainingAssetIds.filter(id => id !== source);
+    const invalid = prepareRestContinuation(state, state.players.findIndex(candidate => candidate.id === player.id), content, context, events);
+    if (invalid) throw new Error("Validated Rest continuation became inconsistent.");
+    return events;
+  }
   if (test.continuation === "artifact_action") {
     state.activeTest = undefined;
     const player = state.players.find(candidate => candidate.id === test.playerId)!;
@@ -2535,6 +2609,7 @@ export function executeCommand(
     pendingDecision: state.pendingDecision ? cloneDecision(state.pendingDecision) : undefined,
     activeTest: state.activeTest ? { ...state.activeTest, dice: [...state.activeTest.dice], usedRerollAssetIds: state.activeTest.usedRerollAssetIds?.slice() } : undefined,
     pendingLocationEncounter: state.pendingLocationEncounter ? structuredClone(state.pendingLocationEncounter) : undefined,
+    pendingRest: state.pendingRest ? structuredClone(state.pendingRest) : undefined,
     privateState: {
       deckOrderById: Object.fromEntries(
         Object.entries(state.privateState.deckOrderById).map(([id, cards]) => [id, [...cards]]),
@@ -3085,6 +3160,13 @@ export function executeCommand(
         return failure("ACTIVE_TEST_MISSING", "The skill test for this reroll is no longer active.");
       }
       if (!context) return failure("RANDOM_INPUT_REQUIRED", "Resolving a test reroll requires deterministic dice and ID input.");
+      if (test.continuation === "rest_asset") {
+        const rest = next.pendingRest;
+        if (!rest || rest.playerId !== actorPlayerId || !rest.testingAssetId || !rest.remainingAssetIds.includes(rest.testingAssetId)) return failure("ASSET_CONTENT_MISSING", "The Rest test continuation is missing.");
+        const invalid = validatePuzzleBoxTest(next, actor, rest.testingAssetId, content) ?? validateRestAssets(next, actor, content);
+        if (invalid) return invalid;
+        if (rest.remainingAssetIds.some(id => !restAssetSources(next, actor, content).includes(id))) return failure("ASSET_CONTENT_MISSING", "A remaining Rest source is unavailable.");
+      }
       const events: GameEvent[] = [{
         type: "DECISION_RESOLVED",
         decisionId: decision.id,
@@ -3156,7 +3238,7 @@ export function executeCommand(
       }
       return finishRest(next, actorIndex, content, context, events);
     }
-    if (decision.continuation === "witch_doctor_rest") {
+    if (decision.continuation === "witch_doctor_rest" || decision.continuation === "rest_asset_effect") {
       if (decision.kind !== "rest_asset_choice" || next.phase !== "action" || next.activePlayerId !== actorPlayerId
         || actor.defeated || actor.eliminated || next.actionsRemaining < 1 || next.performedActions.includes("rest")
         || (actor.locationId && next.monsterLocationIds.includes(actor.locationId))) {
@@ -3166,10 +3248,23 @@ export function executeCommand(
       if (invalid) return invalid;
       const choice = selections[0]!;
       const [source, effect] = choice.split(":");
-      if (!source || !restAssetSources(next, actor, content).includes(source) || !["health", "discard-cursed", "skip"].includes(effect ?? "")) {
-        return failure("INVALID_DECISION_SELECTION", "The offered Rest Ally is no longer available.");
+      if (!source || !restAssetSources(next, actor, content).includes(source) || !["health", "discard-cursed", "skip", "attempt"].includes(effect ?? "")) {
+        return failure("INVALID_DECISION_SELECTION", "The offered Rest source is no longer available.");
       }
+      const rest = next.pendingRest ?? { playerId: actorPlayerId, remainingAssetIds: restAssetSources(next, actor, content) };
+      if (rest.playerId !== actorPlayerId || rest.testingAssetId || !rest.remainingAssetIds.includes(source)
+        || rest.remainingAssetIds.some(id => !restAssetSources(next, actor, content).includes(id))) return failure("ASSET_CONTENT_MISSING", "The Rest source continuation is inconsistent.");
       const events: GameEvent[] = [{ type: "DECISION_RESOLVED", decisionId: decision.id, playerId: actorPlayerId, selectedOptionIds: [...selections] }];
+      if (effect === "attempt") {
+        const invalid = validatePuzzleBoxTest(next, actor, source, content);
+        if (invalid) return invalid;
+        if (!context) return failure("RANDOM_INPUT_REQUIRED", "Puzzle Box requires server dice and decision IDs.");
+        next.pendingRest = rest;
+        rest.testingAssetId = source;
+        next.pendingDecision = undefined;
+        events.push(...beginSkillTest(next, actor, { skill: "observation", modifier: -2, continuation: "rest_asset", otherBonuses: [nonCombatEncounterAuraBonus(next, actor, content)] }, content, context));
+        return success(next, events);
+      }
       if (effect === "health") {
         const recovery = recoverResource(actor.health ?? 0, actor.maxHealth ?? actor.health ?? 0, 1);
         actor.health = recovery.value;
@@ -3180,8 +3275,9 @@ export function executeCommand(
         events.push({ type: "CONDITION_DISCARDED", playerId: actorPlayerId, conditionId: publicConditionId(cursed) });
       }
       next.pendingDecision = undefined;
-      completeAction(next, actorIndex, "rest", events);
-      return success(next, events);
+      rest.remainingAssetIds = rest.remainingAssetIds.filter(id => id !== source);
+      next.pendingRest = rest;
+      return finishRest(next, actorIndex, content, context, events);
     }
     if (decision.continuation === "acquire_assets_purchase") {
       const takesLoan = selections.includes("bank-loan");

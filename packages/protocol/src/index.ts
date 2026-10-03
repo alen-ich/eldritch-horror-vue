@@ -58,7 +58,7 @@ export const pendingDecisionSchema = z.object({
   minSelections: z.number().int().nonnegative(),
   maxSelections: z.number().int().positive(),
   selectionBudget: z.number().int().nonnegative().optional(),
-  continuation: z.enum(["test_reroll", "acquire_assets_purchase", "acquire_assets_discard", "condition_rest_recovery", "witch_doctor_rest", "mythos_omen_choice", "mythos_world_fights_back", "mythos_debt_trade", "mythos_desperate_times", "mythos_that_which_consumes", "mythos_heat_wave", "mythos_blood_flows", "mythos_tide_of_despair", "mythos_unexpected_betrayal", "location_encounter_choice"]).optional(),
+  continuation: z.enum(["test_reroll", "acquire_assets_purchase", "acquire_assets_discard", "condition_rest_recovery", "witch_doctor_rest", "rest_asset_effect", "mythos_omen_choice", "mythos_world_fights_back", "mythos_debt_trade", "mythos_desperate_times", "mythos_that_which_consumes", "mythos_heat_wave", "mythos_blood_flows", "mythos_tide_of_despair", "mythos_unexpected_betrayal", "location_encounter_choice"]).optional(),
 }).strict().superRefine((decision, context) => {
   if (new Set(decision.optionIds).size !== decision.optionIds.length) {
     context.addIssue({ code: "custom", message: "Decision option IDs must be unique.", path: ["optionIds"] });
@@ -101,7 +101,7 @@ export interface ActiveTest {
   successThreshold: number;
   /** Physical Asset reroll sources already consumed for this test. */
   usedRerollAssetIds?: string[];
-  continuation: "acquire_assets" | "condition_action" | "condition_reckoning" | "location_encounter" | "artifact_action";
+  continuation: "acquire_assets" | "condition_action" | "condition_reckoning" | "location_encounter" | "artifact_action" | "rest_asset";
   sourceArtifactId?: string;
   sourceConditionId?: string;
   sourceEncounterCardId?: string;
@@ -196,7 +196,7 @@ export type GameEvent =
   | { type: "ANCIENT_ONE_SELECTED"; ancientOneId: AncientOneId }
   | { type: "GAME_STARTED"; activePlayerId: string }
   | { type: "ASSET_GAINED"; playerId: string; assetId: string; source: "setup" | "reserve" | "mythos" }
-  | { type: "ASSET_DISCARDED"; playerId: string; assetId: string; reason: "on_gain_effect" | "mythos" | "encounter" }
+  | { type: "ASSET_DISCARDED"; playerId: string; assetId: string; reason: "rest" | "on_gain_effect" | "mythos" | "encounter" }
   | { type: "TEST_ROLLED"; testId: string; playerId: string; skill: SkillId; modifier: number; dice: number[]; successes: number }
   | { type: "CLUE_SPENT_FOR_REROLL"; testId: string; playerId: string; dieIndex: number }
   | { type: "TEST_DIE_REROLLED"; testId: string; playerId: string; dieIndex: number; result: number; successes: number }
