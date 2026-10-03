@@ -91,6 +91,11 @@ export const baseGameOtherWorldEncounterRules = [
     initial: t("will", t("lore", e(close), e({ kind: "delay" })),
       t("lore", e(close), e({ kind: "sanity", amount: -3 }), -1)),
   },
+  {
+    number: 14, name: "City of the Great Race",
+    initial: { kind: "optional" as const, cost: [{ kind: "clues" as const, amount: -1 }], reward: t("will", e(close), e({ kind: "sanity", amount: -1 })),
+      decline: t("strength", e(close), e({ kind: "health", amount: -1 }, { kind: "sanity", amount: -1 })) },
+  },
 ].map(({ number, name, initial }) => {
   const scan = baseGameScannedTokenEncounters.find(card => card.deck === "other_world" && card.number === number)!;
   return schema.parse({ id: scan.id, deck: "other_world", number, name, sourceScan: scan.sourceScan, sourceCellIndex: scan.sourceCellIndex,

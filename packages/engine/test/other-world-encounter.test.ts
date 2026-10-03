@@ -3,7 +3,7 @@ import { baseGameOtherWorldEncounterRules } from "../../content/src/other-world-
 import { parseLocationEncounterInstruction } from "../src/encounter-instructions.js";
 import { createDeterministicEngineContext, executeCommand, projectStateForPlayer, resolveOtherWorldEncounter, type GameContent, type GameState } from "../src/index.js";
 
-const ids = ["encounter_other_world_02", "encounter_other_world_01", "encounter_other_world_04", "encounter_other_world_03", "encounter_other_world_05", "encounter_other_world_07", "encounter_other_world_08", "encounter_other_world_09", "encounter_other_world_10", "encounter_other_world_11", "encounter_other_world_12", "encounter_other_world_13"];
+const ids = ["encounter_other_world_02", "encounter_other_world_01", "encounter_other_world_04", "encounter_other_world_03", "encounter_other_world_05", "encounter_other_world_07", "encounter_other_world_08", "encounter_other_world_09", "encounter_other_world_10", "encounter_other_world_11", "encounter_other_world_12", "encounter_other_world_13", "encounter_other_world_14"];
 const content: GameContent = {
   otherWorldEncounters: baseGameOtherWorldEncounterRules, otherWorldEncounterIds: ids,
   conditions: [{ id: "condition_paranoia_01", kind: "paranoia", trait: "madness" }, { id: "condition_paranoia_02", kind: "paranoia", trait: "madness" }, { id: "condition_hallucinations_01", kind: "hallucinations", trait: "madness" }, { id: "condition_amnesia_01", kind: "amnesia", trait: "madness" }],
@@ -30,6 +30,104 @@ function accepted(result: ReturnType<typeof resolveOtherWorldEncounter>) {
   if (!result.ok) throw new Error(result.error.message);
   return result;
 }
+
+describe("Other World card 14: City of the Great Race", () => {
+  function card14(clues = 0) {
+    const before = state(clues);
+    before.privateState.deckOrderById["encounter:other_world"] = [ids[12]!, ...ids.filter(id => id !== ids[12])];
+    return before;
+  }
+  function offer() { return accepted(resolveOtherWorldEncounter(card14(1), "host", "gate_arkham", content, rng([]))).state; }
+  function choose(before: GameState, option: string, dice: number[] = [], owner = "host") {
+    return executeCommand(JSON.parse(JSON.stringify(before)), owner, { type: "RESOLVE_DECISION", decisionId: before.pendingDecision!.id, selectedOptionIds: [option] }, content, rng(dice));
+  }
+  it.each(["accept", "skip"])("restores the no-Initial-test payment (%s) and closes only after its test", option => {
+    const before = offer(); const snapshot = structuredClone(before);
+    expect(before.activeTest).toBeUndefined(); expect(before.pendingDecision?.kind).toBe("encounter_choice");
+    expect(choose(before, option, [], "guest")).toMatchObject({ ok: false, error: { code: "NOT_DECISION_OWNER" } });
+    const follow = accepted(choose(before, option, [6, 6]));
+    if (option === "skip") {
+      expect(follow.state.activeTest).toMatchObject({ skill: "strength", modifier: 0 });
+      expect(follow.state.activeGateIds).toEqual(["gate_arkham"]);
+    }
+    const result = option === "skip" ? accepted(keep(follow.state)) : follow;
+    expect(result.state.activeGateIds).toEqual([]); expect(result.state.players[0]?.clues).toBe(option === "accept" ? 0 : 1);
+    expect(result.state.privateState.tokenPoolById.clue_discard).toEqual(option === "accept" ? ["clue_a"] : []);
+    expect(result.state.players[0]).toMatchObject({ health: 7, sanity: 5 });
+    expect(result.state.players[0]?.delayed).toBeFalsy(); expect(result.state.players[0]?.conditionIds ?? []).toEqual([]);
+    expect(result.events.filter(event => event.type === "GATE_CLOSED")).toHaveLength(1);
+    expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.activePlayerId).toBe("guest"); expect(before).toEqual(snapshot);
+    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual([...ids.filter(id => id !== ids[12]), ids[12]]);
+  });
+  it("payment spends the last Clue before Will, leaving none for a reroll", () => {
+    const result = accepted(choose(offer(), "accept", [1, 1]));
+    expect(result.state.players[0]).toMatchObject({ health: 7, sanity: 4, clues: 0 });
+    expect(result.state.activeGateIds).toEqual(["gate_arkham"]); expect(result.state.pendingDecision).toBeUndefined();
+  });
+  it("no Clues automatically selects Strength, never an Initial roll or free Will branch", () => {
+    const result = accepted(resolveOtherWorldEncounter(card14(), "host", "gate_arkham", content, rng([1])));
+    expect(result.state.players[0]).toMatchObject({ health: 6, sanity: 4, clues: 0 });
+    expect(result.state.activeGateIds).toEqual(["gate_arkham"]); expect(result.state.pendingDecision).toBeUndefined();
+  });
+  it.each([1, 6])("declined payment permits a conserved Strength reroll (%i)", die => {
+    const follow = accepted(choose(offer(), "skip", [1]));
+    expect(follow.state.activeTest).toMatchObject({ skill: "strength", modifier: 0 });
+    const result = accepted(choose(follow.state, "die-0", [die]));
+    expect(result.state.players[0]?.clues).toBe(0); expect(result.state.privateState.tokenPoolById.clue_discard).toEqual(["clue_a"]);
+    expect(result.state.activeGateIds).toEqual(die === 6 ? [] : ["gate_arkham"]);
+    expect(result.state.players[0]).toMatchObject({ health: die === 6 ? 7 : 6, sanity: die === 6 ? 5 : 4 });
+  });
+  it("two physical Clues allow paying one and rerolling Will with the other", () => {
+    const before = card14(1); before.players[0]!.clues = 2;
+    before.privateState.tokenPoolById["held_clues:host"] = ["clue_a", "clue_b"]; before.privateState.tokenPoolById.clues = ["clue_c"];
+    const offered = accepted(resolveOtherWorldEncounter(before, "host", "gate_arkham", content, rng([])));
+    const follow = accepted(choose(offered.state, "accept", [1, 1]));
+    expect(follow.state.activeTest).toMatchObject({ skill: "will", modifier: 0 });
+    expect(follow.state.players[0]?.clues).toBe(1);
+    const result = accepted(choose(follow.state, "die-0", [6]));
+    expect(result.state.activeGateIds).toEqual([]); expect(result.state.players[0]?.clues).toBe(0);
+    expect(new Set(result.state.privateState.tokenPoolById.clue_discard)).toEqual(new Set(["clue_a", "clue_b"]));
+  });
+  it.each(["health", "sanity", "both"])("simultaneous Strength loss defeats at depleted %s without dropping the other loss", resource => {
+    const before = card14(); if (resource !== "sanity") before.players[0]!.health = 1; if (resource !== "health") before.players[0]!.sanity = 1;
+    const result = accepted(resolveOtherWorldEncounter(before, "host", "gate_arkham", content, rng([1])));
+    expect(result.state.players[0]?.health).toBe(resource === "sanity" ? 6 : 0);
+    expect(result.state.players[0]?.sanity).toBe(resource === "health" ? 4 : 0);
+    expect(result.state.pendingDefeat).toBeDefined(); expect(result.state.activePlayerId).toBe("host");
+    expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.activeGateIds).toEqual(["gate_arkham"]);
+    expect(result.state.privateState.deckOrderById["encounter:other_world"]?.at(-1)).toBe(ids[12]);
+  });
+  it("lethal paid Will loss retains the Gate and stops handoff", () => {
+    const before = offer(); before.players[0]!.sanity = 1;
+    const result = accepted(choose(before, "accept", [1, 1]));
+    expect(result.state.players[0]).toMatchObject({ health: 7, sanity: 0, clues: 0 });
+    expect(result.state.pendingDefeat).toBeDefined(); expect(result.state.activePlayerId).toBe("host"); expect(result.state.activeGateIds).toEqual(["gate_arkham"]);
+  });
+  it("simultaneous defeat advances Doom once and Azathoth loses at Doom 1", () => {
+    const before = card14(); before.players[0]!.health = before.players[0]!.sanity = 1; before.doom = 1;
+    const result = accepted(resolveOtherWorldEncounter(before, "host", "gate_arkham", content, rng([1])));
+    expect(result.state.doom).toBe(0); expect(result.state.gameResult).toBe("investigators_lose");
+    expect(result.state.activeGateIds).toEqual(["gate_arkham"]); expect(result.state.pendingLocationEncounter).toBeUndefined();
+  });
+  it.each(["gate", "location", "deck", "clues", "held", "asset", "option"])("rejects restored payment %s atomically", field => {
+    const before = offer();
+    if (field === "gate") { before.activeGateIds = []; before.discardedGateIds = ["gate_arkham"]; }
+    if (field === "location") before.players[0]!.locationId = "london";
+    if (field === "deck") before.privateState.deckOrderById["encounter:other_world"]!.reverse();
+    if (field === "clues") before.players[0]!.clues = 0;
+    if (field === "held") before.privateState.tokenPoolById["held_clues:host"] = [];
+    if (field === "asset") before.players[0]!.assetIds = ["unsupported"];
+    const snapshot = structuredClone(before); expect(choose(before, field === "option" ? "close" : "accept").ok).toBe(false); expect(before).toEqual(snapshot);
+  });
+  it.each(["accept", "skip"])("guards unsupported awakening on restored %s damage", option => {
+    const before = offer(); before.players[0]!.sanity = 1; before.doom = 1; before.ancientOneId = "cthulhu";
+    const snapshot = structuredClone(before);
+    const selected = choose(before, option, [1, 1]);
+    if (option === "accept") expect(selected.ok).toBe(false);
+    else { const follow = accepted(selected).state; const followSnapshot = structuredClone(follow); expect(keep(follow).ok).toBe(false); expect(follow).toEqual(followSnapshot); }
+    expect(before).toEqual(snapshot);
+  });
+});
 
 describe("Other World card 13: Yuggoth", () => {
   function card13(clues = 0) {
