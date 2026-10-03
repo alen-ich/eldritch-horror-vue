@@ -2,10 +2,15 @@ import { expect, it } from "vitest";
 import { baseGameOtherWorldEncounterRules, validateOtherWorldEncounterContent } from "../src/other-world-encounter-rules.js";
 import { baseGameScannedTokenEncounters } from "../src/token-encounters.js";
 
-it("links fourteen mechanical transcriptions to the existing base-only scans", () => {
-  expect(baseGameOtherWorldEncounterRules.map(card => card.number)).toEqual([1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+it("links fifteen mechanical transcriptions to the existing base-only scans", () => {
+  expect(baseGameOtherWorldEncounterRules.map(card => card.number)).toEqual([1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
   for (const card of baseGameOtherWorldEncounterRules) expect(baseGameScannedTokenEncounters.find(scan => scan.id === card.id)).toMatchObject({ sourceScan: card.sourceScan, sourceCellIndex: card.sourceCellIndex, deck: "other_world" });
   expect(baseGameScannedTokenEncounters.filter(card => card.deck === "other_world")).toHaveLength(24);
+});
+it("preserves card 16's Will/Lore and direct Clue-for-closure or Delay branches", () => {
+  expect(baseGameOtherWorldEncounterRules[14]!.sections.initial).toEqual({ kind: "test", skill: "will", modifier: 0,
+    pass: { kind: "test", skill: "lore", modifier: 0, pass: { kind: "effects", effects: [{ kind: "close_encountered_gate" }] }, fail: { kind: "effects", effects: [{ kind: "sanity", amount: -1 }] } },
+    fail: { kind: "optional", cost: [{ kind: "clues", amount: -1 }], reward: { kind: "effects", effects: [{ kind: "close_encountered_gate" }] }, decline: { kind: "effects", effects: [{ kind: "delay" }] } } });
 });
 it("preserves card 15's Clue choice, Lore/Hallucinations and Will/Health branches", () => {
   expect(baseGameOtherWorldEncounterRules[13]!.sections.initial).toEqual({ kind: "optional", cost: [{ kind: "clues", amount: -1 }],
