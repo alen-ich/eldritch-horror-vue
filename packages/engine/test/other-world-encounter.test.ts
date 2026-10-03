@@ -3,7 +3,7 @@ import { baseGameOtherWorldEncounterRules } from "../../content/src/other-world-
 import { parseLocationEncounterInstruction } from "../src/encounter-instructions.js";
 import { createDeterministicEngineContext, executeCommand, projectStateForPlayer, resolveOtherWorldEncounter, type GameContent, type GameState } from "../src/index.js";
 
-const ids = ["encounter_other_world_02", "encounter_other_world_01", "encounter_other_world_04", "encounter_other_world_03", "encounter_other_world_05", "encounter_other_world_07", "encounter_other_world_08", "encounter_other_world_09", "encounter_other_world_10", "encounter_other_world_11"];
+const ids = ["encounter_other_world_02", "encounter_other_world_01", "encounter_other_world_04", "encounter_other_world_03", "encounter_other_world_05", "encounter_other_world_07", "encounter_other_world_08", "encounter_other_world_09", "encounter_other_world_10", "encounter_other_world_11", "encounter_other_world_12"];
 const content: GameContent = {
   otherWorldEncounters: baseGameOtherWorldEncounterRules, otherWorldEncounterIds: ids,
   conditions: [{ id: "condition_paranoia_01", kind: "paranoia", trait: "madness" }, { id: "condition_paranoia_02", kind: "paranoia", trait: "madness" }, { id: "condition_hallucinations_01", kind: "hallucinations", trait: "madness" }, { id: "condition_amnesia_01", kind: "amnesia", trait: "madness" }],
@@ -30,6 +30,115 @@ function accepted(result: ReturnType<typeof resolveOtherWorldEncounter>) {
   if (!result.ok) throw new Error(result.error.message);
   return result;
 }
+
+describe("Other World card 12: Lost Carcosa", () => {
+  function card12(clues = 0) {
+    const before = state(clues);
+    before.privateState.deckOrderById["encounter:other_world"] = [ids[10]!, ...ids.filter(id => id !== ids[10])];
+    return before;
+  }
+  function offer() { return accepted(resolveOtherWorldEncounter(card12(), "host", "gate_arkham", content, rng([1]))).state; }
+  function choose(before: GameState, option: string, owner = "host") {
+    return executeCommand(JSON.parse(JSON.stringify(before)), owner, { type: "RESOLVE_DECISION", decisionId: before.pendingDecision!.id, selectedOptionIds: [option] }, content, rng([]));
+  }
+  it.each(["accept", "skip"])("restores optional Delay (%s) with exact Sanity avoidance", option => {
+    const before = offer(); const snapshot = structuredClone(before);
+    expect(before.pendingDecision?.kind).toBe("encounter_choice");
+    expect(choose(before, option, "guest")).toMatchObject({ ok: false, error: { code: "NOT_DECISION_OWNER" } });
+    const result = accepted(choose(before, option));
+    expect(result.state.players[0]?.sanity).toBe(option === "accept" ? 5 : 3);
+    expect(result.state.players[0]?.delayed ?? false).toBe(option === "accept");
+    expect(result.state.players[0]?.conditionIds ?? []).toEqual([]);
+    expect(result.state.activeGateIds).toEqual(["gate_arkham"]); expect(result.state.activePlayerId).toBe("guest");
+    expect(result.state.pendingLocationEncounter).toBeUndefined();
+    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual([...ids.filter(id => id !== ids[10]), ids[10]]);
+    expect(result.state.stateVersion).toBe(before.stateVersion + 1); expect(before).toEqual(snapshot);
+  });
+  it("already Delayed cannot pay again and automatically loses two Sanity", () => {
+    const before = card12(); before.players[0]!.delayed = true;
+    const result = accepted(resolveOtherWorldEncounter(before, "host", "gate_arkham", content, rng([1])));
+    expect(result.state.players[0]).toMatchObject({ delayed: true, sanity: 3 });
+    expect(result.state.pendingDecision).toBeUndefined(); expect(result.state.activeGateIds).toEqual(["gate_arkham"]);
+  });
+  it.each(["accept", "skip"])("Mark's optional Delay %s cannot yield free avoidance", option => {
+    const before = card12(); before.players[0]!.investigatorId = "mark_harrigan";
+    const markContent: GameContent = { ...content, investigators: { ...content.investigators, mark_harrigan: content.investigators.trish_scarborough! } };
+    const offered = accepted(resolveOtherWorldEncounter(before, "host", "gate_arkham", markContent, rng([1])));
+    const result = accepted(executeCommand(JSON.parse(JSON.stringify(offered.state)), "host", { type: "RESOLVE_DECISION", decisionId: offered.state.pendingDecision!.id, selectedOptionIds: [option] }, markContent, rng([])));
+    expect(result.state.players[0]?.delayed ?? false).toBe(option === "accept");
+    expect(result.state.players[0]?.sanity).toBe(option === "accept" ? 5 : 3);
+    expect(result.state.pendingDecision).toBeUndefined(); expect(result.state.activeGateIds).toEqual(["gate_arkham"]);
+  });
+  it.each([1, 6])("closes only after Lore %i; failure gains Paranoia without damage", die => {
+    const result = accepted(resolveOtherWorldEncounter(card12(), "host", "gate_arkham", content, rng([6, die])));
+    expect(result.state.activeGateIds).toEqual(die === 6 ? [] : ["gate_arkham"]);
+    expect(result.state.players[0]?.conditionIds ?? []).toEqual(die === 6 ? [] : ["condition_paranoia_01"]);
+    expect(result.state.players[0]).toMatchObject({ health: 7, sanity: 5 }); expect(result.state.players[0]?.delayed).toBeFalsy();
+    expect(result.events.filter(event => event.type === "GATE_CLOSED")).toHaveLength(die === 6 ? 1 : 0);
+    expect(JSON.stringify(projectStateForPlayer(result.state, "guest"))).not.toContain("condition_paranoia_01");
+  });
+  it.each(["held", "empty"])("handles %s Paranoia without duplicating a physical copy", scenario => {
+    const before = card12(); before.privateState.tokenPoolById["condition:paranoia"] = [];
+    if (scenario === "held") before.players[0]!.conditionIds = ["condition_paranoia_01"];
+    const result = accepted(resolveOtherWorldEncounter(before, "host", "gate_arkham", content, rng([6, 1])));
+    expect(result.state.players[0]?.conditionIds?.length ?? 0).toBe(scenario === "held" ? 1 : 0);
+    expect(result.state.activeGateIds).toEqual(["gate_arkham"]);
+  });
+  it("restores independent Observation and Lore rerolls before Gate closure", () => {
+    const initial = accepted(resolveOtherWorldEncounter(card12(1), "host", "gate_arkham", content, rng([6])));
+    expect(initial.state.activeTest).toMatchObject({ skill: "observation", modifier: 0 });
+    const follow = accepted(keep(initial.state, [1]));
+    expect(follow.state.activeTest).toMatchObject({ skill: "lore", modifier: 0 }); expect(follow.state.activeGateIds).toEqual(["gate_arkham"]);
+    const result = accepted(executeCommand(JSON.parse(JSON.stringify(follow.state)), "host", { type: "RESOLVE_DECISION", decisionId: follow.state.pendingDecision!.id, selectedOptionIds: ["die-0"] }, content, rng([6])));
+    expect(result.state.activeGateIds).toEqual([]); expect(result.state.players[0]?.clues).toBe(0);
+    expect(result.state.privateState.tokenPoolById.clue_discard).toEqual(["clue_a"]);
+  });
+  it("a failed final-Clue Initial reroll still offers Delay avoidance", () => {
+    const initial = accepted(resolveOtherWorldEncounter(card12(1), "host", "gate_arkham", content, rng([1])));
+    const follow = accepted(executeCommand(JSON.parse(JSON.stringify(initial.state)), "host", { type: "RESOLVE_DECISION", decisionId: initial.state.pendingDecision!.id, selectedOptionIds: ["die-0"] }, content, rng([1])));
+    expect(follow.state.pendingDecision?.kind).toBe("encounter_choice"); expect(follow.state.players[0]?.clues).toBe(0);
+    const result = accepted(choose(follow.state, "accept")); expect(result.state.players[0]).toMatchObject({ delayed: true, sanity: 5 });
+  });
+  it.each([1, 2])("lethal refusal at Sanity %i stops handoff and cycles once", sanity => {
+    const before = offer(); before.players[0]!.sanity = sanity;
+    const result = accepted(choose(before, "skip"));
+    expect(result.state.players[0]?.sanity).toBe(0); expect(result.state.activeGateIds).toEqual(["gate_arkham"]);
+    expect(result.state.activePlayerId).toBe("host"); expect(result.state.pendingLocationEncounter).toBeUndefined();
+    expect(result.state.privateState.deckOrderById["encounter:other_world"]?.at(-1)).toBe(ids[10]);
+  });
+  it("accepting Delay avoids lethal loss, while Azathoth Doom 1 ends on refusal", () => {
+    const before = offer(); before.players[0]!.sanity = 1; before.doom = 1;
+    expect(accepted(choose(before, "accept")).state.players[0]).toMatchObject({ sanity: 1, delayed: true });
+    const result = accepted(choose(before, "skip")); expect(result.state.gameResult).toBe("investigators_lose");
+    expect(result.state.activeGateIds).toEqual(["gate_arkham"]); expect(result.state.activePlayerId).toBe("host");
+  });
+  it.each(["gate", "location", "deck", "delay", "asset", "option"])("rejects changed restored avoidance %s atomically", field => {
+    const before = offer();
+    if (field === "gate") { before.activeGateIds = []; before.discardedGateIds = ["gate_arkham"]; }
+    if (field === "location") before.players[0]!.locationId = "london";
+    if (field === "deck") before.privateState.deckOrderById["encounter:other_world"]!.reverse();
+    if (field === "delay") before.players[0]!.delayed = true;
+    if (field === "asset") before.players[0]!.assetIds = ["unsupported"];
+    const snapshot = structuredClone(before); expect(choose(before, field === "option" ? "refuse" : "accept").ok).toBe(false); expect(before).toEqual(snapshot);
+  });
+  it.each(["missing", "unknown", "duplicate", "held"])("rejects %s Paranoia supply before Initial RNG", scenario => {
+    const before = card12();
+    if (scenario === "missing") delete before.privateState.tokenPoolById["condition:paranoia"];
+    if (scenario === "unknown") before.privateState.tokenPoolById["condition:paranoia"] = ["unknown"];
+    if (scenario === "duplicate") before.privateState.tokenPoolById["condition:paranoia"] = ["condition_paranoia_01", "condition_paranoia_01"];
+    if (scenario === "held") before.players[0]!.conditionIds = ["condition_paranoia_01"];
+    const snapshot = structuredClone(before); expect(resolveOtherWorldEncounter(before, "host", "gate_arkham", content, rng([])).ok).toBe(false); expect(before).toEqual(snapshot);
+  });
+  it("guards unsupported awakening on lethal restored refusal", () => {
+    const before = offer(); before.players[0]!.sanity = 2; before.doom = 1; before.ancientOneId = "cthulhu";
+    const snapshot = structuredClone(before); expect(choose(before, "skip").ok).toBe(false); expect(before).toEqual(snapshot);
+  });
+  it("revalidates Paranoia before restored Lore RNG", () => {
+    const initial = accepted(resolveOtherWorldEncounter(card12(1), "host", "gate_arkham", content, rng([6])));
+    initial.state.privateState.tokenPoolById["condition:paranoia"] = ["unknown"];
+    const snapshot = structuredClone(initial.state); expect(keep(initial.state).ok).toBe(false); expect(initial.state).toEqual(snapshot);
+  });
+});
 
 describe("Other World card 11: Great Hall of Celaeno", () => {
   function card11(clues = 0) {

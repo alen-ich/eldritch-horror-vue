@@ -1919,7 +1919,7 @@ function validateEncounterDynamicInstructions(state: GameState, nodes: readonly 
       const invalid = validateArtifactClues(state, content);
       if (invalid) return invalid;
     }
-    for (const kind of ["hallucinations", "amnesia"] as const) {
+    for (const kind of ["hallucinations", "amnesia", "paranoia"] as const) {
       if (node.kind !== "effects" || !node.effects.some(effect => effect.kind === "condition" && effect.condition === kind)) continue;
       const catalog = content.conditions?.filter(card => card.kind === kind).map(card => card.id);
       const pool = state.privateState.tokenPoolById[conditionPoolKey(kind)];
