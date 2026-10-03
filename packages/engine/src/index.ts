@@ -2418,7 +2418,23 @@ function validateTomeAction(state: GameState, player: EnginePlayer, content: Gam
     || state.phase !== "action" || state.activePlayerId !== player.id || state.actionsRemaining < 1 || player.defeated || player.eliminated || player.delayed
     || player.conditionIds?.some(id => content.conditions?.find(card => card.id === id)?.kind === "detained")
     || state.usedArtifactActionIds?.includes(source)) return failure("ARTIFACT_UNAVAILABLE", "The original Tome action is no longer available.");
-  if (player.assetIds.length || player.artifactIds.some(id => !supportedArtifact(id, content))) return failure("ARTIFACT_EFFECT_UNSUPPORTED", "Possession bonuses for this Lore test are not executable yet.");
+  return validateArtifactTestAssets(state, player, content);
+}
+
+/** Explicit non-combat applicability, not an empty-effect-list whitelist.
+ * Sanity paid by these actions is a cost, not preventable ordinary damage.
+ */
+function validateArtifactTestAssets(state: GameState, player: EnginePlayer, content: GameContent): CommandResult | undefined {
+  if (player.artifactIds?.some(id => !supportedArtifact(id, content))
+    || player.assetIds.some(id => {
+      const asset = content.assets.find(card => card.id === id);
+      return !asset?.nonCombatEncounterSupport || asset.nonCombatEncounterSupport === "unsupported";
+    })) return failure("ARTIFACT_EFFECT_UNSUPPORTED", "Carried possessions have unsupported Artifact test effects.");
+  const auraSources = player.locationId && content.map.locationTypes[player.locationId] === "city"
+    ? state.players.filter(holder => !holder.defeated && !holder.eliminated && holder.locationId === player.locationId)
+      .flatMap(holder => holder.assetIds.filter(id => content.assets.find(card => card.id === id)?.engineEffects.some(effect => effect.type === "city_test_aura")))
+    : [];
+  if ([...player.assetIds, ...auraSources].some(id => !physicalAssetIsUnique(state, id))) return failure("ASSET_CONTENT_MISSING", "The Artifact test possession identities are inconsistent.");
   return undefined;
 }
 
@@ -3132,7 +3148,8 @@ export function executeCommand(
       return success(next, events);
     }
     if (decision.kind === "artifact_target") {
-      if (next.phase !== "action" || next.activePlayerId !== actorPlayerId || !actor.artifactIds?.includes("artifact_ttka_halot") || next.usedArtifactActionIds?.includes("artifact_ttka_halot")) return failure("ARTIFACT_UNAVAILABLE", "The Artifact action is no longer available.");
+      const invalid = validateTomeAction(next, actor, content, "artifact_ttka_halot");
+      if (invalid) return invalid;
       const selected = selections[0]!;
       const events: GameEvent[] = [{ type: "DECISION_RESOLVED", decisionId: decision.id, playerId: actorPlayerId, selectedOptionIds: [...selections] }];
       if (selected !== "skip") {
@@ -3246,7 +3263,8 @@ export function executeCommand(
         return failure("ACTIVE_TEST_MISSING", "The skill test for this reroll is no longer active.");
       }
       if (!context) return failure("RANDOM_INPUT_REQUIRED", "Resolving a test reroll requires deterministic dice and ID input.");
-      if (test.continuation === "artifact_action" && (test.sourceArtifactId === "artifact_cultes_des_goules" || test.sourceArtifactId === "artifact_de_vermis_mysteriis")) {
+      if (test.continuation === "artifact_action") {
+        if (!test.sourceArtifactId) return failure("ARTIFACT_UNAVAILABLE", "The original Artifact test source is missing.");
         const invalid = validateTomeAction(next, actor, content, test.sourceArtifactId);
         if (invalid) return invalid;
       }
@@ -3676,16 +3694,13 @@ export function executeCommand(
   }
 
   if (command.type === "USE_ARTIFACT_ACTION") {
-    if (command.artifactId === "artifact_cultes_des_goules" || command.artifactId === "artifact_de_vermis_mysteriis") {
-      const invalid = validateTomeAction(next, actor, content, command.artifactId);
-      if (invalid) return invalid;
-    }
-    if (actor.assetIds.length || actor.artifactIds?.some(id => !supportedArtifact(id, content))) return failure("ARTIFACT_EFFECT_UNSUPPORTED", "Possession bonuses for this Lore test are not executable yet.");
+    const invalid = validateTomeAction(next, actor, content, command.artifactId);
+    if (invalid) return invalid;
     if (!actor.artifactIds?.includes(command.artifactId) || !content.artifacts?.some(card => card.id === command.artifactId)) return failure("ARTIFACT_UNAVAILABLE", "The investigator does not hold this Artifact.");
     if (next.usedArtifactActionIds?.includes(command.artifactId)) return failure("ACTION_ALREADY_PERFORMED", "This Artifact action was already performed this round.");
     if (!actor.investigatorId || !content.investigators[actor.investigatorId]) return failure("INVESTIGATOR_CONTENT_MISSING", "The investigator's Lore is missing.");
     if (!context) return failure("RANDOM_INPUT_REQUIRED", "The Artifact action requires server dice.");
-    return success(next, beginSkillTest(next, actor, { skill: "lore", modifier: 0, continuation: "artifact_action", sourceArtifactId: command.artifactId }, content, context));
+    return success(next, beginSkillTest(next, actor, { skill: "lore", modifier: 0, continuation: "artifact_action", sourceArtifactId: command.artifactId, otherBonuses: [nonCombatEncounterAuraBonus(next, actor, content)] }, content, context));
   }
 
   if (command.type === "OFFER_TRADE") {

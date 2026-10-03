@@ -1,7 +1,7 @@
 import type { GameContent, GameState, EnginePlayer } from "./index.js";
 import type { LocationEncounterInstruction } from "./encounter-instructions.js";
 
-/** Urban Guide is an Ally aura, not an Item bonus. Only this interpreter's scope is wired. */
+/** Urban Guide is an Ally aura, not an Item bonus. Callers explicitly opt into non-combat scope. */
 export function nonCombatEncounterAuraBonus(state: GameState, player: EnginePlayer, content: GameContent): number {
   if (!player.locationId || content.map.locationTypes[player.locationId] !== "city") return 0;
   return state.players.filter(holder => !holder.defeated && !holder.eliminated && holder.locationId === player.locationId)
