@@ -1919,12 +1919,13 @@ function validateEncounterDynamicInstructions(state: GameState, nodes: readonly 
       const invalid = validateArtifactClues(state, content);
       if (invalid) return invalid;
     }
-    if (node.kind === "effects" && node.effects.some(effect => effect.kind === "condition" && effect.condition === "hallucinations")) {
-      const catalog = content.conditions?.filter(card => card.kind === "hallucinations").map(card => card.id);
-      const pool = state.privateState.tokenPoolById[conditionPoolKey("hallucinations")];
+    for (const kind of ["hallucinations", "amnesia"] as const) {
+      if (node.kind !== "effects" || !node.effects.some(effect => effect.kind === "condition" && effect.condition === kind)) continue;
+      const catalog = content.conditions?.filter(card => card.kind === kind).map(card => card.id);
+      const pool = state.privateState.tokenPoolById[conditionPoolKey(kind)];
       const owned = state.players.flatMap(player => player.conditionIds ?? []).filter(id => catalog?.includes(id));
       const physical = [...(pool ?? []), ...owned];
-      if (!catalog?.length || new Set(catalog).size !== catalog.length || !pool || pool.some(id => !catalog.includes(id)) || new Set(physical).size !== physical.length) return failure("CONDITION_CONTENT_MISSING", "Hallucinations supply or holdings are inconsistent.");
+      if (!catalog?.length || new Set(catalog).size !== catalog.length || !pool || pool.some(id => !catalog.includes(id)) || new Set(physical).size !== physical.length) return failure("CONDITION_CONTENT_MISSING", `${kind} supply or holdings are inconsistent.`);
     }
     const children = node.kind === "test" ? [node.pass, node.fail] : node.kind === "sequence" ? node.steps : node.kind === "choice" ? node.options
       : node.kind === "optional" ? [node.reward, ...(node.decline ? [node.decline] : [])] : node.kind === "ambush" || node.kind === "ambush_result" ? [node.defeated, node.notDefeated] : [];

@@ -3,10 +3,10 @@ import { baseGameOtherWorldEncounterRules } from "../../content/src/other-world-
 import { parseLocationEncounterInstruction } from "../src/encounter-instructions.js";
 import { createDeterministicEngineContext, executeCommand, projectStateForPlayer, resolveOtherWorldEncounter, type GameContent, type GameState } from "../src/index.js";
 
-const ids = ["encounter_other_world_02", "encounter_other_world_01", "encounter_other_world_04", "encounter_other_world_03", "encounter_other_world_05", "encounter_other_world_07"];
+const ids = ["encounter_other_world_02", "encounter_other_world_01", "encounter_other_world_04", "encounter_other_world_03", "encounter_other_world_05", "encounter_other_world_07", "encounter_other_world_08"];
 const content: GameContent = {
   otherWorldEncounters: baseGameOtherWorldEncounterRules, otherWorldEncounterIds: ids,
-  conditions: [{ id: "condition_paranoia_01", kind: "paranoia", trait: "madness" }, { id: "condition_paranoia_02", kind: "paranoia", trait: "madness" }, { id: "condition_hallucinations_01", kind: "hallucinations", trait: "madness" }],
+  conditions: [{ id: "condition_paranoia_01", kind: "paranoia", trait: "madness" }, { id: "condition_paranoia_02", kind: "paranoia", trait: "madness" }, { id: "condition_hallucinations_01", kind: "hallucinations", trait: "madness" }, { id: "condition_amnesia_01", kind: "amnesia", trait: "madness" }],
   gates: [{ id: "gate_arkham", locationId: "arkham", omenSymbol: "eclipse" }, { id: "gate_london", locationId: "london", omenSymbol: "constellation" }],
   clues: [{ id: "clue_a", locationId: "arkham" }, { id: "clue_b", locationId: "london" }, { id: "clue_c", locationId: "rome" }],
   map: { adjacentLocationIds: {}, routes: [], locationTypes: { arkham: "city", london: "city" } },
@@ -30,6 +30,100 @@ function accepted(result: ReturnType<typeof resolveOtherWorldEncounter>) {
   if (!result.ok) throw new Error(result.error.message);
   return result;
 }
+
+describe("Other World card 8: The Future", () => {
+  function card8(clues = 0) {
+    const before = state(clues);
+    before.privateState.deckOrderById["encounter:other_world"] = [ids[6]!, ...ids.filter(id => id !== ids[6])];
+    before.privateState.tokenPoolById["condition:amnesia"] = ["condition_amnesia_01"];
+    return before;
+  }
+  it.each([[6, 6], [6, 1], [1, 6], [1, 1]])("resolves Initial %i and follow-up %i without premature closure", (initial, follow) => {
+    const before = card8(); const snapshot = structuredClone(before);
+    const result = accepted(resolveOtherWorldEncounter(before, "host", "gate_arkham", content, rng([initial, initial, follow])));
+    const closes = initial === 6 && follow === 6;
+    expect(result.state.activeGateIds).toEqual(closes ? [] : ["gate_arkham"]);
+    expect(result.state.discardedGateIds).toEqual(closes ? ["gate_arkham"] : []);
+    expect(result.events.filter(event => event.type === "GATE_CLOSED")).toHaveLength(closes ? 1 : 0);
+    expect(result.state.players[0]?.health).toBe(initial === 6 && follow === 1 ? 5 : 7);
+    expect(result.state.players[0]?.conditionIds ?? []).toEqual(initial === 1 && follow === 1 ? ["condition_amnesia_01"] : []);
+    expect(result.state.players[0]?.delayed).toBeFalsy(); expect(result.state.doom).toBe(15);
+    expect(result.state.activePlayerId).toBe("guest"); expect(result.state.pendingLocationEncounter).toBeUndefined();
+    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual([...ids.filter(id => id !== ids[6]), ids[6]]);
+    expect(result.state.stateVersion).toBe(3); expect(before).toEqual(snapshot);
+  });
+  it.each([1, 6])("restores both tests for Initial %i and rejects non-owner choices", die => {
+    const initial = accepted(resolveOtherWorldEncounter(card8(1), "host", "gate_arkham", content, rng([die, die])));
+    expect(initial.state.activeTest).toMatchObject({ skill: "will", modifier: 0, dicePool: 2 });
+    expect(keep(initial.state, [], "guest")).toMatchObject({ ok: false, error: { code: "NOT_DECISION_OWNER" } });
+    const follow = accepted(keep(initial.state, [6]));
+    expect(follow.state.activeTest).toMatchObject({ skill: die === 6 ? "lore" : "strength", modifier: 0, dicePool: 1 });
+    expect(follow.state.activeGateIds).toEqual(["gate_arkham"]);
+    expect(projectStateForPlayer(follow.state, "guest")).not.toHaveProperty("pendingLocationEncounter");
+    const result = accepted(keep(follow.state));
+    expect(result.state.activeGateIds).toEqual(die === 6 ? [] : ["gate_arkham"]);
+    expect(result.state.stateVersion).toBe(5); expect(result.state.players[0]?.clues).toBe(1);
+  });
+  it.each(["held", "empty"])("does not invent Amnesia when supply is %s", scenario => {
+    const before = card8(); before.privateState.tokenPoolById["condition:amnesia"] = [];
+    if (scenario === "held") before.players[0]!.conditionIds = ["condition_amnesia_01"];
+    const result = accepted(resolveOtherWorldEncounter(before, "host", "gate_arkham", content, rng([1, 1, 1])));
+    expect(result.state.players[0]?.conditionIds?.length ?? 0).toBe(scenario === "held" ? 1 : 0);
+    expect(result.state.activeGateIds).toEqual(["gate_arkham"]); expect(result.state.activePlayerId).toBe("guest");
+  });
+  it.each([1, 2])("lethal Lore loss at Health %i stops handoff and retains the Gate", health => {
+    const before = card8(); before.players[0]!.health = health;
+    const result = accepted(resolveOtherWorldEncounter(before, "host", "gate_arkham", content, rng([6, 6, 1])));
+    expect(result.state.pendingDefeat).toBeDefined(); expect(result.state.players[0]?.health).toBe(0);
+    expect(result.state.activeGateIds).toEqual(["gate_arkham"]); expect(result.state.activePlayerId).toBe("host");
+    expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.privateState.deckOrderById["encounter:other_world"]?.at(-1)).toBe(ids[6]);
+  });
+  it("ends at Azathoth Doom 1 on lethal Lore failure without closure", () => {
+    const before = card8(); before.players[0]!.health = 2; before.doom = 1;
+    const result = accepted(resolveOtherWorldEncounter(before, "host", "gate_arkham", content, rng([6, 6, 1])));
+    expect(result.state.gameResult).toBe("investigators_lose"); expect(result.state.activePlayerId).toBe("host");
+    expect(result.state.activeGateIds).toEqual(["gate_arkham"]); expect(result.state.pendingLocationEncounter).toBeUndefined();
+  });
+  it("guards unsupported awakening at damage resolution without mutating input", () => {
+    const before = card8(); before.players[0]!.health = 2; before.doom = 1; before.ancientOneId = "shub_niggurath";
+    const snapshot = structuredClone(before);
+    expect(resolveOtherWorldEncounter(before, "host", "gate_arkham", content, rng([6, 6, 1])).ok).toBe(false); expect(before).toEqual(snapshot);
+  });
+  it.each([1, 6])("uses a physical Clue reroll to determine Strength %i before Amnesia", die => {
+    const initial = accepted(resolveOtherWorldEncounter(card8(1), "host", "gate_arkham", content, rng([1, 1])));
+    const follow = accepted(keep(initial.state, [1]));
+    const result = accepted(executeCommand(JSON.parse(JSON.stringify(follow.state)), "host", { type: "RESOLVE_DECISION", decisionId: follow.state.pendingDecision!.id, selectedOptionIds: ["die-0"] }, content, rng([die])));
+    expect(result.state.players[0]?.clues).toBe(0); expect(result.state.privateState.tokenPoolById.clue_discard).toEqual(["clue_a"]);
+    expect(result.state.players[0]?.conditionIds?.length ?? 0).toBe(die === 1 ? 1 : 0); expect(result.state.activeGateIds).toEqual(["gate_arkham"]);
+  });
+  it.each(["missing", "unknown", "duplicate", "overlap"])("guards invalid Amnesia %s before RNG", scenario => {
+    const before = card8();
+    if (scenario === "missing") delete before.privateState.tokenPoolById["condition:amnesia"];
+    if (scenario === "unknown") before.privateState.tokenPoolById["condition:amnesia"] = ["condition_paranoia_01"];
+    if (scenario === "duplicate") before.privateState.tokenPoolById["condition:amnesia"]!.push("condition_amnesia_01");
+    if (scenario === "overlap") before.players[1]!.conditionIds = ["condition_amnesia_01"];
+    const snapshot = structuredClone(before);
+    expect(resolveOtherWorldEncounter(before, "host", "gate_arkham", content, rng([])).ok).toBe(false); expect(before).toEqual(snapshot);
+  });
+  it("guards missing Amnesia definitions before RNG", () => {
+    expect(resolveOtherWorldEncounter(card8(), "host", "gate_arkham", { ...content, conditions: content.conditions!.filter(card => card.kind !== "amnesia") }, rng([])).ok).toBe(false);
+  });
+  it("revalidates Amnesia supply before a restored Strength reroll payment", () => {
+    const initial = accepted(resolveOtherWorldEncounter(card8(1), "host", "gate_arkham", content, rng([1, 1])));
+    const follow = accepted(keep(initial.state, [1])).state;
+    follow.privateState.tokenPoolById["condition:amnesia"] = ["unknown"];
+    const snapshot = structuredClone(follow);
+    expect(executeCommand(follow, "host", { type: "RESOLVE_DECISION", decisionId: follow.pendingDecision!.id, selectedOptionIds: ["die-0"] }, content, rng([])).ok).toBe(false); expect(follow).toEqual(snapshot);
+  });
+  it.each(["gate", "deck", "location"])("rejects changed restored Lore source %s before closure", source => {
+    const initial = accepted(resolveOtherWorldEncounter(card8(1), "host", "gate_arkham", content, rng([6, 6])));
+    const follow = accepted(keep(initial.state, [6])).state;
+    if (source === "gate") { follow.activeGateIds = []; follow.discardedGateIds = ["gate_arkham"]; }
+    if (source === "deck") follow.privateState.deckOrderById["encounter:other_world"]!.reverse();
+    if (source === "location") follow.players[0]!.locationId = "london";
+    const snapshot = structuredClone(follow); expect(keep(follow).ok).toBe(false); expect(follow).toEqual(snapshot);
+  });
+});
 
 describe("Other World card 7: The Dreamlands", () => {
   function card7(clues = 0) {

@@ -7,7 +7,7 @@ const effect = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("clues"), amount: z.number().int() }).strict(),
   z.object({ kind: z.literal("sanity"), amount: z.number().int().negative() }).strict(),
   z.object({ kind: z.literal("health"), amount: z.number().int().negative() }).strict(),
-  z.object({ kind: z.literal("condition"), condition: z.enum(["paranoia", "hallucinations"]) }).strict(),
+  z.object({ kind: z.literal("condition"), condition: z.enum(["paranoia", "hallucinations", "amnesia"]) }).strict(),
   z.object({ kind: z.literal("delay") }).strict(),
   z.object({ kind: z.literal("doom_advance"), amount: z.literal(1) }).strict(),
 ]);
@@ -60,6 +60,11 @@ export const baseGameOtherWorldEncounterRules = [
     number: 7, name: "The Dreamlands",
     initial: { ...t("will", t("strength", e(close), e({ kind: "health", amount: -2 }, { kind: "delay" })),
       e({ kind: "delay" }, { kind: "condition", condition: "hallucinations" }), -1), diceBonus: "held_clues" as const },
+  },
+  {
+    number: 8, name: "The Future",
+    initial: t("will", t("lore", e(close), e({ kind: "health", amount: -2 })),
+      t("strength", e(), e({ kind: "condition", condition: "amnesia" }))),
   },
 ].map(({ number, name, initial }) => {
   const scan = baseGameScannedTokenEncounters.find(card => card.deck === "other_world" && card.number === number)!;
