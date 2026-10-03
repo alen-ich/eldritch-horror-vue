@@ -12,9 +12,9 @@ export type AssetAbilityType = (typeof assetAbilityTypes)[number];
 
 export type AssetEngineEffect =
   | { type: "round_test_reroll" }
-  | { type: "test_reroll"; skill: "influence" }
+  | { type: "test_reroll"; skill: "influence" | "strength" }
   | { type: "city_test_aura"; amount: 1 }
-  | { type: "skill_bonus"; skill: "influence"; amount: 1 }
+  | { type: "skill_bonus"; skill: "influence" | "strength"; amount: 1 }
   | { type: "acquire_six_counts_as_two" }
   | { type: "rest_recover_additional_sanity"; amount: 1 }
   | { type: "on_gain_recover_all_and_discard" };
@@ -46,6 +46,7 @@ const engineEffectsByAssetId: Readonly<Partial<Record<AssetId, readonly AssetEng
   asset_private_care: [{ type: "on_gain_recover_all_and_discard" }],
   asset_urban_guide: [{ type: "city_test_aura", amount: 1 }],
   asset_lucky_rabbits_foot: [{ type: "round_test_reroll" }],
+  asset_hired_muscle: [{ type: "skill_bonus", skill: "strength", amount: 1 }, { type: "test_reroll", skill: "strength" }],
 };
 
 // Explicitly scan-verified scopes. An empty effect list alone never means safe.
@@ -57,7 +58,7 @@ const nonCombatIrrelevantAssetIds: readonly string[] = [
 export const baseGameAssets: readonly AssetCardData[] = baseGameAssetDefinitions.map((definition) => ({
   ...definition,
   engineEffects: engineEffectsByAssetId[definition.id] ?? [],
-  nonCombatEncounterSupport: ["asset_personal_assistant", "asset_lucky_rabbits_foot"].includes(definition.id) ? "skill_test" : definition.id === "asset_urban_guide" ? "city_test_aura" : nonCombatIrrelevantAssetIds.includes(definition.id) ? "irrelevant" : "unsupported",
+  nonCombatEncounterSupport: ["asset_personal_assistant", "asset_lucky_rabbits_foot", "asset_hired_muscle"].includes(definition.id) ? "skill_test" : definition.id === "asset_urban_guide" ? "city_test_aura" : nonCombatIrrelevantAssetIds.includes(definition.id) ? "irrelevant" : "unsupported",
   imageUrl: `/cards/assets/${definition.id.slice("asset_".length)}.webp`,
   backImageUrl: "/cards/assets/back.webp",
   verification: "artwork_verified_from_scan",
@@ -73,9 +74,9 @@ const assetSchema = z.object({
   effectText: z.string().min(1),
   engineEffects: z.array(z.discriminatedUnion("type", [
     z.object({ type: z.literal("round_test_reroll") }).strict(),
-    z.object({ type: z.literal("test_reroll"), skill: z.literal("influence") }).strict(),
+    z.object({ type: z.literal("test_reroll"), skill: z.enum(["influence", "strength"]) }).strict(),
     z.object({ type: z.literal("city_test_aura"), amount: z.literal(1) }).strict(),
-    z.object({ type: z.literal("skill_bonus"), skill: z.literal("influence"), amount: z.literal(1) }).strict(),
+    z.object({ type: z.literal("skill_bonus"), skill: z.enum(["influence", "strength"]), amount: z.literal(1) }).strict(),
     z.object({ type: z.literal("acquire_six_counts_as_two") }).strict(),
     z.object({ type: z.literal("rest_recover_additional_sanity"), amount: z.literal(1) }).strict(),
     z.object({ type: z.literal("on_gain_recover_all_and_discard") }).strict(),

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { baseGameAssets } from "../../content/src/assets.js";
 import { baseGameResearchEncounterRules } from "../../content/src/research-encounter-rules.js";
-import { createLobby, createDeterministicEngineContext, executeCommand, resolveLocationEncounter, resolveResearchEncounter, projectPublicState, type GameContent, type GameState } from "../src/index.js";
+import { createLobby, createDeterministicEngineContext, executeCommand, resolveLocationEncounter, resolveResearchEncounter, resolveConditionReckoning, projectPublicState, type GameContent, type GameState } from "../src/index.js";
 
 const empty = { kind: "effects", effects: [] };
 const content: GameContent = {
@@ -28,6 +28,103 @@ function state(held: string[] = [], locationId: "arkham" | "space_2" = "arkham")
 const context = () => createDeterministicEngineContext({ dice: Array(10).fill(1), ids: ["test", "reroll"], tokenIndexes: [0] });
 
 describe("scoped non-combat encounter Assets", () => {
+  const muscleId = "asset_hired_muscle";
+  function muscleContent(skill: "strength" | "lore" | "influence" | "observation" | "will" = "strength", modifier = 0): GameContent {
+    return { ...content, locationEncounters: [{ id: "encounter_general_01", deck: "general", sections: {
+      city: { kind: "test", skill, modifier, pass: empty, fail: empty },
+    } }] };
+  }
+  function muscleStart(before = state([muscleId]), rules = muscleContent()): GameState {
+    before.players[0]!.clues = 0; before.privateState.tokenPoolById["held_clues:host"] = [];
+    const result = resolveLocationEncounter(before, "host", "general", rules, context());
+    if (!result.ok) throw new Error(result.error.message);
+    return result.state;
+  }
+  function muscleChoose(before: GameState, option?: string, rules = muscleContent()) {
+    return executeCommand(before, "host", { type: "RESOLVE_DECISION", decisionId: before.pendingDecision!.id, selectedOptionIds: option ? [option] : [] }, rules, createDeterministicEngineContext({ dice: [6], ids: ["muscle-choice"] }));
+  }
+  it("adds Hired Muscle's non-Item Strength bonus alongside improvement, modifier and a colleague's City aura", () => {
+    const before = state([muscleId]); before.players[0]!.skillImprovements.strength = 2;
+    before.players[1]!.assetIds = ["asset_urban_guide"];
+    const offered = muscleStart(before, muscleContent("strength", -1));
+    expect(offered.activeTest?.dicePool).toBe(5);
+    expect(offered.pendingDecision?.optionLabels?.[`asset-reroll:${muscleId}:0`]).toBe("Hired Muscle: reroll die 1 (no Clue)");
+    expect(offered.pendingDecision?.optionIds).toHaveLength(5);
+  });
+  it.each(["lore", "influence", "observation", "will"] as const)("does not grant a bonus or reroll to %s, or a same-City colleague", skill => {
+    const offered = muscleStart(state([muscleId]), muscleContent(skill));
+    expect(offered.pendingDecision).toBeUndefined();
+    const colleague = state([]); colleague.players[1]!.assetIds = [muscleId];
+    expect(muscleStart(colleague).pendingDecision).toBeUndefined();
+  });
+  it("keeps the minimum one die, does not spend Clues, and allows the source again on a new test", () => {
+    const rules = muscleContent("strength", -9); const offered = muscleStart(state([muscleId]), rules);
+    expect(offered.activeTest?.dicePool).toBe(1);
+    const snapshot = structuredClone(offered); const result = muscleChoose(offered, `asset-reroll:${muscleId}:0`, rules);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(offered).toEqual(snapshot); expect(result.state.usedAssetRerollIds).toEqual([]);
+    expect(result.events.some(event => event.type === "CLUE_SPENT_FOR_REROLL")).toBe(false);
+    result.state.activePlayerId = "host";
+    expect(muscleStart(result.state, rules).pendingDecision?.optionIds).toContain(`asset-reroll:${muscleId}:0`);
+  });
+  it("declining keeps the bonus and resumes the encounter without losing the Ally", () => {
+    const offered = muscleStart(); const result = muscleChoose(offered);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(offered.activeTest?.dicePool).toBe(3); expect(result.state.players[0]?.assetIds).toEqual([muscleId]);
+    expect(result.state.activePlayerId).toBe("guest"); expect(result.state.pendingDecision).toBeUndefined();
+  });
+  it("uses the same Strength bonus and reroll in the generic Condition Reckoning test", () => {
+    const before = state([muscleId]); before.phase = "mythos";
+    before.players[0]!.conditionIds = ["condition_leg_injury_01"];
+    before.players[0]!.clues = 0; before.privateState.tokenPoolById["held_clues:host"] = [];
+    const rules: GameContent = { ...content, conditions: [{ id: "condition_leg_injury_01", kind: "leg_injury", backEffect: { type: "discard" } }] };
+    const offered = resolveConditionReckoning(before, "host", "condition_leg_injury_01", rules, context());
+    if (!offered.ok) throw new Error(offered.error.message);
+    expect(offered.state.activeTest?.dicePool).toBe(3);
+    expect(offered.state.activeTest?.continuation).toBe("condition_reckoning");
+    const result = muscleChoose(offered.state, `asset-reroll:${muscleId}:0`, rules);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.state.players[0]?.conditionIds).toEqual(["condition_leg_injury_01"]);
+    expect(result.state.pendingDecision).toBeUndefined(); expect(result.state.phase).toBe("mythos");
+  });
+  it.each([true, false])("keeps Hired Muscle and Foot usage independent after serialization (Muscle first=%s)", muscleFirst => {
+    const offered = muscleStart(state([muscleId, "asset_lucky_rabbits_foot"]));
+    const first = muscleFirst ? muscleId : "asset_lucky_rabbits_foot";
+    const second = muscleFirst ? "asset_lucky_rabbits_foot" : muscleId;
+    const result = muscleChoose(offered, `asset-reroll:${first}:0`);
+    if (!result.ok) throw new Error(result.error.message);
+    const restored: GameState = JSON.parse(JSON.stringify(result.state));
+    expect(restored.pendingDecision?.optionIds).toContain(`asset-reroll:${second}:0`);
+    expect(restored.pendingDecision?.optionIds).not.toContain(`asset-reroll:${first}:1`);
+    const finished = muscleChoose(restored, `asset-reroll:${second}:0`);
+    if (!finished.ok) throw new Error(finished.error.message);
+    expect(finished.state.usedAssetRerollIds).toEqual(["asset_lucky_rabbits_foot"]);
+  });
+  it("rejects foreign owners, consumed sources and a vanished holding atomically", () => {
+    const offered = muscleStart(state([muscleId, "asset_lucky_rabbits_foot"]));
+    const command = { type: "RESOLVE_DECISION" as const, decisionId: offered.pendingDecision!.id, selectedOptionIds: [`asset-reroll:${muscleId}:0`] };
+    expect(executeCommand(offered, "guest", command, muscleContent(), context())).toMatchObject({ ok: false, error: { code: "NOT_DECISION_OWNER" } });
+    for (const change of ["used", "lost"] as const) {
+      const changed = structuredClone(offered);
+      if (change === "used") changed.activeTest!.usedRerollAssetIds = [muscleId];
+      else changed.players[0]!.assetIds = ["asset_lucky_rabbits_foot"];
+      const snapshot = structuredClone(changed);
+      expect(executeCommand(changed, "host", command, muscleContent(), context())).toMatchObject({ ok: false, error: { code: "INVALID_DECISION_SELECTION" } });
+      expect(changed).toEqual(snapshot);
+    }
+  });
+  it("keeps the Ally out of Item discards and still guards nested ambushes before mutation", () => {
+    const before = state([muscleId]); before.players[0]!.clues = 0;
+    before.privateState.tokenPoolById["held_clues:host"] = [];
+    before.privateState.deckOrderById["encounter:research_cthulhu"] = ["encounter_research_cthulhu_03"];
+    const result = resolveResearchEncounter(before, "host", "chosen", content, context());
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.state.players[0]?.assetIds).toEqual([muscleId]); expect(result.state.pendingDecision).toBeUndefined();
+    before.privateState.deckOrderById["encounter:research_cthulhu"] = ["encounter_research_cthulhu_04"];
+    const snapshot = structuredClone(before);
+    expect(resolveResearchEncounter(before, "host", "chosen", content, context())).toMatchObject({ ok: false, error: { code: "ENCOUNTER_UNSUPPORTED" } });
+    expect(before).toEqual(snapshot);
+  });
   function footContent(skill: "lore" | "influence" | "observation" | "strength" | "will", modifier = 0): GameContent {
     return { ...content, locationEncounters: [{ id: "encounter_general_01", deck: "general", sections: {
       city: { kind: "test", skill, modifier, pass: empty, fail: empty },

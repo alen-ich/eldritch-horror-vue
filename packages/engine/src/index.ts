@@ -216,9 +216,9 @@ export interface InvestigatorSetup {
 
 export type AssetEngineEffect =
   | { type: "round_test_reroll" }
-  | { type: "test_reroll"; skill: "influence" }
+  | { type: "test_reroll"; skill: "influence" | "strength" }
   | { type: "city_test_aura"; amount: 1 }
-  | { type: "skill_bonus"; skill: "influence"; amount: 1 }
+  | { type: "skill_bonus"; skill: "influence" | "strength"; amount: 1 }
   | { type: "acquire_six_counts_as_two" }
   | { type: "rest_recover_additional_sanity"; amount: 1 }
   | { type: "on_gain_recover_all_and_discard" };
