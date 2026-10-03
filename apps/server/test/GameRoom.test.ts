@@ -20,6 +20,49 @@ describe("authoritative game room", () => {
   after(async () => colyseus.shutdown());
   beforeEach(async () => colyseus.cleanup());
 
+  it("round-trips the Foot's round limit independently of Personal Assistant and resets at the next round", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "action"; state.ancientOneId = "cthulhu"; state.actionsRemaining = 2;
+    state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
+    state.players[0] = { ...state.players[0]!, investigatorId: "akachi_onyele", locationId: "arkham", health: 5, sanity: 7, clues: 1, assetIds: ["asset_personal_assistant", "asset_lucky_rabbits_foot"] };
+    state.privateState.tokenPoolById[`held_clues:${state.players[0]!.id}`] = ["clue_london"];
+    internal.applyEngineState(state);
+    const offered = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "ACQUIRE_ASSETS" }); await room.waitForMessage(commandMessageType);
+    const decision = await offered as PendingDecision;
+    assert.equal(decision.optionLabels?.["asset-reroll:asset_lucky_rabbits_foot:0"], "Lucky Rabbit's Foot: reroll die 1 (no Clue)");
+    assert.equal(decision.optionLabels?.["asset-reroll:asset_personal_assistant:0"], "Personal Assistant: reroll die 1 (no Clue)");
+    const rejected = guest.waitForMessage(commandErrorMessageType);
+    sendCommand(room, guest, { type: "RESOLVE_DECISION", decisionId: decision.id, selectedOptionIds: ["asset-reroll:asset_lucky_rabbits_foot:0"] });
+    await room.waitForMessage(commandMessageType); assert.equal((await rejected as { code: string }).code, "NOT_DECISION_OWNER");
+    const nextMessage = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: decision.id, selectedOptionIds: ["asset-reroll:asset_lucky_rabbits_foot:0"] }); await room.waitForMessage(commandMessageType);
+    const remaining = await nextMessage as PendingDecision;
+    assert.ok(!remaining.optionIds.some(id => id.startsWith("asset-reroll:asset_lucky_rabbits_foot:")));
+    assert.ok(remaining.optionIds.includes("asset-reroll:asset_personal_assistant:0"));
+    assert.equal(room.state.usedAssetRerollIds, "asset_lucky_rabbits_foot");
+    const checkpoint = internal.toEngineState(); assert.equal(checkpoint.players[0]?.clues, 1);
+    const refresh = host.waitForMessage(pendingDecisionMessageType);
+    internal.applyEngineState(JSON.parse(JSON.stringify(checkpoint))); await refresh;
+    assert.deepEqual(internal.toEngineState().usedAssetRerollIds, ["asset_lucky_rabbits_foot"]);
+    const illegal = host.waitForMessage(commandErrorMessageType);
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: remaining.id, selectedOptionIds: ["asset-reroll:asset_lucky_rabbits_foot:1"] }); await room.waitForMessage(commandMessageType);
+    assert.equal((await illegal as { code: string }).code, "INVALID_DECISION_SELECTION");
+    // Isolate the next-round transition after the private test has ended.
+    const ready = internal.toEngineState(); ready.activeTest = undefined; ready.pendingDecision = undefined;
+    ready.phase = "mythos"; ready.replacementWindow = true; ready.currentMythosCardId = undefined;
+    internal.applyEngineState(ready);
+    sendCommand(room, host, { type: "BEGIN_NEXT_ROUND" }); await room.waitForMessage(commandMessageType);
+    assert.deepEqual(internal.toEngineState().usedAssetRerollIds, []); assert.equal(room.state.usedAssetRerollIds, "");
+    const freshMessage = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "ACQUIRE_ASSETS" }); await room.waitForMessage(commandMessageType);
+    assert.ok((await freshMessage as PendingDecision).optionIds.includes("asset-reroll:asset_lucky_rabbits_foot:0"));
+  });
+
   it("restores successive Research Item discards before moving the exact Clue", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });

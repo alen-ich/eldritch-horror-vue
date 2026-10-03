@@ -74,7 +74,7 @@ const baseGameContent: GameContent = {
     startingAssetIds: investigator.startingAssetIds,
     startingClues: investigator.startingClues,
   }])),
-  assets: baseGameAssets.map(({ id, value, traits, engineEffects, nonCombatEncounterSupport }) => ({ id, value, traits, engineEffects, nonCombatEncounterSupport })),
+  assets: baseGameAssets.map(({ id, name, value, traits, engineEffects, nonCombatEncounterSupport }) => ({ id, name, value, traits, engineEffects, nonCombatEncounterSupport })),
   mysteryIdsByAncientOne: Object.fromEntries(
     ["cthulhu", "shub_niggurath", "yog_sothoth", "azathoth"].map((ancientOneId) => [
       ancientOneId,
@@ -234,6 +234,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       performedActions: this.state.performedActions ? this.state.performedActions.split(",") as GameState["performedActions"] : [],
       usedConditionActionIds: this.state.usedConditionActionIds ? this.state.usedConditionActionIds.split(",") : [],
       usedArtifactActionIds: this.state.usedArtifactActionIds ? this.state.usedArtifactActionIds.split(",") : [],
+      usedAssetRerollIds: this.state.usedAssetRerollIds ? this.state.usedAssetRerollIds.split(",") : [],
       monsterLocationIds: [...new Set(monsters.map(monster => monster.locationId))],
       monsters,
       encounteredMonsterInstanceIds: this.state.encounteredMonsterInstanceIds ? this.state.encounteredMonsterInstanceIds.split(",") : [],
@@ -309,6 +310,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     this.state.performedActions = engineState.performedActions.join(",");
     this.state.usedConditionActionIds = (engineState.usedConditionActionIds ?? []).join(",");
     this.state.usedArtifactActionIds = (engineState.usedArtifactActionIds ?? []).join(",");
+    this.state.usedAssetRerollIds = (engineState.usedAssetRerollIds ?? []).join(",");
     this.state.monsters = JSON.stringify(engineState.monsters ?? []);
     this.state.encounteredMonsterInstanceIds = (engineState.encounteredMonsterInstanceIds ?? []).join(",");
     this.state.activeGateIds = (engineState.activeGateIds ?? []).join(",");

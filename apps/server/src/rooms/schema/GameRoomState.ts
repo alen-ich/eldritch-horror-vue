@@ -82,6 +82,7 @@ export const GameRoomState = schema({
   performedActions: t.string().default(""),
   usedConditionActionIds: t.string().default(""),
   usedArtifactActionIds: t.string().default(""),
+  usedAssetRerollIds: t.string().default(""),
   /** Public on-board Monster instances; the undrawn cup stays server-private. */
   monsters: t.string().default("[]"),
   encounteredMonsterInstanceIds: t.string().default(""),

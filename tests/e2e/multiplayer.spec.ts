@@ -32,8 +32,12 @@ test('two browsers join, resolve an Asset test, and share Travel state', async (
     await host.getByRole('button', { name: 'Keep result' }).click()
     await expect(host.getByRole('button', { name: 'Buy nothing' })).toBeVisible()
     await host.getByRole('button', { name: 'Buy nothing' }).click()
-    await host.getByRole('button', { name: 'Keep all' }).click()
-    await expect(host.getByText('Your action · 1 remaining')).toBeVisible()
+    // Private decision messages can arrive before the corresponding schema patch.
+    // Retry this no-op discard only if the server rejected its stale version.
+    await expect(async () => {
+      await host.getByRole('button', { name: 'Keep all' }).click()
+      await expect(host.getByText('Your action · 1 remaining')).toBeVisible()
+    }).toPass({ timeout: 15000 })
 
     await host.getByRole('button', { name: 'Close investigator details' }).click()
     await host.getByRole('button', { name: '10, wilderness, legal destination' }).click()
@@ -47,6 +51,50 @@ test('two browsers join, resolve an Asset test, and share Travel state', async (
   } finally {
     await guestContext.close()
     await hostContext.close()
+  }
+})
+
+test("Lily can use Lucky Rabbit's Foot once during an Asset test", async ({ page, browser }) => {
+  const guestContext = await browser.newContext()
+  try {
+    await page.goto('/')
+    await page.waitForLoadState('networkidle')
+    await page.getByLabel('Display name').fill('Lily player')
+    await page.getByRole('button', { name: 'Create game' }).click()
+    await page.getByRole('button', { name: /Lily Chen/i }).click()
+    const guest = await guestContext.newPage()
+    await guest.goto(page.url())
+    await guest.waitForLoadState('networkidle')
+    await expect(guest.locator('.roster article').filter({ hasText: 'Lily Chen' })).toBeVisible()
+    await guest.getByRole('button', { name: /Trish Scarborough/i }).click()
+    await expect(page.locator('.roster article').filter({ hasText: 'Trish Scarborough' })).toBeVisible()
+    await page.getByRole('button', { name: /Cthulhu.*Doom 12/i }).click()
+    await expect(page.getByRole('button', { name: 'Start game' })).toBeEnabled()
+    await page.getByRole('button', { name: 'Start game' }).click()
+    const dialog = page.getByRole('dialog', { name: /influence test/i })
+    const freeReroll = dialog.getByRole('button', { name: "Lucky Rabbit's Foot: reroll die 1 (no Clue)", exact: true })
+    await expect(async () => {
+      await page.getByRole('button', { name: 'Acquire Assets' }).click()
+      // Two-player setup opens one Gate. If its Monster is in Shanghai,
+      // use an ordinary Travel action to the adjacent, unoccupied City.
+      const monsterError = page.getByRole('alert').filter({ hasText: 'cannot acquire Assets on a space containing a Monster' }).first()
+      await expect(freeReroll.or(monsterError)).toBeVisible()
+      if (await monsterError.isVisible()) {
+        await page.getByRole('button', { name: 'Close investigator details' }).click()
+        await page.getByRole('button', { name: 'Tokyo, city, legal destination', exact: true }).click()
+        await page.getByRole('button', { name: 'Confirm travel' }).click()
+        await expect(page.getByText('Your action · 1 remaining')).toBeVisible()
+        await page.getByRole('button', { name: 'Acquire Assets' }).click()
+      }
+      await expect(freeReroll).toBeVisible()
+    }).toPass({ timeout: 15000 })
+    await freeReroll.click()
+    await dialog.getByRole('button', { name: 'Use selected reroll' }).click()
+    await expect(page.getByRole('button', { name: /Lucky Rabbit's Foot: reroll die/ })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Buy nothing' })).toBeVisible()
+    await expect(guest.getByRole('dialog', { name: /influence test/i })).toHaveCount(0)
+  } finally {
+    await guestContext.close()
   }
 })
 
