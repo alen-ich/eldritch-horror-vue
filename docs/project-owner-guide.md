@@ -278,7 +278,7 @@ The following snapshot distinguishes working slices from complete families:
 | Actions | Travel/tickets, Rest, Acquire Assets, accepted trades, action usage, Delay, selected component actions | Investigator abilities and possession actions incomplete. |
 | Tests | Dice arithmetic, improvements, thresholds, highest Item bonus primitive, owner-only Clue rerolls | The arithmetic primitive does not mean every possession bonus is integrated. |
 | Combat | Basic printed-stat combat and phase ordering; Deep One/Star Spawn Research ambush continuation | Board-combat rerolls, Cultists, special abilities and possession effects incomplete. |
-| Location | All 36 cards transcribed; 64/108 sections accepted by the parser; fourteen Assets have verified non-combat applicability | Remaining 44 unsupported; other carried Assets still block live resolution. |
+| Location | All 36 cards transcribed; 64/108 sections accepted by the parser; fifteen Assets have verified non-combat applicability | Remaining 44 unsupported; other carried Assets still block live resolution. |
 | Research | All 24 Azathoth and 18/24 Cthulhu sections supported; ten-Asset non-combat scope | Other Asset and ambush guards; remaining Cthulhu rewards/Cultists; Shub/Yog transcription/execution. |
 | Mythos | All 51 icon sequences cataloged; 17 printed texts have typed effects | Remaining 34 texts and broad Reckoning can stop the round. |
 | Conditions | Physical copies, several actions/conflicts, thresholds, five typed reverse handlers | Most reverses and full trigger sequencing incomplete. |
@@ -598,3 +598,15 @@ In `RESOLVE_DECISION`, the increment path validates the source and die, records 
 Read `packages/engine/test/encounter-die-modifier.test.ts` for the pure engine cases and the first room regression in `apps/server/test/GameRoom.test.ts` for real connections/restoration. The supported target values are 1–5, not above-six results. Generic tests, ordinary location and Research are integrated; fixed dice rolls, combat/ambush and Other World are not. Next: Witch Doctor's same-space Rest choice using the existing scan.
 
 Verification passed lint/typecheck/test/build with 454 engine, 54 server, 77 content and 18 protocol cases (603 total), plus all three existing browser journeys. Modifier-specific coverage is at engine/room level; a dedicated browser modifier scenario remains useful future work.
+
+## 28. Completing one action across several choices
+
+Witch Doctor lives in the Asset content layer as `rest_health_or_discard_cursed`. It is an Ally, not an Item. Its Rest-only effect is explicitly irrelevant to ordinary location/Research tests, bringing that applicability roster to fifteen. The engine never reads the card's English text to decide what to do.
+
+Follow the `REST` branch in `packages/engine/src/index.ts`: first ordinary capped recovery (including Bible), then optional Injury/Madness rolls, then `finishRest`. That helper looks for an eligible living same-space holder and offers the resting player a private `rest_asset_choice`. Without an Ally it completes Rest immediately. With one it defers `completeAction` until the player accepts Health recovery, discards Cursed, or skips. This is why several decisions still cost only one action.
+
+The `witch_doctor_rest` continuation rechecks the exact offered source and conservation after JSON restoration. Additional Health uses `recoverResource` and emits `INVESTIGATOR_RECOVERED`, not another Rest action. Cursed uses `returnConditionToPool`; the physical ID stays private and the public event says `condition_cursed`. The Ally remains held and can help another investigator's later Rest. The server delivers choices only to the resting player; `EncounterChoicePanel.vue` displays them under “Rest bonus” and sends the existing runtime-validated decision command.
+
+Read `packages/engine/test/rest-assets.test.ts` for the small complete flow and the two Witch Doctor cases in `apps/server/test/GameRoom.test.ts` for real clients. To add another Rest trigger, preserve this deferred completion boundary: never charge a second action or let a client pick authoritative outcomes. Next: Puzzle Box's optional Observation test and conserved Artifact reward, starting with its existing scan verification. Full Rest-trigger ordering, combat/Other World and remaining possession effects still need work.
+
+Verification passed root lint/typecheck/test/build with 478 engine, 56 server, 77 content and 18 protocol cases (629 total). Three existing browser journeys passed. Witch Doctor-specific coverage is in engine/room tests; a dedicated browser scenario remains future work.

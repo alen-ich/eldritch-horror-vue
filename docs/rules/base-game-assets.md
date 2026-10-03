@@ -15,7 +15,7 @@ The Asset family remains `needs_review` rather than `verified` because:
 
 The authoritative engine now removes starting Assets from the deck, grants them by stable ID, shuffles the remaining deck privately, and exposes a four-card Reserve. Acquire Assets uses the generic Influence-test lifecycle, including improvements, supported bonuses, and sequential Clue rerolls; it then validates selected cards against total successes, refills the Reserve, and supports the optional one-card discard after buying nothing. Active tests and owner-only choices survive serialization and reconnection. Bank Loan is intentionally unavailable until Debt Conditions are implemented.
 
-Ten cards have explicit typed effect nodes and executable tests (coverage is scoped, not full-family support):
+Eleven cards have explicit typed effect nodes and executable tests (coverage is scoped, not full-family support):
 
 - Personal Assistant adds one die and an optional one-die free reroll to Influence tests in the generic test lifecycle (including Acquire Assets) and supported location/Research. Its reroll can be used once per test, independently of Clue rerolls, and consumed-source tracking survives serialization. It does not grant a bonus or reroll to another skill.
 - Fine Clothes makes each 6 count as two successes during Acquire Assets.
@@ -27,6 +27,7 @@ Ten cards have explicit typed effect nodes and executable tests (coverage is sco
 - Bandages optionally discards its physical Item to prevent one or two Health loss for a same-space investigator during ordinary location/Research damage. It does not heal or prevent Sanity loss. Other damage contexts and paid Health costs are not enabled.
 - Whiskey optionally discards its physical Item to prevent one or two Sanity loss for a same-space investigator during ordinary location/Research damage. It does not heal or prevent Health loss. Other damage contexts and paid Sanity costs are not enabled.
 - Lucky Cigarette Case optionally increases one test die result by one, once per physical card per round, in the shared test lifecycle and ordinary location/Research. It is not a reroll, extra die or Clue payment. Results above six and combat/Other World integration are not enabled.
+- Witch Doctor offers investigators on its holder's space an optional additional Health recovery or Cursed discard during Rest, after ordinary recovery and Injury/Madness recovery rolls.
 
 ## Scoped encounter applicability (3 October 2026)
 
@@ -123,5 +124,17 @@ Reference Guide page 10 supplies replacement-on-reroll semantics. The supplied U
 Twenty-two engine cases cover all five skills, optional decline, Blessed/Cursed thresholds, no-Clue use, Fine Clothes, both Foot orders, later physical-Clue rerolls, exact Research collection, new tests/ownership/round reset, duplicate/lost/used sources, forged options, owner privacy and legacy state. A real two-client room regression combines Foot and Fine Clothes with modifier restoration, authorization, public usage synchronization and final purchase budget. Existing browser journeys are shared UI regressions, not a dedicated Cigarette Case scenario.
 
 Next: Witch Doctor's same-space Rest choice between one additional Health recovery and discarding Cursed, using the existing verified scan. No new scans are required.
+
+## Witch Doctor: same-space Rest choice (3 October 2026)
+
+The supplied English scan confirms value 3, Ally and the optional additional Health-or-Cursed-discard effect. The typed node is `rest_health_or_discard_cursed`. Fifteen Assets now have explicit ordinary encounter applicability; Witch Doctor is Rest-only and therefore irrelevant to those encounters. Twenty-five other Assets remain guarded. Earlier counts above describe historical slices.
+
+Ordinary Rest still applies capped Health/Sanity recovery and King James Bible, then offers Injury/Madness recovery rolls. `finishRest` next offers the resting investigator—not necessarily the Ally holder—an owner-private `rest_asset_choice`. They choose one additional Health, discard their held Cursed, or skip. The action completes exactly once after the bonus; no Clue, roll, Ally discard or round-limited source usage is consumed. A same-space colleague can later benefit on their own Rest.
+
+The exact Ally must still be held, physically unique and on the resting investigator's space by a living investigator. Cursed discards return the exact server-private copy to its matching supply without flipping or revealing its reverse. Public events use only the front kind. Offered sources and Cursed conservation are checked again after restoration; invalid selections reject without changing canonical state. Monster-blocked Rest remains blocked.
+
+Engine regressions cover both choices/decline, recovery caps, Bible interaction, holder/colleague eligibility, recovery-roll sequencing, turn handoff, repeat/ownership guards, conservation and JSON restoration. Two real room regressions cover private delivery, stable player ownership, restoration and both outcomes. The browser's existing choice dialog now renders the authoritative options with a “Rest bonus” heading; it does not compute outcomes.
+
+Next: verify and implement Puzzle Box's optional Rest Observation test and physical Artifact reward using existing scans. Its test timing and continuation must coexist with Condition recovery and Witch Doctor without charging a second action. The combat/Other World and full-family limitations above remain unchanged.
 
 Verification passed lint/typecheck/test/build with 454 engine, 54 server, 77 content and 18 protocol cases (603 total), plus all three existing browser journeys. The room test is modifier-specific; browser coverage remains shared-dialog regression coverage.
