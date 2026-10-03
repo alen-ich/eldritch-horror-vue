@@ -2,10 +2,15 @@ import { expect, it } from "vitest";
 import { baseGameOtherWorldEncounterRules, validateOtherWorldEncounterContent } from "../src/other-world-encounter-rules.js";
 import { baseGameScannedTokenEncounters } from "../src/token-encounters.js";
 
-it("links eight mechanical transcriptions to the existing base-only scans", () => {
-  expect(baseGameOtherWorldEncounterRules.map(card => card.number)).toEqual([1, 2, 3, 4, 5, 7, 8, 9]);
+it("links nine mechanical transcriptions to the existing base-only scans", () => {
+  expect(baseGameOtherWorldEncounterRules.map(card => card.number)).toEqual([1, 2, 3, 4, 5, 7, 8, 9, 10]);
   for (const card of baseGameOtherWorldEncounterRules) expect(baseGameScannedTokenEncounters.find(scan => scan.id === card.id)).toMatchObject({ sourceScan: card.sourceScan, sourceCellIndex: card.sourceCellIndex, deck: "other_world" });
   expect(baseGameScannedTokenEncounters.filter(card => card.deck === "other_world")).toHaveLength(24);
+});
+it("preserves Yuggoth's Influence/Lore tests and distinct one- and two-Sanity losses", () => {
+  expect(baseGameOtherWorldEncounterRules[8]!.sections.initial).toEqual({ kind: "test", skill: "influence", modifier: 0,
+    pass: { kind: "test", skill: "lore", modifier: 0, pass: { kind: "effects", effects: [{ kind: "close_encountered_gate" }] }, fail: { kind: "effects", effects: [{ kind: "sanity", amount: -1 }] } },
+    fail: { kind: "optional", cost: [{ kind: "clues", amount: -1 }], reward: { kind: "effects", effects: [] }, decline: { kind: "effects", effects: [{ kind: "sanity", amount: -2 }] } } });
 });
 it("preserves card 9's conditional Lore closure and spend-a-Clue Hallucinations avoidance", () => {
   expect(baseGameOtherWorldEncounterRules[7]!.sections.initial).toEqual({ kind: "test", skill: "will", modifier: 0,
