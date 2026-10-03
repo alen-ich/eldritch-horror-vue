@@ -15,7 +15,7 @@ The Asset family remains `needs_review` rather than `verified` because:
 
 The authoritative engine now removes starting Assets from the deck, grants them by stable ID, shuffles the remaining deck privately, and exposes a four-card Reserve. Acquire Assets uses the generic Influence-test lifecycle, including improvements, supported bonuses, and sequential Clue rerolls; it then validates selected cards against total successes, refills the Reserve, and supports the optional one-card discard after buying nothing. Active tests and owner-only choices survive serialization and reconnection. Bank Loan is intentionally unavailable until Debt Conditions are implemented.
 
-Nine cards have explicit typed effect nodes and executable tests (coverage is scoped, not full-family support):
+Ten cards have explicit typed effect nodes and executable tests (coverage is scoped, not full-family support):
 
 - Personal Assistant adds one die and an optional one-die free reroll to Influence tests in the generic test lifecycle (including Acquire Assets) and supported location/Research. Its reroll can be used once per test, independently of Clue rerolls, and consumed-source tracking survives serialization. It does not grant a bonus or reroll to another skill.
 - Fine Clothes makes each 6 count as two successes during Acquire Assets.
@@ -26,6 +26,7 @@ Nine cards have explicit typed effect nodes and executable tests (coverage is sc
 - Hired Muscle adds one Strength die and an optional free Strength-test reroll for its holder in supported non-combat tests. It is an Ally bonus, not an Item bonus or City aura. Combat remains separate.
 - Bandages optionally discards its physical Item to prevent one or two Health loss for a same-space investigator during ordinary location/Research damage. It does not heal or prevent Sanity loss. Other damage contexts and paid Health costs are not enabled.
 - Whiskey optionally discards its physical Item to prevent one or two Sanity loss for a same-space investigator during ordinary location/Research damage. It does not heal or prevent Health loss. Other damage contexts and paid Sanity costs are not enabled.
+- Lucky Cigarette Case optionally increases one test die result by one, once per physical card per round, in the shared test lifecycle and ordinary location/Research. It is not a reroll, extra die or Clue payment. Results above six and combat/Other World integration are not enabled.
 
 ## Scoped encounter applicability (3 October 2026)
 
@@ -108,3 +109,19 @@ Whiskey verification passed lint/typecheck/test/build with 432 engine, 53 server
 The scanned **Rally the People** Mythos Event now grants the Lead the first Ally in the private shuffled Asset deck, falling back to the discard pile if necessary and reshuffling the deck after a gain. The granted physical card leaves its source pile and becomes the Lead's possession; if no Ally remains in either pile, no card is gained. The remaining deck order is never synchronized to clients.
 
 Run `pnpm assets:generate` to reproduce the 40 WebP fronts and shared back under `apps/web/public/cards/assets` from the committed sources.
+
+## Lucky Cigarette Case: die-result modification (3 October 2026)
+
+The existing English scan confirms value 2, Trinket and optional once-per-round +1 to one die result during a test. `round_test_die_increment` is a typed effect, bringing ordinary encounter applicability to fourteen Assets; 26 others remain guarded. Like the Foot, this is not an Item and cannot satisfy an Item-only discard.
+
+`usedAssetDieModifierIds` tracks physical sources independently of the Foot's `usedAssetRerollIds` and test-local free rerolls. It survives new tests, JSON/room restoration and ownership changes, and resets on authorized next-round/setup transitions. Older states default to no recorded usage. Holding and physical conservation are checked before offering and on acceptance; duplicate encounter identities reject before the first roll. Owner-private `asset-increment:<physical ID>:<die index>` options share the existing runtime-validated decision command. The browser labels the action as a die modifier, not a reroll.
+
+Accepting changes the current die value by exactly one, consumes no randomness or Clue, preserves the card and dice pool, recomputes successes, and emits `TEST_DIE_MODIFIED`. A subsequent Clue or Asset reroll replaces that modified value instead of retaining the +1. The holder chooses the source order. Keeping the result leaves unused modifier availability intact. Supported targets are existing die results 1–5; six is not offered, and this slice does not define above-six behavior.
+
+Reference Guide page 10 supplies replacement-on-reroll semantics. The supplied Ultimate FAQ page 4's red FFG answer was visually verified: a changed five counts as six for rolled-six effects, so Fine Clothes counts that modified six as two Acquire Assets successes. The [official FFG FAQ](https://images-cdn.fantasyflightgames.com/filer_public/6d/33/6d33e762-f0e4-4f51-89b6-88e3354634cc/eh_errata__faq_2017-08-11.pdf), page 3, confirms fixed non-test rolls do not receive test modifications. Combat/ambush and Other World remain separate integrations.
+
+Twenty-two engine cases cover all five skills, optional decline, Blessed/Cursed thresholds, no-Clue use, Fine Clothes, both Foot orders, later physical-Clue rerolls, exact Research collection, new tests/ownership/round reset, duplicate/lost/used sources, forged options, owner privacy and legacy state. A real two-client room regression combines Foot and Fine Clothes with modifier restoration, authorization, public usage synchronization and final purchase budget. Existing browser journeys are shared UI regressions, not a dedicated Cigarette Case scenario.
+
+Next: Witch Doctor's same-space Rest choice between one additional Health recovery and discarding Cursed, using the existing verified scan. No new scans are required.
+
+Verification passed lint/typecheck/test/build with 454 engine, 54 server, 77 content and 18 protocol cases (603 total), plus all three existing browser journeys. The room test is modifier-specific; browser coverage remains shared-dialog regression coverage.

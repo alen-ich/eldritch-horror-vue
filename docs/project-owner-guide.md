@@ -278,7 +278,7 @@ The following snapshot distinguishes working slices from complete families:
 | Actions | Travel/tickets, Rest, Acquire Assets, accepted trades, action usage, Delay, selected component actions | Investigator abilities and possession actions incomplete. |
 | Tests | Dice arithmetic, improvements, thresholds, highest Item bonus primitive, owner-only Clue rerolls | The arithmetic primitive does not mean every possession bonus is integrated. |
 | Combat | Basic printed-stat combat and phase ordering; Deep One/Star Spawn Research ambush continuation | Board-combat rerolls, Cultists, special abilities and possession effects incomplete. |
-| Location | All 36 cards transcribed; 64/108 sections accepted by the parser; thirteen Assets have verified non-combat applicability | Remaining 44 unsupported; other carried Assets still block live resolution. |
+| Location | All 36 cards transcribed; 64/108 sections accepted by the parser; fourteen Assets have verified non-combat applicability | Remaining 44 unsupported; other carried Assets still block live resolution. |
 | Research | All 24 Azathoth and 18/24 Cthulhu sections supported; ten-Asset non-combat scope | Other Asset and ambush guards; remaining Cthulhu rewards/Cultists; Shub/Yog transcription/execution. |
 | Mythos | All 51 icon sequences cataloged; 17 printed texts have typed effects | Remaining 34 texts and broad Reckoning can stop the round. |
 | Conditions | Physical copies, several actions/conflicts, thresholds, five typed reverse handlers | Most reverses and full trigger sequencing incomplete. |
@@ -586,3 +586,15 @@ With both losses pending, accepting Bandages does not immediately apply Sanity d
 Study the combined-source cases in `packages/engine/test/encounter-prevention.test.ts`: reverse card order or decline the first source and follow the remaining choice. The paired real Research room tests in `apps/server/test/GameRoom.test.ts` verify colleague ownership, private restoration and damage before defeat. Ordinary encounters only are integrated: paid matching-resource costs and ambushes remain guarded; Mythos/Condition/combat/Other World timing is still separate work. Next: Lucky Cigarette Case's optional once-per-round +1 to one test die result (not a reroll), using its verified existing scan.
 
 Verification passed lint/typecheck/test/build: 432 engine, 53 server, 77 content and 18 protocol cases. Three existing browser journeys passed three repetitions each; these exercise shared UI, not dedicated Whiskey scenarios. Charlie's browser fixture now legally Travels away if random setup places a Monster in his starting City, rather than assuming Acquire Assets is always available there.
+
+## 27. Changing a die result without rerolling
+
+Lucky Cigarette Case uses a new content node, `round_test_die_increment`, not the Foot's reroll node. It is a Trinket. In engine `createTestRerollDecision`, a held, unique, unused physical source adds `asset-increment:<ID>:<index>` options alongside Clue/Asset rerolls. The existing decision kind and continuation names remain `select_rerolls`/`test_reroll` for compatibility; their actual options now describe different test die effects.
+
+In `RESOLVE_DECISION`, the increment path validates the source and die, records `usedAssetDieModifierIds`, adds exactly one and recounts successes without calling `rollDie` or paying a Clue. The changed result replaces the old value: a five becomes six for Fine Clothes; rerolling it afterward replaces six with the newly rolled value and does not preserve the +1. Options for this source disappear for the rest of the round, even after ownership changes. The Foot's usage is independent, so either source order works. Declining preserves unused availability.
+
+`GameRoomState.ts` and `GameRoom.ts` round-trip the public used-source list; the private decision carries legal choices only to its owner. `app.vue` shows “Use selected die modifier” for increment options and keeps the existing reroll label for rerolls. No client chooses the resulting value, success count, usage or randomness. Public projections copy the new array rather than exposing a mutable canonical reference.
+
+Read `packages/engine/test/encounter-die-modifier.test.ts` for the pure engine cases and the first room regression in `apps/server/test/GameRoom.test.ts` for real connections/restoration. The supported target values are 1–5, not above-six results. Generic tests, ordinary location and Research are integrated; fixed dice rolls, combat/ambush and Other World are not. Next: Witch Doctor's same-space Rest choice using the existing scan.
+
+Verification passed lint/typecheck/test/build with 454 engine, 54 server, 77 content and 18 protocol cases (603 total), plus all three existing browser journeys. Modifier-specific coverage is at engine/room level; a dedicated browser modifier scenario remains useful future work.
