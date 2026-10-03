@@ -183,6 +183,8 @@ export interface GameState {
   usedArtifactActionIds?: string[];
   /** Physical Asset identities whose once-per-round test reroll has been used. */
   usedAssetRerollIds?: string[];
+  /** Physical once-per-round die-result modifier sources, independent of rerolls. */
+  usedAssetDieModifierIds?: string[];
   monsterLocationIds: LocationId[];
   monsters?: MonsterInstance[];
   activeGateIds?: string[];
@@ -215,6 +217,7 @@ export interface InvestigatorSetup {
 }
 
 export type AssetEngineEffect =
+  | { type: "round_test_die_increment"; amount: 1 }
   | { type: "discard_prevent_sanity_loss"; amount: 2 }
   | { type: "discard_prevent_health_loss"; amount: 2 }
   | { type: "round_test_reroll" }
@@ -314,6 +317,7 @@ export function createLobby(playerIds: string[]): GameState {
     performedActions: [],
     usedConditionActionIds: [],
     usedAssetRerollIds: [],
+    usedAssetDieModifierIds: [],
     monsterLocationIds: [],
     activeGateIds: [],
     discardedGateIds: [],
@@ -365,6 +369,7 @@ export function projectStateForPlayer(state: GameState, viewerPlayerId?: string)
     usedConditionActionIds: [...(publicState.usedConditionActionIds ?? [])],
     usedArtifactActionIds: [...(publicState.usedArtifactActionIds ?? [])],
     usedAssetRerollIds: [...(publicState.usedAssetRerollIds ?? [])],
+    usedAssetDieModifierIds: [...(publicState.usedAssetDieModifierIds ?? [])],
     monsterLocationIds: [...publicState.monsterLocationIds],
     monsters: publicState.monsters?.map(monster => ({ ...monster })),
     activeGateIds: [...(publicState.activeGateIds ?? [])],
@@ -1959,7 +1964,8 @@ function continueLocationEncounter(state: GameState, content: GameContent, conte
       const successes = countTestSuccesses(dice, conditionSuccessThreshold(player.conditionIds ?? []));
       pending.dice = dice;
       pending.successes = successes;
-      if (player.clues > 0 || player.assetIds.some(id => canUseAssetTestReroll(next, player, node.skill, id, content))) {
+      if (player.clues > 0 || player.assetIds.some(id => canUseAssetTestReroll(next, player, node.skill, id, content)
+        || canUseAssetDieIncrement(next, player, id, content))) {
         const test: ActiveTest = { id: context.createId(), playerId: player.id, skill: node.skill, modifier: node.modifier, dicePool, dice, successes,
           successThreshold: conditionSuccessThreshold(player.conditionIds ?? []), continuation: "location_encounter", sourceEncounterCardId: pending.cardId, sourceEncounterDeck: pending.deck };
         if (createTestRerollDecision(next, test, content, context)) {
@@ -2230,12 +2236,27 @@ function canUseAssetTestReroll(state: GameState, player: EnginePlayer, skill: Sk
     || effect.type === "round_test_reroll" && !state.usedAssetRerollIds?.includes(assetId)) ?? false;
 }
 
+function canUseAssetDieIncrement(state: GameState, player: EnginePlayer, assetId: string, content: GameContent): boolean {
+  return player.assetIds.includes(assetId) && !state.usedAssetDieModifierIds?.includes(assetId)
+    && physicalAssetIsUnique(state, assetId)
+    && (content.assets.find(asset => asset.id === assetId)?.engineEffects.some(effect => effect.type === "round_test_die_increment") ?? false);
+}
+
 function createTestRerollDecision(state: GameState, test: ActiveTest, content: GameContent, context: EngineContext): boolean {
   const player = state.players.find(player => player.id === test.playerId);
   if (!player) return false;
   const optionIds = player.clues > 0 ? test.dice.map((_, index) => `die-${index}`) : [];
   const optionLabels: Record<string, string> = Object.fromEntries(optionIds.map((id, index) => [id, `Spend 1 Clue: reroll die ${index + 1}`]));
   for (const assetId of player.assetIds) {
+    if (canUseAssetDieIncrement(state, player, assetId, content)) {
+      const assetName = content.assets.find(asset => asset.id === assetId)?.name ?? assetId;
+      test.dice.forEach((die, index) => {
+        // Only modeled six-sided results: above-six effects need separate rules.
+        if (die < 1 || die >= 6) return;
+        const id = `asset-increment:${assetId}:${index}`;
+        optionIds.push(id); optionLabels[id] = `${assetName}: add 1 to die ${index + 1} (${die} → ${die + 1}; no Clue)`;
+      });
+    }
     if (!canUseAssetTestReroll(state, player, test.skill, assetId, content, test.usedRerollAssetIds)) continue;
     const assetName = content.assets.find(asset => asset.id === assetId)?.name ?? assetId;
     test.dice.forEach((_, index) => {
@@ -2249,7 +2270,7 @@ function createTestRerollDecision(state: GameState, test: ActiveTest, content: G
     kind: "select_rerolls",
     playerId: test.playerId,
     visibility: "owner",
-    prompt: "Choose a reroll source and die, or keep the current result.",
+    prompt: "Choose a test die effect and die, or keep the current result.",
     optionIds, optionLabels,
     minSelections: 0,
     maxSelections: 1,
@@ -2440,6 +2461,7 @@ export function executeCommand(
     nextRound.usedConditionActionIds = [];
     nextRound.usedArtifactActionIds = [];
     nextRound.usedAssetRerollIds = [];
+    nextRound.usedAssetDieModifierIds = [];
     nextRound.replacementWindow = false;
     nextRound.encounteredMonsterInstanceIds = [];
     return success(nextRound, [{ type: "PHASE_ADVANCED", phase: "action", activePlayerId: first.id }]);
@@ -2459,6 +2481,7 @@ export function executeCommand(
     usedConditionActionIds: [...(state.usedConditionActionIds ?? [])],
     usedArtifactActionIds: [...(state.usedArtifactActionIds ?? [])],
     usedAssetRerollIds: [...(state.usedAssetRerollIds ?? [])],
+    usedAssetDieModifierIds: [...(state.usedAssetDieModifierIds ?? [])],
     monsterLocationIds: [...state.monsterLocationIds],
     monsters: state.monsters?.map(monster => ({ ...monster })),
     activeGateIds: [...(state.activeGateIds ?? [])],
@@ -3030,10 +3053,17 @@ export function executeCommand(
       const activeTest = next.activeTest!;
       const selectedDie = selections[0];
       if (selectedDie) {
-        const assetChoice = selectedDie.startsWith("asset-reroll:") ? selectedDie.split(":") : undefined;
+        const increment = selectedDie.startsWith("asset-increment:");
+        const assetChoice = increment || selectedDie.startsWith("asset-reroll:") ? selectedDie.split(":") : undefined;
         const dieIndex = Number(assetChoice ? assetChoice[2] : selectedDie.slice("die-".length));
         if (!Number.isInteger(dieIndex) || dieIndex < 0 || dieIndex >= activeTest.dice.length) return failure("INVALID_DECISION_SELECTION", "That test die is unavailable.");
-        if (assetChoice) {
+        if (increment && assetChoice) {
+          const assetId = assetChoice[1]!;
+          const die = activeTest.dice[dieIndex]!;
+          if (!canUseAssetDieIncrement(next, actor, assetId, content) || die < 1 || die >= 6) return failure("INVALID_DECISION_SELECTION", "That die-result modifier is unavailable.");
+          next.usedAssetDieModifierIds = [...(next.usedAssetDieModifierIds ?? []), assetId];
+          activeTest.dice[dieIndex] = die + 1;
+        } else if (assetChoice) {
           const assetId = assetChoice[1]!;
           if (!canUseAssetTestReroll(next, actor, activeTest.skill, assetId, content, activeTest.usedRerollAssetIds)) return failure("INVALID_DECISION_SELECTION", "That Asset reroll is unavailable for this test.");
           activeTest.usedRerollAssetIds = [...(activeTest.usedRerollAssetIds ?? []), assetId];
@@ -3044,10 +3074,12 @@ export function executeCommand(
           actor.clues -= 1;
           events.push({ type: "CLUE_SPENT_FOR_REROLL", testId: activeTest.id, playerId: actorPlayerId, dieIndex });
         }
-        activeTest.dice[dieIndex] = context.rollDie();
+        if (!increment) activeTest.dice[dieIndex] = context.rollDie();
         activeTest.successes = countActiveTestSuccesses(activeTest, actor, content);
         events.push(
-          { type: "TEST_DIE_REROLLED", testId: activeTest.id, playerId: actorPlayerId, dieIndex, result: activeTest.dice[dieIndex]!, successes: activeTest.successes },
+          increment
+            ? { type: "TEST_DIE_MODIFIED", testId: activeTest.id, playerId: actorPlayerId, assetId: assetChoice![1]!, dieIndex, result: activeTest.dice[dieIndex]!, successes: activeTest.successes }
+            : { type: "TEST_DIE_REROLLED", testId: activeTest.id, playerId: actorPlayerId, dieIndex, result: activeTest.dice[dieIndex]!, successes: activeTest.successes },
         );
       }
       if (selectedDie && createTestRerollDecision(next, activeTest, content, context)) { /* Keep the authoritative test open. */ }
@@ -3229,6 +3261,7 @@ export function executeCommand(
     next.usedConditionActionIds = [];
     next.usedArtifactActionIds = [];
     next.usedAssetRerollIds = [];
+    next.usedAssetDieModifierIds = [];
     next.activeMysteryId = activeMysteryId;
     next.mysteryProgress = 0;
     next.mysteryTarget = mysteryTarget;

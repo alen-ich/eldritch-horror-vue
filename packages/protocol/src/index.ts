@@ -199,6 +199,7 @@ export type GameEvent =
   | { type: "TEST_ROLLED"; testId: string; playerId: string; skill: SkillId; modifier: number; dice: number[]; successes: number }
   | { type: "CLUE_SPENT_FOR_REROLL"; testId: string; playerId: string; dieIndex: number }
   | { type: "TEST_DIE_REROLLED"; testId: string; playerId: string; dieIndex: number; result: number; successes: number }
+  | { type: "TEST_DIE_MODIFIED"; testId: string; playerId: string; assetId: string; dieIndex: number; result: number; successes: number }
   | { type: "TEST_RESOLVED"; testId: string; playerId: string; successes: number; continuation: ActiveTest["continuation"] }
   | { type: "RESERVE_ASSET_DISCARDED"; assetId: string }
   | { type: "RESERVE_REFILLED"; assetIds: string[] }

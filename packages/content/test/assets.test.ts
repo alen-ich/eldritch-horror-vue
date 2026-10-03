@@ -73,11 +73,14 @@ describe("base-game Asset cards", () => {
     expect(baseGameAssets.find(({ id }) => id === "asset_bandages")?.traits).toEqual(["item"]);
     expect(baseGameAssets.find(({ id }) => id === "asset_whiskey")?.engineEffects).toEqual([{ type: "discard_prevent_sanity_loss", amount: 2 }]);
     expect(baseGameAssets.find(({ id }) => id === "asset_whiskey")?.traits).toEqual(["item"]);
-    expect(baseGameAssets.filter(({ engineEffects }) => engineEffects.length > 0)).toHaveLength(9);
+    expect(baseGameAssets.find(({ id }) => id === "asset_lucky_cigarette_case")?.engineEffects).toEqual([{ type: "round_test_die_increment", amount: 1 }]);
+    expect(baseGameAssets.find(({ id }) => id === "asset_lucky_cigarette_case")?.traits).toEqual(["trinket"]);
+    expect(baseGameAssets.filter(({ engineEffects }) => engineEffects.length > 0)).toHaveLength(10);
   });
 
-  it("explicitly scopes thirteen scan-verified Assets to non-combat encounters", () => {
-    expect(baseGameAssets.filter(asset => asset.nonCombatEncounterSupport !== "unsupported")).toHaveLength(13);
+  it("explicitly scopes fourteen scan-verified Assets to non-combat encounters", () => {
+    expect(baseGameAssets.filter(asset => asset.nonCombatEncounterSupport !== "unsupported")).toHaveLength(14);
+    expect(baseGameAssets.find(asset => asset.id === "asset_lucky_cigarette_case")?.nonCombatEncounterSupport).toBe("skill_test");
     expect(baseGameAssets.filter(asset => asset.nonCombatEncounterSupport === "irrelevant").map(asset => asset.id).sort()).toEqual([
       "asset_38_revolver", "asset_45_automatic", "asset_arcane_manuscripts", "asset_fine_clothes", "asset_holy_cross", "asset_king_james_bible", "asset_protective_amulet",
     ]);

@@ -55,6 +55,7 @@ export function encounterItemsAreConserved(state: GameState, player: EnginePlaye
 export function supportsEncounterAssets(state: GameState, player: EnginePlayer, content: GameContent, instruction: LocationEncounterInstruction): boolean {
   const assets = player.assetIds.map(id => content.assets.find(asset => asset.id === id));
   if (assets.some(asset => !asset || !asset.nonCombatEncounterSupport || asset.nonCombatEncounterSupport === "unsupported")) return false;
+  if (assets.some(asset => asset?.engineEffects.some(effect => effect.type === "round_test_die_increment") && !physicalAssetIsUnique(state, asset.id))) return false;
   const all = nodes(instruction);
   const preventions = encounterDamagePreventions(state, player, content);
   if (preventions.some(source => !physicalAssetIsUnique(state, source.assetId))) return false;
