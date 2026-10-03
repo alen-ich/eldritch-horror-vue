@@ -15,7 +15,7 @@ The Asset family remains `needs_review` rather than `verified` because:
 
 The authoritative engine now removes starting Assets from the deck, grants them by stable ID, shuffles the remaining deck privately, and exposes a four-card Reserve. Acquire Assets uses the generic Influence-test lifecycle, including improvements, supported bonuses, and sequential Clue rerolls; it then validates selected cards against total successes, refills the Reserve, and supports the optional one-card discard after buying nothing. Active tests and owner-only choices survive serialization and reconnection. Bank Loan is intentionally unavailable until Debt Conditions are implemented.
 
-Six cards have explicit typed effect nodes and executable tests (coverage is scoped, not full-family support):
+Seven cards have explicit typed effect nodes and executable tests (coverage is scoped, not full-family support):
 
 - Personal Assistant adds one die and an optional one-die free reroll to Influence tests in the generic test lifecycle (including Acquire Assets) and supported location/Research. Its reroll can be used once per test, independently of Clue rerolls, and consumed-source tracking survives serialization. It does not grant a bonus or reroll to another skill.
 - Fine Clothes makes each 6 count as two successes during Acquire Assets.
@@ -23,6 +23,7 @@ Six cards have explicit typed effect nodes and executable tests (coverage is sco
 - Private Care immediately restores Health and Sanity to maximum, then enters the Asset discard pile.
 - Urban Guide grants one additional die to investigators on its holder's City space during supported non-combat location/Research tests. It is a non-Item aura and combines with improvements before the minimum-one-die rule. Defeated/eliminated and remote holders do not contribute. Other World, board combat, ambush and Action-test integration remain pending.
 - Lucky Rabbit's Foot grants an optional one-die reroll during supported tests, once per physical card per round. It grants no dice bonus. Combat/ambush and Other World remain guarded.
+- Hired Muscle adds one Strength die and an optional free Strength-test reroll for its holder in supported non-combat tests. It is an Ally bonus, not an Item bonus or City aura. Combat remains separate.
 
 ## Scoped encounter applicability (3 October 2026)
 
@@ -63,6 +64,16 @@ The existing generated English front was visually verified. Its optional reroll 
 The room schema and content adapter round-trip the public used-ID list and card display names. Owner-private options now label the actual card rather than hardcoding Personal Assistant. Commands, dice, thresholds and outcomes remain server-authoritative; fixed non-test dice never enter this reroll flow. Missing usage arrays in older states mean no recorded usage. No Other World or possession-aware combat integration is enabled.
 
 Fifteen new engine cases cover five skills, Research/physical Clues, no dice bonus, round persistence, decline, source order, ownership/restoration, next-round authorization, public-copy safety, lost/used source rejection, Cursed thresholds and Trinket exclusion. A two-client room regression checks the adapter, independent source choices, consumed-source rejection and next-round reset. The browser regression uses Lily's starting Foot and Protective Amulet. Next: Hired Muscle's Strength bonus and optional Strength-test reroll, using the existing scan; its combat integration remains separate.
+
+## Hired Muscle: scoped Strength tests (3 October 2026)
+
+The existing English front was visually verified: value 2, Ally, +1 Strength and an optional one-die reroll when resolving a Strength test. The existing `skill_bonus` and `test_reroll` nodes now accept Strength as well as Influence; no printed-text parsing or new protocol command is introduced. Hired Muscle uses `skill_test` applicability, bringing the current non-combat roster to eleven Assets; the other 29 remain guarded.
+
+The holder's non-Item bonus combines with skill improvements, printed modifiers and applicable Urban Guide City auras before the minimum-one-die rule. It grants no bonus to another investigator or another skill. The free source uses the existing private `ActiveTest.usedRerollAssetIds` list, never the Foot's round-level list. Declining keeps the bonus; a new test can use Hired Muscle again. Clues and Lucky Rabbit's Foot remain independent sources, including rerolling the same die using different sources. Hired Muscle's Ally trait excludes it from Item discards.
+
+Twelve engine cases cover combinations, four other skills, colleague exclusion, minimum dice, no-Clue payment, decline/new-test reset, generic Condition Reckoning Strength tests, Foot source order/restoration, illegal selections, Ally preservation and atomic nested-ambush rejection. A two-client room test uses General 10 Sea to verify actual content adaptation, improved Strength dice, owner authorization, private consumed-source restoration and continuation handoff. The existing browser reroll journeys exercise the same unchanged dialog, but are not a dedicated Hired Muscle browser test. Combat/ambush and Other World are not enabled.
+
+Next scan-independent slice: Bandages' optional physical discard to prevent up to two Health loss for an investigator on the holder's space, starting with ordinary encounter damage. Its existing scan is available. This requires a pending-damage/reaction checkpoint before defeat, ownership and same-space validation, conservation-checked discard and tests for decline, partial prevention, lethal loss and serialized continuation; it must not silently enable combat or every damage source.
 
 The scanned **Rally the People** Mythos Event now grants the Lead the first Ally in the private shuffled Asset deck, falling back to the discard pile if necessary and reshuffling the deck after a gain. The granted physical card leaves its source pile and becomes the Lead's possession; if no Ally remains in either pile, no card is gained. The remaining deck order is never synchronized to clients.
 

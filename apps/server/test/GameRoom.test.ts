@@ -20,6 +20,48 @@ describe("authoritative game room", () => {
   after(async () => colyseus.shutdown());
   beforeEach(async () => colyseus.cleanup());
 
+  it("round-trips Hired Muscle's private Strength bonus and consumed reroll", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "encounter"; state.ancientOneId = "cthulhu"; state.doom = 12;
+    state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
+    state.players[0] = { ...state.players[0]!, investigatorId: "akachi_onyele", locationId: "space_2", health: 5, sanity: 7, clues: 1,
+      assetIds: ["asset_hired_muscle", "asset_lucky_rabbits_foot"], skillImprovements: { strength: 1 } };
+    state.privateState.tokenPoolById[`held_clues:${state.players[0]!.id}`] = ["clue_london"];
+    // General 10 Sea has a Strength test with no pass reward; its failure Delays.
+    state.privateState.deckOrderById["encounter:general"] = ["encounter_general_10"];
+    internal.applyEngineState(state);
+    const offered = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "RESOLVE_LOCATION_ENCOUNTER", deck: "general" }); await room.waitForMessage(commandMessageType);
+    const decision = await offered as PendingDecision;
+    assert.equal(internal.toEngineState().activeTest?.skill, "strength");
+    assert.equal(internal.toEngineState().activeTest?.dicePool, 4);
+    assert.equal(decision.optionLabels?.["asset-reroll:asset_hired_muscle:0"], "Hired Muscle: reroll die 1 (no Clue)");
+    const rejected = guest.waitForMessage(commandErrorMessageType);
+    sendCommand(room, guest, { type: "RESOLVE_DECISION", decisionId: decision.id, selectedOptionIds: ["asset-reroll:asset_hired_muscle:0"] });
+    await room.waitForMessage(commandMessageType); assert.equal((await rejected as { code: string }).code, "NOT_DECISION_OWNER");
+    const nextMessage = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: decision.id, selectedOptionIds: ["asset-reroll:asset_hired_muscle:0"] }); await room.waitForMessage(commandMessageType);
+    const remaining = await nextMessage as PendingDecision;
+    assert.ok(!remaining.optionIds.some(id => id.startsWith("asset-reroll:asset_hired_muscle:")));
+    assert.ok(remaining.optionIds.includes("asset-reroll:asset_lucky_rabbits_foot:0"));
+    const checkpoint = internal.toEngineState();
+    assert.equal(checkpoint.players[0]?.clues, 1); assert.deepEqual(checkpoint.usedAssetRerollIds, []);
+    assert.deepEqual(checkpoint.activeTest?.usedRerollAssetIds, ["asset_hired_muscle"]);
+    assert.equal(JSON.stringify(room.state).includes("usedRerollAssetIds"), false);
+    const refresh = host.waitForMessage(pendingDecisionMessageType);
+    internal.applyEngineState(JSON.parse(JSON.stringify(checkpoint))); await refresh;
+    assert.deepEqual(internal.toEngineState().activeTest?.usedRerollAssetIds, ["asset_hired_muscle"]);
+    const illegal = host.waitForMessage(commandErrorMessageType);
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: remaining.id, selectedOptionIds: ["asset-reroll:asset_hired_muscle:1"] }); await room.waitForMessage(commandMessageType);
+    assert.equal((await illegal as { code: string }).code, "INVALID_DECISION_SELECTION");
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: remaining.id, selectedOptionIds: [] }); await room.waitForMessage(commandMessageType);
+    assert.equal(internal.toEngineState().pendingDecision, undefined); assert.equal(internal.toEngineState().activePlayerId, checkpoint.players[1]?.id);
+  });
+
   it("round-trips the Foot's round limit independently of Personal Assistant and resets at the next round", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });

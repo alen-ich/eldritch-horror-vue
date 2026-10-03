@@ -278,7 +278,7 @@ The following snapshot distinguishes working slices from complete families:
 | Actions | Travel/tickets, Rest, Acquire Assets, accepted trades, action usage, Delay, selected component actions | Investigator abilities and possession actions incomplete. |
 | Tests | Dice arithmetic, improvements, thresholds, highest Item bonus primitive, owner-only Clue rerolls | The arithmetic primitive does not mean every possession bonus is integrated. |
 | Combat | Basic printed-stat combat and phase ordering; Deep One/Star Spawn Research ambush continuation | Board-combat rerolls, Cultists, special abilities and possession effects incomplete. |
-| Location | All 36 cards transcribed; 64/108 sections accepted by the parser; ten Assets have verified non-combat applicability | Remaining 44 unsupported; other carried Assets still block live resolution. |
+| Location | All 36 cards transcribed; 64/108 sections accepted by the parser; eleven Assets have verified non-combat applicability | Remaining 44 unsupported; other carried Assets still block live resolution. |
 | Research | All 24 Azathoth and 18/24 Cthulhu sections supported; ten-Asset non-combat scope | Other Asset and ambush guards; remaining Cthulhu rewards/Cultists; Shub/Yog transcription/execution. |
 | Mythos | All 51 icon sequences cataloged; 17 printed texts have typed effects | Remaining 34 texts and broad Reckoning can stop the round. |
 | Conditions | Physical copies, several actions/conflicts, thresholds, five typed reverse handlers | Most reverses and full trigger sequencing incomplete. |
@@ -550,3 +550,15 @@ The round list uses the physical Asset ID, not the owner's ID. Transferring the 
 The Foot's only printed trait is Trinket. A convenient everyday assumption that a trinket is an Item would incorrectly discard it during Research; the engine uses the actual structured traits. `encounter-assets.test.ts` explicitly tests that exclusion along with all five skills, Research, source orders and the next-round reset. The room regression checks actual serialization, and the Lily browser journey clicks the no-Clue option. This slice supports ordinary location/Research and already-supported generic tests such as Acquire Assets, not combat/Other World. Next: Hired Muscle's Strength bonus and optional reroll.
 
 Verification passed root lint/typecheck/test/build: 364 engine, 50 server, 77 content and 18 protocol cases. All three browser journeys passed, then passed three repetitions each. Lily legally travels to Tokyo if the starting Monster occupies Shanghai; the test does not bypass the rule that blocks Acquire Assets on a Monster space.
+
+## 24. Add a card by reusing typed rules
+
+Hired Muscle is a small example you can follow without learning a new command. Its verified scan says Ally, +1 Strength and an optional Strength-test reroll. In `packages/content/src/assets.ts`, its two nodes reuse Personal Assistant's `skill_bonus` and `test_reroll`, now allowing Strength. The matching union in engine `index.ts` is widened too. The existing handlers already compare the test's skill with the node's skill, so no special `if (cardName === ...)` handler is needed.
+
+`continueLocationEncounter` and `beginSkillTest` add the holder's bonus to non-Item dice. `canUseAssetTestReroll` and `createTestRerollDecision` offer the physical source only during Strength tests. `RESOLVE_DECISION` checks ownership and previous usage. The server's existing content adapter delivers these nodes; the existing browser dialog displays the card-specific label. Hired Muscle consumes only the test-local counter, not the Foot's round counter.
+
+Study the Hired Muscle cases in `packages/engine/test/encounter-assets.test.ts` and the General 10 Sea regression in `apps/server/test/GameRoom.test.ts`. They show bonus stacking, unrelated-skill exclusions, a generic Condition Reckoning test, source interactions, restoration and illegal selections. Being an Ally matters for both non-Item bonus stacking and exclusion from Item discards. Combat/ambush and Other World remain unsupported; adding a node is not a claim that every context is wired.
+
+Next: Bandages needs a different pattern, because optional damage prevention must pause before Health loss and defeat. The plan starts with ordinary encounter damage and explicitly keeps other damage contexts guarded.
+
+Verification for Hired Muscle passed lint/typecheck/test/build with 376 engine, 51 server, 77 content and 18 protocol cases, plus all three existing browser journeys. The room regression is Hired Muscle-specific; the browser journeys are shared reroll UI regressions, not dedicated Hired Muscle coverage.

@@ -60,6 +60,10 @@ Last updated: 2026-10-03
 
 ### Current verification evidence
 
+- Latest Hired Muscle verification: root lint/typecheck/test/build passed with 376 engine, 51 server, 77 content and 18 protocol cases. All three existing browser journeys passed separately after the build; they cover the shared dialog, not a dedicated Hired Muscle click path. Unrelated Expedition source sheets remain untouched.
+
+- Hired Muscle update (2026-10-03): scan-verified Ally Strength bonus and optional Strength reroll reuse typed handlers; eleven Assets now have non-combat applicability. Twelve engine cases and a real two-client General 10 Sea regression cover bonus stacking, exclusions, Condition Reckoning, source limits/restoration, authorization and guarded ambushes. No new network input, state field or UI rule logic. Combat/Other World and full Task 1 remain incomplete. Next: Bandages' optional same-space Health-loss prevention in ordinary encounters, with pending-damage-before-defeat and physical-discard tests; existing scan available.
+
 - Latest Foot verification: root lint/typecheck/test/build passed with 364 engine, 50 server, 77 content and 18 protocol cases. All three browser journeys passed, followed by nine successful executions with `--repeat-each=3`. The Lily fixture uses legal Travel to Tokyo if setup's single Monster occupies Shanghai; the existing no-op Reserve discard retries stale-version rejection. No rule or state-version validation was weakened.
 
 - Lucky Rabbit's Foot update (2026-10-03): visually verified once-per-round any-test reroll and Trinket-only trait. Added typed `round_test_reroll`, physical round usage, cloning/projection, setup/next-round resets, room schema/adapter and card-specific option labels. Ten Assets now have non-combat applicability. Fifteen engine cases, a room regression and a Lily browser journey verify scope, source interaction, conservation, ownership/restoration and reset. Combat/ambush, Other World and full Task 1 remain incomplete. Next: Hired Muscle's Strength bonus and optional Strength reroll from its existing scan.
