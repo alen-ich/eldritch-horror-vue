@@ -1961,7 +1961,11 @@ function continueLocationEncounter(state: GameState, content: GameContent, conte
       return success(next, events);
     }
     if (node.kind === "optional") {
-      if (!canPayEncounterCost(next, player, node.cost, content)) { pending.queue.shift(); continue; }
+      if (!canPayEncounterCost(next, player, node.cost, content)) {
+        if (node.decline) pending.queue.splice(0, 1, node.decline);
+        else pending.queue.shift();
+        continue;
+      }
       if (node.reward.kind === "effects") {
         for (const effect of node.reward.effects) {
           if (effect.kind !== "artifact") continue;
@@ -1970,7 +1974,7 @@ function continueLocationEncounter(state: GameState, content: GameContent, conte
         }
       }
       createEncounterChoice(next, context, "You may pay the printed cost to resolve this encounter effect.", [
-        ["accept", `${encounterInstructionLabel({ kind: "effects", effects: node.cost })}; then ${encounterInstructionLabel(node.reward)}`], ["skip", "Decline"],
+        ["accept", `${encounterInstructionLabel({ kind: "effects", effects: node.cost })}; then ${encounterInstructionLabel(node.reward)}`], ["skip", node.decline ? `Decline: ${encounterInstructionLabel(node.decline)}` : "Decline"],
       ]);
       next.stateVersion = state.stateVersion;
       return success(next, events);
@@ -2094,7 +2098,7 @@ function encounterAmbushes(instruction: LocationEncounterInstruction): Extract<L
   if (instruction.kind === "sequence") return instruction.steps.flatMap(encounterAmbushes);
   if (instruction.kind === "choice") return instruction.options.flatMap(encounterAmbushes);
   if (instruction.kind === "test") return [...encounterAmbushes(instruction.pass), ...encounterAmbushes(instruction.fail)];
-  if (instruction.kind === "optional") return encounterAmbushes(instruction.reward);
+  if (instruction.kind === "optional") return [...encounterAmbushes(instruction.reward), ...(instruction.decline ? encounterAmbushes(instruction.decline) : [])];
   return [];
 }
 
@@ -3263,7 +3267,10 @@ export function executeCommand(
         if (selected === "accept") {
           if (!canPayEncounterCost(next, actor, node.cost, content)) return failure("INVALID_DECISION_SELECTION", "The printed cost cannot be paid in full.");
           pending.queue.splice(0, 1, { kind: "effects", effects: node.cost.map(effect => effect.kind === "delay" || effect.kind === "condition" ? { ...effect, accepted: true } : effect) }, node.reward);
-        } else if (selected === "skip") pending.queue.shift();
+        } else if (selected === "skip") {
+          if (node.decline) pending.queue.splice(0, 1, node.decline);
+          else pending.queue.shift();
+        }
         else return failure("INVALID_DECISION_SELECTION", "Choose whether to pay the printed cost.");
       } else if (node.kind === "effects" && node.effects[0]?.kind === "discard_item_assets") {
         if (!encounterItemAssetIds(actor, content).includes(selected) || !encounterItemsAreConserved(next, actor, content)) return failure("INVALID_DECISION_SELECTION", "That physical Item Asset cannot satisfy this discard.");

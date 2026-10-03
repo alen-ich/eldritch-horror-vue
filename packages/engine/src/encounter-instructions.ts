@@ -27,7 +27,7 @@ export type LocationEncounterInstruction =
   | { kind: "effects"; effects: LocationEncounterEffect[] }
   | { kind: "sequence"; steps: LocationEncounterInstruction[] }
   | { kind: "choice"; options: LocationEncounterInstruction[] }
-  | { kind: "optional"; cost: LocationEncounterEffect[]; reward: LocationEncounterInstruction }
+  | { kind: "optional"; cost: LocationEncounterEffect[]; reward: LocationEncounterInstruction; decline?: LocationEncounterInstruction }
   | { kind: "test"; skill: SkillId; modifier: number; pass: LocationEncounterInstruction; fail: LocationEncounterInstruction };
 
 const isSkill = (value: unknown): value is SkillId => skillIds.some(skill => skill === value);
@@ -90,9 +90,11 @@ export function parseLocationEncounterInstruction(value: unknown, depth = 0): Lo
   if (value.kind === "optional" && "cost" in value && "reward" in value) {
     const cost = parseLocationEncounterInstruction({ kind: "effects", effects: value.cost }, depth + 1);
     const reward = parseLocationEncounterInstruction(value.reward, depth + 1);
+    const decline = "decline" in value ? parseLocationEncounterInstruction(value.decline, depth + 1) : undefined;
+    if ("decline" in value && !decline) return undefined;
     if (cost?.kind === "effects" && reward && cost.effects.every(effect => effect.kind === "delay" || effect.kind === "condition"
       || (effect.kind === "clues" || effect.kind === "health" || effect.kind === "sanity") && effect.amount <= 0)) {
-      return { kind: "optional", cost: cost.effects, reward };
+      return { kind: "optional", cost: cost.effects, reward, ...(decline ? { decline } : {}) };
     }
   }
   return undefined;

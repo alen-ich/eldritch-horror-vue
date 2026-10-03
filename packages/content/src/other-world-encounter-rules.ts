@@ -6,14 +6,17 @@ const effect = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("spell"), amount: z.literal(1) }).strict(),
   z.object({ kind: z.literal("clues"), amount: z.number().int() }).strict(),
   z.object({ kind: z.literal("sanity"), amount: z.number().int().negative() }).strict(),
+  z.object({ kind: z.literal("condition"), condition: z.literal("paranoia") }).strict(),
 ]);
 type Effect = z.infer<typeof effect>;
 type Instruction = { kind: "effects"; effects: Effect[] } | { kind: "sequence"; steps: Instruction[] } | { kind: "choice"; options: Instruction[] }
+  | { kind: "optional"; cost: Effect[]; reward: Instruction; decline?: Instruction }
   | { kind: "test"; skill: "observation" | "lore" | "will"; modifier: number; pass: Instruction; fail: Instruction };
 const instruction: z.ZodType<Instruction> = z.lazy(() => z.union([
   z.object({ kind: z.literal("effects"), effects: z.array(effect) }).strict(),
   z.object({ kind: z.literal("sequence"), steps: z.array(instruction) }).strict(),
   z.object({ kind: z.literal("choice"), options: z.array(instruction).min(1) }).strict(),
+  z.object({ kind: z.literal("optional"), cost: z.array(effect).min(1), reward: instruction, decline: instruction.optional() }).strict(),
   z.object({ kind: z.literal("test"), skill: z.enum(["observation", "lore", "will"]), modifier: z.number().int(), pass: instruction, fail: instruction }).strict(),
 ]));
 const e = (...effects: Effect[]): Instruction => ({ kind: "effects", effects });
@@ -34,6 +37,11 @@ export const baseGameOtherWorldEncounterRules = [
     number: 2, name: "The Future",
     initial: t("will", { kind: "sequence", steps: [e(close), t("observation", e({ kind: "clues", amount: 2 }))] },
       t("lore", e(), e({ kind: "sanity", amount: -6 })), -1),
+  },
+  {
+    number: 3, name: "City of the Great Race",
+    initial: t("lore", { kind: "sequence", steps: [e(close), t("will", e({ kind: "clues", amount: 1 }))] },
+      { kind: "optional", cost: [{ kind: "clues", amount: -1 }], reward: e(), decline: e({ kind: "sanity", amount: -2 }, { kind: "condition", condition: "paranoia" }) }, -1),
   },
 ].map(({ number, name, initial }) => {
   const scan = baseGameScannedTokenEncounters.find(card => card.deck === "other_world" && card.number === number)!;

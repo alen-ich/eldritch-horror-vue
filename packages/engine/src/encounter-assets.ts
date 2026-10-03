@@ -17,7 +17,7 @@ function nodes(instruction: LocationEncounterInstruction): LocationEncounterInst
   if (instruction.kind === "sequence") return [instruction, ...instruction.steps.flatMap(nodes)];
   if (instruction.kind === "choice") return [instruction, ...instruction.options.flatMap(nodes)];
   if (instruction.kind === "test") return [instruction, ...nodes(instruction.pass), ...nodes(instruction.fail)];
-  if (instruction.kind === "optional") return [instruction, { kind: "effects", effects: instruction.cost }, ...nodes(instruction.reward)];
+  if (instruction.kind === "optional") return [instruction, { kind: "effects", effects: instruction.cost }, ...nodes(instruction.reward), ...(instruction.decline ? nodes(instruction.decline) : [])];
   if (instruction.kind === "ambush" || instruction.kind === "ambush_result") return [instruction, ...nodes(instruction.defeated), ...nodes(instruction.notDefeated)];
   return [instruction];
 }
