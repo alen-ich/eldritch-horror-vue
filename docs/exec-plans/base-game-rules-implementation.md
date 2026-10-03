@@ -60,6 +60,10 @@ Last updated: 2026-10-03
 
 ### Current verification evidence
 
+- Latest Item-discard verification: lint/typecheck/build passed; full tests passed with 349 engine, 49 server, 77 content and 18 protocol cases; both browser journeys passed. Rerun browser checks separately from Nuxt build/typecheck to avoid shared generated-file churn. The Personal Assistant smoke fixture now waits for cross-browser lobby acknowledgements and retries only its initial test command if rejected as stale, never a reroll.
+
+- Research Item-discard update (2026-10-03): rechecked Cthulhu cards 3 City and 6 Wilderness scans; implemented mandatory sequential owner-only choices, trait filtering, physical Asset discard conservation, shortage/zero handling and nearest-Sea continuation ordering. Twelve new engine cases and one room regression cover success/failure, invalid choices, duplicate identities, serialization/privacy and handoff. The nine-Asset applicability roster and 18/24 Cthulhu section count are unchanged; supported sections now work with eligible held Items. Next: Lucky Rabbit's Foot's optional non-combat test reroll using the existing scan. Other possession/combat/complex-encounter work and full Task 1 remain incomplete.
+
 - Latest Personal Assistant verification: root lint/typecheck/test/build passed; 337 engine, 48 server, 77 content and 18 protocol tests passed; both browser journeys passed. Earlier counts below describe historical slices.
 
 - Personal Assistant update (2026-10-03): visually verified Influence bonus and optional one-die free reroll are wired to generic tests (including Acquire Assets) and ordinary location/Research. Nine Assets now have explicit non-combat support. Per-test consumed-source tracking survives restoration; free and physical-Clue rerolls are separately labeled, owner-authorized and usable in either order. Engine, room and browser regressions added. Combat/ambush and Other World remain guarded. Next: implement Research Item-discard choices and physical discard conservation using existing scans. Full Task 1 remains incomplete.

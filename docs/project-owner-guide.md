@@ -513,7 +513,7 @@ The next implemented slice after this guide is a useful example of the ownership
 4. `GameRoom.ts` supplies the new content metadata. No new network command is needed because the player still requests an ordinary encounter or Research.
 5. `encounter-assets.test.ts` covers both encounter families, metadata guards, dice, failure branches, token conservation and private rerolls. The room regression checks the actual content adapter and serialized decision.
 
-The scope is deliberately narrow: ambush combat with possessions/local auras, other Assets, and Item-discard choices are still guarded. For example, a held .45 Automatic no longer blocks an ordinary Research section, but it does not yet enable an ambush branch that needs its combat bonus. This is why explicit context support is different from “this card is completely implemented.”
+The scope is deliberately narrow: ambush combat with possessions/local auras and other Assets are still guarded. Item-discard choices were implemented in the next slice (section 22). For example, a held .45 Automatic no longer blocks an ordinary Research section, but it does not yet enable an ambush branch that needs its combat bonus. This is why explicit context support is different from “this card is completely implemented.”
 
 ## 21. Follow the next change: an optional Asset reroll
 
@@ -525,4 +525,16 @@ In engine `index.ts`, `createTestRerollDecision` builds the source-specific opti
 
 The web dialog in `apps/web/app/app.vue` displays rolled dice separately from labeled source choices and sends the selected option ID; it never rolls a die or consumes resources itself. Study `encounter-assets.test.ts` for deterministic source-order cases, `GameRoom.test.ts` for actual connection authorization/restoration, and `tests/e2e/multiplayer.spec.ts` for Charlie Kane's free-reroll click path.
 
-Verification for this slice passed lint, typecheck, build, 337 engine tests, 48 server tests, 77 content tests, 18 protocol tests and both browser journeys. Still outside this slice: Other World and possession-aware combat/ambush, other Asset reactions, and Research Item-discard choices. The next small task is the Item-discard continuation, not another card import.
+Verification for this slice passed lint, typecheck, build, 337 engine tests, 48 server tests, 77 content tests, 18 protocol tests and both browser journeys. Other World, possession-aware combat/ambush and other Asset reactions remain outside this slice. Its planned Item-discard follow-up is described next.
+
+## 22. Follow a physical card through an encounter discard
+
+Cthulhu Research 3 City and 6 Wilderness failure instructions contain `discard_item_assets` with amounts one and two. They now run with eligible held Items instead of rejecting the encounter. No new scan import or network command is involved.
+
+Start in `packages/engine/src/encounter-assets.ts`: `encounterItemAssetIds` reads structured Item traits, while `encounterItemsAreConserved` counts each eligible ID across player holdings, defeated sheets, Reserve, private deck and discard. An eligible card must appear exactly once. The preflight checks all outcome branches before rolling, including a failure branch that may not ultimately execute. Unsupported card effects still block entry.
+
+Then read `continueLocationEncounter` in engine `index.ts`. At a discard instruction it asks the owner to choose one Item; there is no refusal option. `RESOLVE_DECISION` rechecks that the selected physical card is still held and unique, moves it to `assetDiscardIds`, emits an encounter-reason discard event, and decrements the remaining count. The second choice cannot offer the already discarded card. With fewer Items than required, it discards what exists and continues. Allies remain in inventory.
+
+The card 6 queue runs discards **before** nearest-Sea movement. While paused, the encounter deck and Clue marker are unchanged; after all choices finish, the exact marker moves without changing its private token ID, the card cycles once, and the next investigator receives the encounter turn. JSON restoration preserves the remaining count and completed physical transfers.
+
+`apps/web/app/components/EncounterChoicePanel.vue` already displays server-labeled single choices; it needs no Item-specific rules. Study the discard cases in `encounter-assets.test.ts` and the room's successive-discard regression to follow ownership, failed forged choices, serialization and conservation. Verification passed lint/typecheck/build, 349 engine tests, 49 server tests, 77 content tests, 18 protocol tests and both existing browser journeys (not a dedicated Item-discard browser journey). Next: scan-verified Lucky Rabbit's Foot rerolls; combat bonuses and other unverified Asset reactions remain guarded.

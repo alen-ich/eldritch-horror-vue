@@ -20,6 +20,59 @@ describe("authoritative game room", () => {
   after(async () => colyseus.shutdown());
   beforeEach(async () => colyseus.cleanup());
 
+  it("restores successive Research Item discards before moving the exact Clue", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "encounter"; state.ancientOneId = "cthulhu"; state.doom = 12;
+    state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
+    state.players[0] = { ...state.players[0]!, investigatorId: "akachi_onyele", locationId: "the_amazon", health: 5, sanity: 7, clues: 1, assetIds: ["asset_45_automatic", "asset_38_revolver", "asset_personal_assistant"] };
+    state.boardClues = [{ id: "discard-clue", locationId: "the_amazon" }];
+    state.privateState.tokenPoolById = { "board_clue:discard-clue": ["clue_arkham"], [`held_clues:${state.players[0]!.id}`]: ["clue_london"], clues: [], clue_discard: [] };
+    state.privateState.deckOrderById.assets = ["asset_holy_cross"];
+    state.privateState.deckOrderById["encounter:research_cthulhu"] = ["encounter_research_cthulhu_06", "encounter_research_cthulhu_02"];
+    internal.applyEngineState(state);
+    const rolledMessage = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "RESOLVE_RESEARCH_ENCOUNTER", clueId: "discard-clue" }); await room.waitForMessage(commandMessageType);
+    const rolled = await rolledMessage as PendingDecision;
+    const paused = internal.toEngineState(); paused.activeTest!.dice = paused.activeTest!.dice.map(() => 1); paused.activeTest!.successes = 0;
+    const refresh = host.waitForMessage(pendingDecisionMessageType);
+    internal.applyEngineState(paused); await refresh;
+    const firstMessage = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: rolled.id, selectedOptionIds: [] }); await room.waitForMessage(commandMessageType);
+    const first = await firstMessage as PendingDecision;
+    assert.deepEqual(first.optionIds, ["asset_45_automatic", "asset_38_revolver"]);
+    const secondMessage = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: first.id, selectedOptionIds: ["asset_45_automatic"] }); await room.waitForMessage(commandMessageType);
+    const second = await secondMessage as PendingDecision;
+    assert.deepEqual(second.optionIds, ["asset_38_revolver"]);
+    const checkpoint = internal.toEngineState();
+    assert.deepEqual(checkpoint.boardClues, state.boardClues); assert.deepEqual(checkpoint.assetDiscardIds, ["asset_45_automatic"]);
+    const restoredMessage = host.waitForMessage(pendingDecisionMessageType);
+    internal.applyEngineState(JSON.parse(JSON.stringify(checkpoint))); await restoredMessage;
+    assert.equal(JSON.stringify(room.state).includes("pendingLocationEncounter"), false);
+    assert.equal(JSON.stringify(room.state).includes("deckOrderById"), false);
+    const rejected = guest.waitForMessage(commandErrorMessageType);
+    sendCommand(room, guest, { type: "RESOLVE_DECISION", decisionId: second.id, selectedOptionIds: ["asset_38_revolver"] }); await room.waitForMessage(commandMessageType);
+    assert.equal((await rejected as { code: string }).code, "NOT_DECISION_OWNER");
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: second.id, selectedOptionIds: ["asset_38_revolver"] }); await room.waitForMessage(commandMessageType);
+    // If the actual map has a nearest-Sea tie, resolve the separately authorized destination choice.
+    const destination = internal.toEngineState().pendingDecision;
+    if (destination) {
+      sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: destination.id, selectedOptionIds: [destination.optionIds[0]!] }); await room.waitForMessage(commandMessageType);
+    }
+    const after = internal.toEngineState();
+    assert.deepEqual(after.players[0]?.assetIds, ["asset_personal_assistant"]);
+    assert.deepEqual(after.assetDiscardIds, ["asset_45_automatic", "asset_38_revolver"]);
+    assert.equal(after.boardClues?.[0]?.id, "discard-clue"); assert.notEqual(after.boardClues?.[0]?.locationId, "the_amazon");
+    assert.deepEqual(after.privateState.tokenPoolById, state.privateState.tokenPoolById);
+    assert.deepEqual(after.privateState.deckOrderById.assets, state.privateState.deckOrderById.assets);
+    assert.deepEqual(after.privateState.deckOrderById["encounter:research_cthulhu"], ["encounter_research_cthulhu_02", "encounter_research_cthulhu_06"]);
+    assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.activePlayerId, after.players[1]?.id);
+  });
+
   it("preserves Personal Assistant's consumed free reroll across room state restoration", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
