@@ -64,7 +64,7 @@ The subsequent Asset integration now applies `validateArtifactTestAssets` to all
 
 ## Other World foundation: The Future (card 2)
 
-`other-world-encounter-rules.ts` preserves full scan-linked trees for cards 1–5 and 7–9. Card 1, Great Hall of Celaeno, tests Observation −1; passing closes the Gate then tests Lore for a choice of one Clue or one Spell, with 2 Sanity loss on that Lore failure. Its Initial failure loses 3 Sanity unless spending one Clue. Spell rewards are not executable, so the engine rejects the **whole card** before RNG or closure rather than deleting that option.
+`other-world-encounter-rules.ts` preserves full scan-linked trees for cards 1–5 and 7–10. Card 1, Great Hall of Celaeno, tests Observation −1; passing closes the Gate then tests Lore for a choice of one Clue or one Spell, with 2 Sanity loss on that Lore failure. Its Initial failure loses 3 Sanity unless spending one Clue. Spell rewards are not executable, so the engine rejects the **whole card** before RNG or closure rather than deleting that option.
 
 Card 2 tests Will −1. Passing immediately closes the encountered Gate, then tests Observation (0): pass gains two physical supply Clues, fail has no effect. Initial failure instead tests Lore (0): pass has no effect, fail loses 6 Sanity. That entire failure branch leaves the Gate active, including when the Lore test succeeds. Lethal loss stops the card and enters the existing defeat flow; no later reward runs.
 
@@ -72,7 +72,7 @@ Card 2 tests Will −1. Passing immediately closes the encountered Gate, then te
 
 The shared `pendingLocationEncounter` queue privately binds the original Gate, location and closure status. Restored decisions recheck that binding, the current card, actual top, complete encounter deck, and Gate conservation across active/discarded/private stack. A closed Gate need not remain active for the follow-up test. Empty Gate stacks recycle discards privately, using existing component semantics. Closure never changes Doom, removes Monsters or reopens the token. Each test supports physical-Clue rerolls, improvements and Blessed/Cursed thresholds. The card cycles once and the seat advances only on completion or through the existing defeat lifecycle.
 
-This deliberately narrow slice guards all living same-space Asset/Artifact holdings, Akachi's optional post-closure movement, and Yog-Sothoth's closure/Spell/Mystery interactions. Ordinary non-combat possession applicability is not automatically assumed for Other Worlds. Cards 6 and 10–24 remain untranscribed/unexecutable; whole-family scan/readiness flags remain unchanged. The original thirty-one engine cases, three content cases, one protocol case and two real room cases cover ordering, failure retention, lethal loss, physical rerolls, private serialization/ownership, restored invalid sources and unsupported preflight. Setup additionally checks all-24 private shuffling. The browser exposes on-space Gate buttons and revealed artwork through existing dialogs. Dedicated Other World browser coverage remains future work.
+This deliberately narrow slice guards all living same-space Asset/Artifact holdings, Akachi's optional post-closure movement, and Yog-Sothoth's closure/Spell/Mystery interactions. Ordinary non-combat possession applicability is not automatically assumed for Other Worlds. Cards 6 and 11–24 remain untranscribed/unexecutable; whole-family scan/readiness flags remain unchanged. The original thirty-one engine cases, three content cases, one protocol case and two real room cases cover ordering, failure retention, lethal loss, physical rerolls, private serialization/ownership, restored invalid sources and unsupported preflight. Setup additionally checks all-24 private shuffling. The browser exposes on-space Gate buttons and revealed artwork through existing dialogs. Dedicated Other World browser coverage remains future work.
 
 ### City of the Great Race (card 3)
 
@@ -120,7 +120,15 @@ No engine handler, protocol or state change was needed. Existing Hallucinations 
 
 Twenty engine cases, one content case and three real room cases cover both payment choices, no-payment/last-Clue paths, Lore outcomes, restored rerolls/ownership/source/payment changes, depleted/held Conditions, closure ordering and lethal damage. Cards 2–5 and 7–9 are executable within existing possession/Ancient One guards; cards 1, 6 and 10–24 remain unsupported. Full-session play and whole-family readiness remain incomplete.
 
-Next: card 10, Yuggoth (scan inspected). Initial Influence (0); pass tests Lore (0), closing only on success and losing 1 Sanity on failure. Initial failure loses 2 Sanity unless spending one physical Clue. Reuse the existing optional `decline` instruction, exact payment and Sanity/defeat handlers. Test restored payment/rerolls, both Lore outcomes and lethal interruption. No new scans are needed; cards 1 and 6 still depend on Spell gains/holdings.
+### Yuggoth (card 10)
+
+Initial Influence (0) passes to Lore (0): success closes the Gate, failure loses 1 Sanity without closing. Initial failure offers spending one physical Clue to avoid losing 2 Sanity. Explicit refusal or inability to pay runs the typed `decline` damage branch. A failed reroll paid with the final Clue makes that penalty unavoidable; a successful reroll instead continues to Lore. No branch gains a Condition, loses Health or becomes Delayed.
+
+The existing optional-cost, exact physical payment, ordered test and Sanity/defeat handlers execute this scan tree without new engine/protocol/state code. Restored source and ownership guards reject changed Gate/location/card/deck or missing payment tokens. Lethal loss on either branch stops handoff and cycles once; accepting payment can avoid otherwise lethal loss. Azathoth at Doom zero ends the game. Unsupported non-Azathoth awakening is still guarded at damage resolution, not recursively before Initial dice.
+
+Twenty engine cases, one content case and four room cases verify both payment choices, no-Clue/last-Clue paths, nested rerolls and closure ordering, restored owner/payment/source guards, distinct Sanity losses, lethal refusal/Lore loss and end-game. Only cards 2–5 and 7–10 are executable within existing possession/Ancient One guards. Cards 1, 6 and 11–24 remain unsupported; full-session and whole-family readiness remain incomplete.
+
+Next: card 11, Great Hall of Celaeno (scan inspected). Initial Lore (0); pass tests Will (0), closing only on success and becoming Delayed on failure. Initial failure offers one physical Clue to avoid Amnesia. Reuse optional `decline`, Condition supply and Delay handlers; test Mark's refusal, restored nested tests/payment, exhausted/duplicate Conditions and exact Gate retention. No new scans are needed. Cards 1 and 6 still require Spell gains/holdings.
 
 ## Cthulhu Research
 
