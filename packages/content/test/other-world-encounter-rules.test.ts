@@ -2,10 +2,15 @@ import { expect, it } from "vitest";
 import { baseGameOtherWorldEncounterRules, validateOtherWorldEncounterContent } from "../src/other-world-encounter-rules.js";
 import { baseGameScannedTokenEncounters } from "../src/token-encounters.js";
 
-it("links the first four mechanical transcriptions to the existing base-only scans", () => {
-  expect(baseGameOtherWorldEncounterRules.map(card => card.number)).toEqual([1, 2, 3, 4]);
+it("links the first five mechanical transcriptions to the existing base-only scans", () => {
+  expect(baseGameOtherWorldEncounterRules.map(card => card.number)).toEqual([1, 2, 3, 4, 5]);
   for (const card of baseGameOtherWorldEncounterRules) expect(baseGameScannedTokenEncounters.find(scan => scan.id === card.id)).toMatchObject({ sourceScan: card.sourceScan, sourceCellIndex: card.sourceCellIndex, deck: "other_world" });
   expect(baseGameScannedTokenEncounters.filter(card => card.deck === "other_world")).toHaveLength(24);
+});
+it("preserves The Past's offer-before-closure and failed Strength Health consequence", () => {
+  expect(baseGameOtherWorldEncounterRules[4]!.sections.initial).toMatchObject({ skill: "influence", modifier: -1,
+    pass: { steps: [{ kind: "optional", cost: [{ kind: "delay" }], reward: { effects: [{ kind: "clues", amount: 2 }] } }, { effects: [{ kind: "close_encountered_gate" }] }] },
+    fail: { skill: "strength", modifier: 0, pass: { effects: [] }, fail: { effects: [{ kind: "health", amount: -6 }] } } });
 });
 it("preserves Lost Carcosa's closure-before-Delay reward and failed Influence Doom consequence", () => {
   expect(baseGameOtherWorldEncounterRules[3]!.sections.initial).toMatchObject({ skill: "lore", modifier: -1,
