@@ -99,6 +99,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
   private pendingDecision?: PendingDecision;
   private activeTest?: ActiveTest;
   private pendingLocationEncounter?: GameState["pendingLocationEncounter"];
+  private pendingRest?: GameState["pendingRest"];
 
   messages = {
     "request-seat-token": (client: Client) => {
@@ -246,6 +247,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       assetDiscardIds: this.state.assetDiscardIds ? this.state.assetDiscardIds.split(",") : [],
       pendingDecision: this.pendingDecision,
       pendingLocationEncounter: this.pendingLocationEncounter,
+      pendingRest: this.pendingRest,
       activeTest: this.activeTest,
       privateState: this.privateState,
       players: [...this.state.players.values()].map((player) => ({
@@ -289,6 +291,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     this.pendingDecision = engineState.pendingDecision;
     this.activeTest = engineState.activeTest;
     this.pendingLocationEncounter = engineState.pendingLocationEncounter;
+    this.pendingRest = engineState.pendingRest;
     this.syncPendingDecisionSummary();
     this.syncActiveTest();
     this.state.stateVersion = engineState.stateVersion;

@@ -20,6 +20,56 @@ describe("authoritative game room", () => {
   after(async () => colyseus.shutdown());
   beforeEach(async () => colyseus.cleanup());
 
+  for (const pass of [false, true]) {
+    it(`restores Puzzle Box's private reroll and ${pass ? "Artifact gain" : "failure"} before the remaining Witch Doctor bonus`, async () => {
+      const room = await colyseus.createRoom<GameRoom>("game", {});
+      const host = await colyseus.connectTo(room, { displayName: "Host" });
+      const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+      const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+      const state = internal.toEngineState();
+      state.phase = "action"; state.ancientOneId = "cthulhu"; state.doom = 12; state.actionsRemaining = 2;
+      state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
+      Object.assign(state.players[0]!, { investigatorId: "akachi_onyele", locationId: "arkham", health: 2, maxHealth: 5, sanity: 3, maxSanity: 7, clues: 0, assetIds: ["asset_puzzle_box", "asset_lucky_rabbits_foot"], artifactIds: [] });
+      Object.assign(state.players[1]!, { investigatorId: "trish_scarborough", locationId: "arkham", health: 7, sanity: 5, assetIds: ["asset_witch_doctor"], artifactIds: [] });
+      state.privateState.deckOrderById.artifacts = ["artifact_ttka_halot", ...baseGameArtifacts.filter(card => card.id !== "artifact_ttka_halot").map(card => card.id)];
+      internal.applyEngineState(state);
+      const restMessage = host.waitForMessage(pendingDecisionMessageType);
+      sendCommand(room, host, { type: "REST" }); await room.waitForMessage(commandMessageType);
+      const restDecision = await restMessage as PendingDecision;
+      assert.ok(restDecision.optionIds.includes("asset_puzzle_box:attempt"));
+      assert.equal(restDecision.optionLabels?.["asset_puzzle_box:attempt"], "Puzzle Box: attempt Observation −2");
+      const testMessage = host.waitForMessage(pendingDecisionMessageType);
+      sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: restDecision.id, selectedOptionIds: ["asset_puzzle_box:attempt"] }); await room.waitForMessage(commandMessageType);
+      const testDecision = await testMessage as PendingDecision;
+      const rolled = internal.toEngineState(); assert.equal(rolled.activeTest?.continuation, "rest_asset"); assert.equal(rolled.activeTest?.modifier, -2);
+      assert.equal(rolled.pendingRest?.testingAssetId, "asset_puzzle_box"); assert.equal(rolled.actionsRemaining, 2);
+      rolled.activeTest!.dice = rolled.activeTest!.dice.map(() => pass ? 6 : 1); rolled.activeTest!.successes = pass ? rolled.activeTest!.dice.length : 0;
+      const restored = host.waitForMessage(pendingDecisionMessageType);
+      internal.applyEngineState(JSON.parse(JSON.stringify(rolled))); await restored;
+      assert.equal(JSON.stringify(room.state).includes("pendingRest"), false); assert.equal(JSON.stringify(room.state).includes("remainingAssetIds"), false);
+      assert.equal(JSON.stringify(room.state).includes("artifact_grotesque_statue"), false);
+      const denied = guest.waitForMessage(commandErrorMessageType);
+      sendCommand(room, guest, { type: "RESOLVE_DECISION", decisionId: testDecision.id, selectedOptionIds: [] }); await room.waitForMessage(commandMessageType);
+      assert.equal((await denied as { code: string }).code, "NOT_DECISION_OWNER");
+      const bonusMessage = host.waitForMessage(pendingDecisionMessageType);
+      sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: testDecision.id, selectedOptionIds: [] }); await room.waitForMessage(commandMessageType);
+      const bonus = await bonusMessage as PendingDecision;
+      assert.deepEqual(bonus.optionIds, ["asset_witch_doctor:health", "asset_witch_doctor:skip"]);
+      const middle = internal.toEngineState(); assert.equal(middle.actionsRemaining, 2);
+      assert.deepEqual(middle.players[0]?.artifactIds, pass ? ["artifact_ttka_halot"] : []);
+      assert.deepEqual(middle.assetDiscardIds, pass ? ["asset_puzzle_box"] : []);
+      assert.equal(middle.players[0]?.assetIds.includes("asset_puzzle_box"), !pass);
+      assert.deepEqual(middle.privateState.deckOrderById.artifacts, pass ? state.privateState.deckOrderById.artifacts!.slice(1) : state.privateState.deckOrderById.artifacts);
+      const refreshed = host.waitForMessage(pendingDecisionMessageType);
+      internal.applyEngineState(JSON.parse(JSON.stringify(middle))); await refreshed;
+      sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: bonus.id, selectedOptionIds: ["asset_witch_doctor:health"] }); await room.waitForMessage(commandMessageType);
+      const after = internal.toEngineState();
+      assert.equal(after.players[0]?.health, 4); assert.equal(after.players[0]?.sanity, 4);
+      assert.equal(after.actionsRemaining, 1); assert.deepEqual(after.performedActions, ["rest"]); assert.equal(after.pendingRest, undefined);
+      assert.deepEqual(after.players[1]?.assetIds, ["asset_witch_doctor"]);
+    });
+  }
+
   for (const effect of ["health", "discard-cursed"] as const) {
     it(`restores the resting owner's Witch Doctor ${effect} choice from a colleague's Ally`, async () => {
       const room = await colyseus.createRoom<GameRoom>("game", {});
