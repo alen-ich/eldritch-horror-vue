@@ -2,10 +2,15 @@ import { expect, it } from "vitest";
 import { baseGameOtherWorldEncounterRules, validateOtherWorldEncounterContent } from "../src/other-world-encounter-rules.js";
 import { baseGameScannedTokenEncounters } from "../src/token-encounters.js";
 
-it("links eleven mechanical transcriptions to the existing base-only scans", () => {
-  expect(baseGameOtherWorldEncounterRules.map(card => card.number)).toEqual([1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12]);
+it("links twelve mechanical transcriptions to the existing base-only scans", () => {
+  expect(baseGameOtherWorldEncounterRules.map(card => card.number)).toEqual([1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13]);
   for (const card of baseGameOtherWorldEncounterRules) expect(baseGameScannedTokenEncounters.find(scan => scan.id === card.id)).toMatchObject({ sourceScan: card.sourceScan, sourceCellIndex: card.sourceCellIndex, deck: "other_world" });
   expect(baseGameScannedTokenEncounters.filter(card => card.deck === "other_world")).toHaveLength(24);
+});
+it("preserves card 13's Will and distinct Lore closure, Delay and Sanity branches", () => {
+  expect(baseGameOtherWorldEncounterRules[11]!.sections.initial).toEqual({ kind: "test", skill: "will", modifier: 0,
+    pass: { kind: "test", skill: "lore", modifier: 0, pass: { kind: "effects", effects: [{ kind: "close_encountered_gate" }] }, fail: { kind: "effects", effects: [{ kind: "delay" }] } },
+    fail: { kind: "test", skill: "lore", modifier: -1, pass: { kind: "effects", effects: [{ kind: "close_encountered_gate" }] }, fail: { kind: "effects", effects: [{ kind: "sanity", amount: -3 }] } } });
 });
 it("preserves card 12's Observation/Lore closure or Paranoia and Delay-for-Sanity avoidance", () => {
   expect(baseGameOtherWorldEncounterRules[10]!.sections.initial).toEqual({ kind: "test", skill: "observation", modifier: 0,
