@@ -278,7 +278,7 @@ The following snapshot distinguishes working slices from complete families:
 | Actions | Travel/tickets, Rest, Acquire Assets, accepted trades, action usage, Delay, selected component actions | Investigator abilities and possession actions incomplete. |
 | Tests | Dice arithmetic, improvements, thresholds, highest Item bonus primitive, owner-only Clue rerolls | The arithmetic primitive does not mean every possession bonus is integrated. |
 | Combat | Basic printed-stat combat and phase ordering; Deep One/Star Spawn Research ambush continuation | Board-combat rerolls, Cultists, special abilities and possession effects incomplete. |
-| Location | All 36 cards transcribed; 64/108 sections accepted by the parser; fifteen Assets have verified non-combat applicability | Remaining 44 unsupported; other carried Assets still block live resolution. |
+| Location | All 36 cards transcribed; 64/108 sections accepted by the parser; sixteen Assets have verified non-combat applicability | Remaining 44 unsupported; other carried Assets still block live resolution. |
 | Research | All 24 Azathoth and 18/24 Cthulhu sections supported; ten-Asset non-combat scope | Other Asset and ambush guards; remaining Cthulhu rewards/Cultists; Shub/Yog transcription/execution. |
 | Mythos | All 51 icon sequences cataloged; 17 printed texts have typed effects | Remaining 34 texts and broad Reckoning can stop the round. |
 | Conditions | Physical copies, several actions/conflicts, thresholds, five typed reverse handlers | Most reverses and full trigger sequencing incomplete. |
@@ -610,3 +610,19 @@ The `witch_doctor_rest` continuation rechecks the exact offered source and conse
 Read `packages/engine/test/rest-assets.test.ts` for the small complete flow and the two Witch Doctor cases in `apps/server/test/GameRoom.test.ts` for real clients. To add another Rest trigger, preserve this deferred completion boundary: never charge a second action or let a client pick authoritative outcomes. Next: Puzzle Box's optional Observation test and conserved Artifact reward, starting with its existing scan verification. Full Rest-trigger ordering, combat/Other World and remaining possession effects still need work.
 
 Verification passed root lint/typecheck/test/build with 478 engine, 56 server, 77 content and 18 protocol cases (629 total). Three existing browser journeys passed. Witch Doctor-specific coverage is in engine/room tests; a dedicated browser scenario remains future work.
+
+## 29. A test nested inside a Rest action
+
+Puzzle Box is a Trinket with `rest_test_gain_artifact` in Asset content. Its holder can opt into an Observation −2 test during Rest; a pass discards the Box and gains one Artifact. The engine's `finishRest` now presents all remaining eligible Rest sources together, so Witch Doctor can remove Cursed before the test or resolve afterward. Each source is offered until resolved/skipped, never twice in the same Rest.
+
+`GameState.pendingRest` stores the actor, `remainingAssetIds` and `testingAssetId`. It is canonical but private, like `pendingLocationEncounter`: explicitly excluded from public projection and deep-copied during command transitions. `GameRoom.ts` keeps it as a private room field and includes it in internal snapshots, not synchronized Schema. Missing checkpoints on older Witch Doctor decisions have a narrow compatibility path.
+
+Accepting the Box preflights its exact holding, other test possessions, remaining sources and the physical Artifact supply, then calls `beginSkillTest` with `rest_asset`. The shared test engine handles improvements, minimum dice, same-City Urban Guide, thresholds, Clue rerolls and supported Asset die effects. Every resumed reroll repeats the preflight before spending a Clue. `finishSkillTest` discards/draws only after the final successful result; failure keeps the Box. It removes the resolved source and calls `prepareRestContinuation` again, rather than completing a component action. Only an empty remaining list calls `completeAction("rest")`.
+
+Internally `prepareRestContinuation` mutates only the cloned working state and events; it does not advance `stateVersion`. `finishRest` wraps it for top-level Rest commands, while `finishSkillTest` calls it directly. This prevents a nested continuation from advancing the version twice: every accepted command still increments once, regardless of how many effects it resolves.
+
+The draw is the shuffled deck's top, not a chosen Artifact or a search. Currently only T'tka Halot has an executable handler; another top Artifact causes an explicit error before the test, without dice/card consumption or naming the hidden card. “Skip Puzzle Box” remains available. This guard is a real remaining gameplay limitation, not missing artwork. A valid depleted supply yields no reward and still discards a successfully opened Box.
+
+Read `packages/engine/test/puzzle-box.test.ts` for pure flow/guards and the two Puzzle Box cases in `apps/server/test/GameRoom.test.ts` for real owner messages and restoration at both the test and remaining-bonus checkpoints. Next: scan-check Cultes des Goules and implement its Lore/Sanity-for-two-Clues action, then deliberately extend allowed Artifact gains. No new scans are required. Puzzle Box is not fully playable against every possible Artifact draw yet.
+
+Verification passed root lint/typecheck/test/build: 506 engine, 58 server, 77 content and 18 protocol cases (659 total). Three existing browser journeys passed; Puzzle Box-specific coverage is at engine/room level. Every accepted command advances the state version once, including nested Rest-test completion.

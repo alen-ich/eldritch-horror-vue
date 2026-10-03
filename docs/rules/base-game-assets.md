@@ -15,7 +15,7 @@ The Asset family remains `needs_review` rather than `verified` because:
 
 The authoritative engine now removes starting Assets from the deck, grants them by stable ID, shuffles the remaining deck privately, and exposes a four-card Reserve. Acquire Assets uses the generic Influence-test lifecycle, including improvements, supported bonuses, and sequential Clue rerolls; it then validates selected cards against total successes, refills the Reserve, and supports the optional one-card discard after buying nothing. Active tests and owner-only choices survive serialization and reconnection. Bank Loan is intentionally unavailable until Debt Conditions are implemented.
 
-Eleven cards have explicit typed effect nodes and executable tests (coverage is scoped, not full-family support):
+Twelve cards have explicit typed effect nodes and executable tests (coverage is scoped, not full-family support):
 
 - Personal Assistant adds one die and an optional one-die free reroll to Influence tests in the generic test lifecycle (including Acquire Assets) and supported location/Research. Its reroll can be used once per test, independently of Clue rerolls, and consumed-source tracking survives serialization. It does not grant a bonus or reroll to another skill.
 - Fine Clothes makes each 6 count as two successes during Acquire Assets.
@@ -28,6 +28,7 @@ Eleven cards have explicit typed effect nodes and executable tests (coverage is 
 - Whiskey optionally discards its physical Item to prevent one or two Sanity loss for a same-space investigator during ordinary location/Research damage. It does not heal or prevent Health loss. Other damage contexts and paid Sanity costs are not enabled.
 - Lucky Cigarette Case optionally increases one test die result by one, once per physical card per round, in the shared test lifecycle and ordinary location/Research. It is not a reroll, extra die or Clue payment. Results above six and combat/Other World integration are not enabled.
 - Witch Doctor offers investigators on its holder's space an optional additional Health recovery or Cursed discard during Rest, after ordinary recovery and Injury/Madness recovery rolls.
+- Puzzle Box offers its holder an optional Observation −2 test during Rest. Passing discards the Box and draws the top Artifact only when its gain/effects are supported; other Artifact draws remain guarded.
 
 ## Scoped encounter applicability (3 October 2026)
 
@@ -135,6 +136,22 @@ The exact Ally must still be held, physically unique and on the resting investig
 
 Engine regressions cover both choices/decline, recovery caps, Bible interaction, holder/colleague eligibility, recovery-roll sequencing, turn handoff, repeat/ownership guards, conservation and JSON restoration. Two real room regressions cover private delivery, stable player ownership, restoration and both outcomes. The browser's existing choice dialog now renders the authoritative options with a “Rest bonus” heading; it does not compute outcomes.
 
-Next: verify and implement Puzzle Box's optional Rest Observation test and physical Artifact reward using existing scans. Its test timing and continuation must coexist with Condition recovery and Witch Doctor without charging a second action. The combat/Other World and full-family limitations above remain unchanged.
+The planned Puzzle Box Rest continuation is implemented below, with its Artifact-effect limitation explicit.
 
-Verification passed lint/typecheck/test/build with 454 engine, 54 server, 77 content and 18 protocol cases (603 total), plus all three existing browser journeys. The room test is modifier-specific; browser coverage remains shared-dialog regression coverage.
+## Puzzle Box: scoped Rest test and Artifact draw (3 October 2026)
+
+The supplied English front confirms value 3, Trinket, an optional Observation −2 test during Rest, and discarding this card to gain one Artifact on a pass. The typed node is `rest_test_gain_artifact`; no printed-text parsing occurs. Sixteen Assets now have ordinary encounter applicability; Puzzle Box's Rest-only effect is irrelevant there. Twenty-four other Assets remain guarded.
+
+`pendingRest` is a private per-action checkpoint with the actor, remaining physical sources and optional testing source. After base recovery and Injury/Madness rolls, the owner can resolve Witch Doctor or Puzzle Box next in either order, skipping each independently. Removing Cursed before Puzzle Box changes its test threshold; using Puzzle Box first retains Cursed for that test. Each source is resolved at most once in this Rest, even after failure, and the final continuation charges exactly one action. Bible recovery is not repeated.
+
+Puzzle Box uses the generic `rest_asset` skill-test continuation, printed modifier, improvements, applicable City aura, minimum-one-die rule, Blessed/Cursed thresholds, physical Clue rerolls and supported Asset die effects. Only its holder can test it; a colleague's Box is not an aura. Failure keeps the Box and Artifact order; decline consumes no dice. Passing moves the exact Box into Asset discard and takes the private deck's top Artifact without reshuffling, searching or exposing remaining order. A valid depleted Artifact supply grants nothing, while the printed Box discard still resolves.
+
+**This is a guarded slice, not unrestricted random Artifact support.** Only T'tka Halot's gain/effects are currently executable. If the actual top card is another Artifact, accepting the test returns `ARTIFACT_EFFECT_UNSUPPORTED` before rolling or discarding; it does not search for T'tka Halot. The player can still choose “Skip Puzzle Box” and finish ordinary Rest. Missing/duplicated Artifact supply and unsupported carried test effects also reject atomically. Deck order and identities stay server-private; the error names no unrevealed card.
+
+The engine preflights exact source holding/conservation, all remaining Rest sources and Artifact supply on acceptance and every resumed test command. `executeCommand` deep-copies the private Rest checkpoint, and public projections omit it. The room stores/restores the checkpoint privately; existing Rest bonus and test dialogs display server-authored options. Legacy Witch Doctor checkpoints without `pendingRest` still resolve.
+
+Twenty-seven engine cases and two real room regressions cover success/failure/decline, thresholds and source order, Condition sequencing, City aura, Clue and Asset die effects, serialization, ownership, input-state purity, conservation, depleted supply, unsupported draws and single-action handoff.
+
+Next: extend executable Artifact gains/effects, starting with the existing Cultes des Goules scan and its optional Lore/Sanity action for two physical Clues. Enabling an Artifact as a Puzzle Box draw must not silently drop its printed effects. No new scans are required; the broader Artifact family, combat/Other World and full Task 1 remain incomplete.
+
+Latest Puzzle Box verification passed lint/typecheck/test/build with 506 engine, 58 server, 77 content and 18 protocol cases (659 total), plus all three existing browser journeys. The 27 engine and two room cases cover Puzzle Box specifically; browser coverage remains shared-dialog regression coverage.
