@@ -20,6 +20,46 @@ describe("authoritative game room", () => {
   after(async () => colyseus.shutdown());
   beforeEach(async () => colyseus.cleanup());
 
+  for (const effect of ["health", "discard-cursed"] as const) {
+    it(`restores the resting owner's Witch Doctor ${effect} choice from a colleague's Ally`, async () => {
+      const room = await colyseus.createRoom<GameRoom>("game", {});
+      const host = await colyseus.connectTo(room, { displayName: "Host" });
+      const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+      const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+      const state = internal.toEngineState();
+      state.phase = "action"; state.ancientOneId = "cthulhu"; state.doom = 12; state.actionsRemaining = 2;
+      state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
+      Object.assign(state.players[0]!, { investigatorId: "akachi_onyele", locationId: "arkham", health: 2, maxHealth: 5, sanity: 3, maxSanity: 7, assetIds: [], conditionIds: ["condition_cursed_01"] });
+      Object.assign(state.players[1]!, { investigatorId: "trish_scarborough", locationId: "arkham", health: 7, sanity: 5, assetIds: ["asset_witch_doctor"] });
+      state.privateState.tokenPoolById["condition:cursed"] = [];
+      internal.applyEngineState(state);
+      const message = host.waitForMessage(pendingDecisionMessageType);
+      sendCommand(room, host, { type: "REST" }); await room.waitForMessage(commandMessageType);
+      const decision = await message as PendingDecision;
+      assert.equal(decision.kind, "rest_asset_choice"); assert.equal(decision.playerId, state.players[0]!.id);
+      assert.equal(decision.optionLabels?.["asset_witch_doctor:discard-cursed"], "Discard Cursed");
+      const checkpoint = internal.toEngineState();
+      assert.equal(checkpoint.actionsRemaining, 2); assert.equal(checkpoint.players[0]?.health, 3);
+      assert.equal(JSON.stringify(room.state).includes("discard-cursed"), false);
+      assert.equal(JSON.stringify(room.state).includes("condition_cursed_01"), false);
+      const refreshed = host.waitForMessage(pendingDecisionMessageType);
+      internal.applyEngineState(JSON.parse(JSON.stringify(checkpoint))); await refreshed;
+      const denied = guest.waitForMessage(commandErrorMessageType);
+      sendCommand(room, guest, { type: "RESOLVE_DECISION", decisionId: decision.id, selectedOptionIds: [`asset_witch_doctor:${effect}`] });
+      await room.waitForMessage(commandMessageType);
+      assert.equal((await denied as { code: string }).code, "NOT_DECISION_OWNER");
+      sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: decision.id, selectedOptionIds: [`asset_witch_doctor:${effect}`] });
+      await room.waitForMessage(commandMessageType);
+      const after = internal.toEngineState();
+      assert.equal(after.players[0]?.health, effect === "health" ? 4 : 3);
+      assert.equal(after.players[0]?.sanity, 4);
+      assert.deepEqual(after.players[0]?.conditionIds, effect === "discard-cursed" ? [] : ["condition_cursed_01"]);
+      assert.deepEqual(after.privateState.tokenPoolById["condition:cursed"], effect === "discard-cursed" ? ["condition_cursed_01"] : []);
+      assert.deepEqual(after.players[1]?.assetIds, ["asset_witch_doctor"]);
+      assert.equal(after.actionsRemaining, 1); assert.deepEqual(after.performedActions, ["rest"]); assert.equal(after.pendingDecision, undefined);
+    });
+  }
+
   it("restores an owner-private Lucky Cigarette Case modifier independently of the Foot", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
