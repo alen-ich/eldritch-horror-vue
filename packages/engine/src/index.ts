@@ -181,6 +181,8 @@ export interface GameState {
   performedActions: ActionType[];
   usedConditionActionIds?: string[];
   usedArtifactActionIds?: string[];
+  /** Physical Asset identities whose once-per-round test reroll has been used. */
+  usedAssetRerollIds?: string[];
   monsterLocationIds: LocationId[];
   monsters?: MonsterInstance[];
   activeGateIds?: string[];
@@ -213,6 +215,7 @@ export interface InvestigatorSetup {
 }
 
 export type AssetEngineEffect =
+  | { type: "round_test_reroll" }
   | { type: "test_reroll"; skill: "influence" }
   | { type: "city_test_aura"; amount: 1 }
   | { type: "skill_bonus"; skill: "influence"; amount: 1 }
@@ -241,7 +244,7 @@ export interface GameContent {
   referenceCards?: readonly { playerCount: number; spawnClues: number; monsterSurge?: number; spawnGates?: number }[];
   map: GameMap;
   investigators: Readonly<Partial<Record<InvestigatorId, InvestigatorSetup>>>;
-  assets: readonly { id: string; value: number; traits?: readonly string[]; engineEffects: readonly AssetEngineEffect[]; nonCombatEncounterSupport?: "unsupported" | "irrelevant" | "city_test_aura" | "skill_test" }[];
+  assets: readonly { id: string; name?: string; value: number; traits?: readonly string[]; engineEffects: readonly AssetEngineEffect[]; nonCombatEncounterSupport?: "unsupported" | "irrelevant" | "city_test_aura" | "skill_test" }[];
   mysteryIdsByAncientOne: Readonly<Partial<Record<AncientOneId, readonly string[]>>>;
   mysteryTargetsById: Readonly<Record<string, "investigator_count" | "half_investigator_count" | "twice_investigator_count" | "one">>;
 }
@@ -308,6 +311,7 @@ export function createLobby(playerIds: string[]): GameState {
     actionsRemaining: 0,
     performedActions: [],
     usedConditionActionIds: [],
+    usedAssetRerollIds: [],
     monsterLocationIds: [],
     activeGateIds: [],
     discardedGateIds: [],
@@ -358,6 +362,7 @@ export function projectStateForPlayer(state: GameState, viewerPlayerId?: string)
     performedActions: [...publicState.performedActions],
     usedConditionActionIds: [...(publicState.usedConditionActionIds ?? [])],
     usedArtifactActionIds: [...(publicState.usedArtifactActionIds ?? [])],
+    usedAssetRerollIds: [...(publicState.usedAssetRerollIds ?? [])],
     monsterLocationIds: [...publicState.monsterLocationIds],
     monsters: publicState.monsters?.map(monster => ({ ...monster })),
     activeGateIds: [...(publicState.activeGateIds ?? [])],
@@ -1929,7 +1934,7 @@ function continueLocationEncounter(state: GameState, content: GameContent, conte
       const successes = countTestSuccesses(dice, conditionSuccessThreshold(player.conditionIds ?? []));
       pending.dice = dice;
       pending.successes = successes;
-      if (player.clues > 0 || assetEffectsForPlayer(player, content).some(effect => effect.type === "test_reroll" && effect.skill === node.skill)) {
+      if (player.clues > 0 || player.assetIds.some(id => canUseAssetTestReroll(next, player, node.skill, id, content))) {
         const test: ActiveTest = { id: context.createId(), playerId: player.id, skill: node.skill, modifier: node.modifier, dicePool, dice, successes,
           successThreshold: conditionSuccessThreshold(player.conditionIds ?? []), continuation: "location_encounter", sourceEncounterCardId: pending.cardId, sourceEncounterDeck: pending.deck };
         if (createTestRerollDecision(next, test, content, context)) {
@@ -2187,17 +2192,24 @@ function countActiveTestSuccesses(test: ActiveTest, player: EnginePlayer, conten
     : countTestSuccesses(test.dice, test.successThreshold);
 }
 
+function canUseAssetTestReroll(state: GameState, player: EnginePlayer, skill: SkillId, assetId: string, content: GameContent, usedTestSources: readonly string[] = []): boolean {
+  if (!player.assetIds.includes(assetId) || usedTestSources.includes(assetId)) return false;
+  return content.assets.find(asset => asset.id === assetId)?.engineEffects.some(effect =>
+    effect.type === "test_reroll" && effect.skill === skill
+    || effect.type === "round_test_reroll" && !state.usedAssetRerollIds?.includes(assetId)) ?? false;
+}
+
 function createTestRerollDecision(state: GameState, test: ActiveTest, content: GameContent, context: EngineContext): boolean {
   const player = state.players.find(player => player.id === test.playerId);
   if (!player) return false;
   const optionIds = player.clues > 0 ? test.dice.map((_, index) => `die-${index}`) : [];
   const optionLabels: Record<string, string> = Object.fromEntries(optionIds.map((id, index) => [id, `Spend 1 Clue: reroll die ${index + 1}`]));
   for (const assetId of player.assetIds) {
-    if (test.usedRerollAssetIds?.includes(assetId)) continue;
-    if (!content.assets.find(asset => asset.id === assetId)?.engineEffects.some(effect => effect.type === "test_reroll" && effect.skill === test.skill)) continue;
+    if (!canUseAssetTestReroll(state, player, test.skill, assetId, content, test.usedRerollAssetIds)) continue;
+    const assetName = content.assets.find(asset => asset.id === assetId)?.name ?? assetId;
     test.dice.forEach((_, index) => {
       const id = `asset-reroll:${assetId}:${index}`;
-      optionIds.push(id); optionLabels[id] = `Personal Assistant: reroll die ${index + 1} (no Clue)`;
+      optionIds.push(id); optionLabels[id] = `${assetName}: reroll die ${index + 1} (no Clue)`;
     });
   }
   if (!optionIds.length) return false;
@@ -2396,6 +2408,7 @@ export function executeCommand(
     nextRound.performedActions = [];
     nextRound.usedConditionActionIds = [];
     nextRound.usedArtifactActionIds = [];
+    nextRound.usedAssetRerollIds = [];
     nextRound.replacementWindow = false;
     nextRound.encounteredMonsterInstanceIds = [];
     return success(nextRound, [{ type: "PHASE_ADVANCED", phase: "action", activePlayerId: first.id }]);
@@ -2414,6 +2427,7 @@ export function executeCommand(
     performedActions: [...state.performedActions],
     usedConditionActionIds: [...(state.usedConditionActionIds ?? [])],
     usedArtifactActionIds: [...(state.usedArtifactActionIds ?? [])],
+    usedAssetRerollIds: [...(state.usedAssetRerollIds ?? [])],
     monsterLocationIds: [...state.monsterLocationIds],
     monsters: state.monsters?.map(monster => ({ ...monster })),
     activeGateIds: [...(state.activeGateIds ?? [])],
@@ -2972,9 +2986,9 @@ export function executeCommand(
         if (!Number.isInteger(dieIndex) || dieIndex < 0 || dieIndex >= activeTest.dice.length) return failure("INVALID_DECISION_SELECTION", "That test die is unavailable.");
         if (assetChoice) {
           const assetId = assetChoice[1]!;
-          if (!actor.assetIds.includes(assetId) || activeTest.usedRerollAssetIds?.includes(assetId)
-            || !content.assets.find(asset => asset.id === assetId)?.engineEffects.some(effect => effect.type === "test_reroll" && effect.skill === activeTest.skill)) return failure("INVALID_DECISION_SELECTION", "That Asset reroll is unavailable for this test.");
+          if (!canUseAssetTestReroll(next, actor, activeTest.skill, assetId, content, activeTest.usedRerollAssetIds)) return failure("INVALID_DECISION_SELECTION", "That Asset reroll is unavailable for this test.");
           activeTest.usedRerollAssetIds = [...(activeTest.usedRerollAssetIds ?? []), assetId];
+          if (content.assets.find(asset => asset.id === assetId)?.engineEffects.some(effect => effect.type === "round_test_reroll")) next.usedAssetRerollIds = [...(next.usedAssetRerollIds ?? []), assetId];
         } else {
           if (actor.clues < 1) return failure("CLUE_REQUIRED", "A Clue is required to reroll a test die.");
           if (!discardHeldClues(next, actorPlayerId, 1)) return failure("CLUE_CONTENT_MISSING", "The physical Clue for this reroll is unavailable.");
@@ -3165,6 +3179,7 @@ export function executeCommand(
     next.performedActions = [];
     next.usedConditionActionIds = [];
     next.usedArtifactActionIds = [];
+    next.usedAssetRerollIds = [];
     next.activeMysteryId = activeMysteryId;
     next.mysteryProgress = 0;
     next.mysteryTarget = mysteryTarget;

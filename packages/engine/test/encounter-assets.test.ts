@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { baseGameAssets } from "../../content/src/assets.js";
 import { baseGameResearchEncounterRules } from "../../content/src/research-encounter-rules.js";
-import { createLobby, createDeterministicEngineContext, executeCommand, resolveLocationEncounter, resolveResearchEncounter, type GameContent, type GameState } from "../src/index.js";
+import { createLobby, createDeterministicEngineContext, executeCommand, resolveLocationEncounter, resolveResearchEncounter, projectPublicState, type GameContent, type GameState } from "../src/index.js";
 
 const empty = { kind: "effects", effects: [] };
 const content: GameContent = {
@@ -28,6 +28,125 @@ function state(held: string[] = [], locationId: "arkham" | "space_2" = "arkham")
 const context = () => createDeterministicEngineContext({ dice: Array(10).fill(1), ids: ["test", "reroll"], tokenIndexes: [0] });
 
 describe("scoped non-combat encounter Assets", () => {
+  function footContent(skill: "lore" | "influence" | "observation" | "strength" | "will", modifier = 0): GameContent {
+    return { ...content, locationEncounters: [{ id: "encounter_general_01", deck: "general", sections: {
+      city: { kind: "test", skill, modifier, pass: empty, fail: empty },
+    } }] };
+  }
+  function footState() {
+    const before = state(["asset_lucky_rabbits_foot"]);
+    before.players[0]!.clues = 0; before.privateState.tokenPoolById["held_clues:host"] = [];
+    return before;
+  }
+  function beginFoot(before: GameState, rules = footContent("observation")) {
+    const result = resolveLocationEncounter(before, "host", "general", rules, context());
+    if (!result.ok) throw new Error(result.error.message);
+    return result.state;
+  }
+  function chooseFoot(before: GameState, option: string | undefined, rules = footContent("observation"), die = 6) {
+    const result = executeCommand(before, "host", { type: "RESOLVE_DECISION", decisionId: before.pendingDecision!.id, selectedOptionIds: option ? [option] : [] }, rules, createDeterministicEngineContext({ dice: [die], ids: ["next-foot-choice"] }));
+    if (!result.ok) throw new Error(result.error.message);
+    return result;
+  }
+  it.each(["lore", "influence", "observation", "strength", "will"] as const)("offers Lucky Rabbit's Foot for a %s test without adding dice", skill => {
+    const rules = footContent(skill); const before = beginFoot(footState(), rules);
+    expect(before.activeTest?.dicePool).toBe(content.investigators.akachi_onyele!.skills[skill]);
+    expect(before.pendingDecision?.optionLabels?.["asset-reroll:asset_lucky_rabbits_foot:0"]).toBe("Lucky Rabbit's Foot: reroll die 1 (no Clue)");
+    const snapshot = structuredClone(before); const result = chooseFoot(before, "asset-reroll:asset_lucky_rabbits_foot:0", rules);
+    expect(result.state.usedAssetRerollIds).toEqual(["asset_lucky_rabbits_foot"]);
+    expect(result.state.players[0]?.clues).toBe(0); expect(result.state.players[0]?.assetIds).toEqual(["asset_lucky_rabbits_foot"]);
+    expect(result.events.some(event => event.type === "CLUE_SPENT_FOR_REROLL")).toBe(false); expect(before).toEqual(snapshot);
+    expect(result.state.activeTest).toBeUndefined(); expect(result.state.activePlayerId).toBe("guest");
+  });
+  it("cannot reuse the physical card in another test in the same round", () => {
+    const result = chooseFoot(beginFoot(footState()), "asset-reroll:asset_lucky_rabbits_foot:0");
+    const restored: GameState = JSON.parse(JSON.stringify(result.state)); restored.activePlayerId = "host";
+    const second = beginFoot(restored, footContent("will"));
+    expect(second.pendingDecision).toBeUndefined(); expect(second.activeTest).toBeUndefined();
+    expect(second.usedAssetRerollIds).toEqual(["asset_lucky_rabbits_foot"]);
+  });
+  it("declining a reroll does not consume the once-per-round effect", () => {
+    const declined = chooseFoot(beginFoot(footState()), undefined).state; declined.activePlayerId = "host";
+    expect(declined.usedAssetRerollIds).toEqual([]);
+    expect(beginFoot(declined).pendingDecision?.optionIds).toContain("asset-reroll:asset_lucky_rabbits_foot:0");
+  });
+  it.each([true, false])("keeps Personal Assistant and Foot source limits independent after restoration (Foot first=%s)", footFirst => {
+    const rules = footContent("influence"); const before = footState(); before.players[0]!.assetIds.push("asset_personal_assistant"); before.players[0]!.clues = 1;
+    before.privateState.tokenPoolById["held_clues:host"] = ["clue_london"];
+    const started = beginFoot(before, rules);
+    expect(started.activeTest?.dicePool).toBe(3);
+    const firstId = footFirst ? "asset_lucky_rabbits_foot" : "asset_personal_assistant";
+    const secondId = footFirst ? "asset_personal_assistant" : "asset_lucky_rabbits_foot";
+    const used = chooseFoot(started, `asset-reroll:${firstId}:0`, rules, 1).state;
+    const restored: GameState = JSON.parse(JSON.stringify(used));
+    expect(restored.pendingDecision?.optionIds).toContain(`asset-reroll:${secondId}:0`);
+    expect(restored.pendingDecision?.optionIds).not.toContain(`asset-reroll:${firstId}:1`);
+    const command = { type: "RESOLVE_DECISION" as const, decisionId: restored.pendingDecision!.id, selectedOptionIds: [`asset-reroll:${secondId}:0`] };
+    expect(executeCommand(restored, "guest", command, rules, context())).toMatchObject({ ok: false, error: { code: "NOT_DECISION_OWNER" } });
+    const both = chooseFoot(restored, `asset-reroll:${secondId}:0`, rules, 1).state;
+    expect(both.usedAssetRerollIds).toEqual(["asset_lucky_rabbits_foot"]);
+    expect(both.players[0]?.clues).toBe(1); expect(both.pendingDecision?.optionIds).toEqual(["die-0", "die-1", "die-2"]);
+    const finished = chooseFoot(both, "die-0", rules).state;
+    expect(finished.players[0]?.clues).toBe(0); expect(finished.privateState.tokenPoolById.clue_discard).toEqual(["clue_london"]);
+    finished.activePlayerId = "host";
+    const later = beginFoot(finished, rules);
+    expect(later.pendingDecision?.optionIds).toContain("asset-reroll:asset_personal_assistant:0");
+    expect(later.pendingDecision?.optionIds).not.toContain("asset-reroll:asset_lucky_rabbits_foot:0");
+  });
+  it("resets round usage only through the authorized next-round handoff", () => {
+    const used = chooseFoot(beginFoot(footState()), "asset-reroll:asset_lucky_rabbits_foot:0").state;
+    used.phase = "mythos"; used.replacementWindow = true; used.currentMythosCardId = undefined;
+    expect(executeCommand(used, "guest", { type: "BEGIN_NEXT_ROUND" }, content)).toMatchObject({ ok: false, error: { code: "WRONG_PHASE" } });
+    const next = executeCommand(used, "host", { type: "BEGIN_NEXT_ROUND" }, content);
+    if (!next.ok) throw new Error(next.error.message);
+    expect(next.state.usedAssetRerollIds).toEqual([]); expect(used.usedAssetRerollIds).toEqual(["asset_lucky_rabbits_foot"]);
+    next.state.phase = "encounter";
+    expect(beginFoot(next.state).pendingDecision?.optionIds).toContain("asset-reroll:asset_lucky_rabbits_foot:0");
+  });
+  it("retains usage across physical ownership changes and copies it safely into the public projection", () => {
+    const used = chooseFoot(beginFoot(footState()), "asset-reroll:asset_lucky_rabbits_foot:0").state;
+    const projection = projectPublicState(used); projection.usedAssetRerollIds!.push("forged");
+    expect(used.usedAssetRerollIds).toEqual(["asset_lucky_rabbits_foot"]);
+    used.players[0]!.assetIds = []; used.players[1]!.assetIds = ["asset_lucky_rabbits_foot"]; used.activePlayerId = "guest";
+    const tested = resolveLocationEncounter(used, "guest", "general", footContent("observation"), context());
+    if (!tested.ok) throw new Error(tested.error.message);
+    expect(tested.state.pendingDecision).toBeUndefined();
+  });
+  it("revalidates round usage and holding before accepting an offered source", () => {
+    const offered = beginFoot(footState());
+    for (const changed of ["used", "lost"] as const) {
+      const before = structuredClone(offered);
+      if (changed === "used") before.usedAssetRerollIds = ["asset_lucky_rabbits_foot"];
+      else before.players[0]!.assetIds = [];
+      const snapshot = structuredClone(before);
+      expect(executeCommand(before, "host", { type: "RESOLVE_DECISION", decisionId: before.pendingDecision!.id, selectedOptionIds: ["asset-reroll:asset_lucky_rabbits_foot:0"] }, footContent("observation"), context())).toMatchObject({ ok: false, error: { code: "INVALID_DECISION_SELECTION" } }); expect(before).toEqual(snapshot);
+    }
+  });
+  it("preserves the one-die minimum and counts a Cursed reroll at its existing threshold", () => {
+    const rules = footContent("observation", -5); const before = footState(); before.players[0]!.conditionIds = ["condition_cursed_01"];
+    const offered = beginFoot(before, rules); expect(offered.activeTest?.dicePool).toBe(1);
+    const result = chooseFoot(offered, "asset-reroll:asset_lucky_rabbits_foot:0", rules, 5);
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "TEST_DIE_REROLLED", result: 5, successes: 0 }));
+  });
+  it("uses the Foot during Research, retaining its identity while collecting the exact Clue", () => {
+    const before = footState();
+    const started = resolveResearchEncounter(before, "host", "chosen", content, context());
+    if (!started.ok) throw new Error(started.error.message);
+    const result = chooseFoot(started.state, "asset-reroll:asset_lucky_rabbits_foot:0");
+    expect(result.state.usedAssetRerollIds).toEqual(["asset_lucky_rabbits_foot"]);
+    expect(result.state.players[0]?.clues).toBe(1); expect(result.state.players[0]?.assetIds).toEqual(["asset_lucky_rabbits_foot"]);
+    expect(result.state.privateState.tokenPoolById["held_clues:host"]).toEqual(["clue_arkham"]); expect(result.state.boardClues).toEqual([]);
+    expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.activePlayerId).toBe("guest");
+  });
+  it("does not treat the Trinket-only Foot as an Item, and preserves spent round usage", () => {
+    const before = footState(); before.usedAssetRerollIds = ["asset_lucky_rabbits_foot"];
+    before.privateState.deckOrderById["encounter:research_cthulhu"] = ["encounter_research_cthulhu_03"];
+    const started = resolveResearchEncounter(before, "host", "chosen", content, createDeterministicEngineContext({ dice: [1], ids: ["discard-foot"] }));
+    if (!started.ok) throw new Error(started.error.message);
+    expect(started.state.pendingDecision).toBeUndefined();
+    expect(started.state.players[0]?.assetIds).toEqual(["asset_lucky_rabbits_foot"]); expect(started.state.assetDiscardIds).toEqual([]);
+    expect(started.state.usedAssetRerollIds).toEqual(["asset_lucky_rabbits_foot"]);
+  });
   const influenceContent: GameContent = { ...content, locationEncounters: [{ id: "encounter_general_01", deck: "general", sections: {
     city: { kind: "test", skill: "influence", modifier: 0, pass: empty, fail: empty },
   } }] };
