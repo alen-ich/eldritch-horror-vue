@@ -22,6 +22,19 @@ function nodes(instruction: LocationEncounterInstruction): LocationEncounterInst
   return [instruction];
 }
 
+export function encounterItemAssetIds(player: EnginePlayer, content: GameContent): string[] {
+  return player.assetIds.filter(id => content.assets.find(asset => asset.id === id)?.traits?.includes("item"));
+}
+
+/** Each selectable physical card must exist only in this holding, not a second pile/seat. */
+export function encounterItemsAreConserved(state: GameState, player: EnginePlayer, content: GameContent): boolean {
+  const physicalIds = [
+    ...state.players.flatMap(holder => holder.assetIds), ...state.reserveAssetIds, ...state.assetDiscardIds,
+    ...(state.privateState.deckOrderById.assets ?? []), ...(state.defeatedInvestigators ?? []).flatMap(sheet => sheet.assetIds),
+  ];
+  return encounterItemAssetIds(player, content).every(id => physicalIds.filter(candidate => candidate === id).length === 1);
+}
+
 /** Preflight every branch before prefix effects, dice, choices or component changes. */
 export function supportsEncounterAssets(state: GameState, player: EnginePlayer, content: GameContent, instruction: LocationEncounterInstruction): boolean {
   const assets = player.assetIds.map(id => content.assets.find(asset => asset.id === id));
@@ -29,7 +42,7 @@ export function supportsEncounterAssets(state: GameState, player: EnginePlayer, 
   const all = nodes(instruction);
   if (all.some(node => node.kind === "ambush" || node.kind === "ambush_result")
     && (assets.length > 0 || nonCombatEncounterAuraBonus(state, player, content) > 0)) return false;
-  if (assets.some(asset => asset?.traits?.includes("item"))
-    && all.some(node => node.kind === "effects" && node.effects.some(effect => effect.kind === "discard_item_assets"))) return false;
+  if (all.some(node => node.kind === "effects" && node.effects.some(effect => effect.kind === "discard_item_assets"))
+    && !encounterItemsAreConserved(state, player, content)) return false;
   return true;
 }

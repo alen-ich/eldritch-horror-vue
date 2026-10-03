@@ -158,14 +158,112 @@ describe("scoped non-combat encounter Assets", () => {
       expect(result).toMatchObject({ ok: false, error: { code: "ENCOUNTER_UNSUPPORTED" } }); expect(before).toEqual(snapshot);
     }
   });
-  it("preflights Item discard in a failure branch, but permits the Ally when no Items can be discarded", () => {
+  it("preflights duplicate Item identities in a failure branch, but permits the Ally when no Items can be discarded", () => {
     const before = state(["asset_45_automatic"]); before.privateState.deckOrderById["encounter:research_cthulhu"] = ["encounter_research_cthulhu_03"];
+    before.assetDiscardIds = ["asset_45_automatic"];
     const snapshot = structuredClone(before);
     expect(resolveResearchEncounter(before, "host", "chosen", content, createDeterministicEngineContext({}))).toMatchObject({ ok: false, error: { code: "ENCOUNTER_UNSUPPORTED" } }); expect(before).toEqual(snapshot);
     before.players[0]!.assetIds = ["asset_urban_guide"]; before.players[0]!.clues = 0; before.privateState.tokenPoolById["held_clues:host"] = [];
     const result = resolveResearchEncounter(before, "host", "chosen", content, createDeterministicEngineContext({ dice: [1, 1] }));
     if (!result.ok) throw new Error(result.error.message);
     expect(result.state.players[0]?.assetIds).toEqual(["asset_urban_guide"]); expect(result.state.boardClues).toHaveLength(1);
+  });
+  const discardContent: GameContent = { ...content, map: { ...content.map,
+    locationTypes: { ...content.map.locationTypes, space_3: "sea" }, adjacentLocationIds: { the_amazon: ["space_2", "space_3"] },
+  } };
+  function discardState(amount: 1 | 2, items: string[]) {
+    const before = state([...items, "asset_personal_assistant"]);
+    before.players[0]!.clues = 0; before.privateState.tokenPoolById["held_clues:host"] = [];
+    before.privateState.deckOrderById.assets = ["asset_fine_clothes"];
+    before.reserveAssetIds = ["asset_holy_cross"];
+    before.assetDiscardIds = ["asset_king_james_bible"];
+    before.privateState.deckOrderById["encounter:research_cthulhu"] = [`encounter_research_cthulhu_0${amount === 1 ? 3 : 6}`, "encounter_research_cthulhu_02"];
+    if (amount === 2) { before.players[0]!.locationId = "the_amazon"; before.boardClues![0]!.locationId = "the_amazon"; }
+    return before;
+  }
+  function startDiscard(before: GameState) {
+    const result = resolveResearchEncounter(before, "host", "chosen", discardContent, createDeterministicEngineContext({ dice: [1, 1], ids: ["discard-choice"] }));
+    if (!result.ok) throw new Error(result.error.message);
+    return result.state;
+  }
+  function chooseDiscard(before: GameState, id: string) {
+    return executeCommand(before, "host", { type: "RESOLVE_DECISION", decisionId: before.pendingDecision!.id, selectedOptionIds: [id] }, discardContent, createDeterministicEngineContext({ ids: [`after-${id}`] }));
+  }
+  it("chooses one held Item, preserves Allies and unrelated piles, and cycles once", () => {
+    const before = discardState(1, ["asset_45_automatic", "asset_38_revolver"]);
+    const snapshot = structuredClone(before); const offered = startDiscard(before);
+    expect(offered.pendingDecision).toMatchObject({ kind: "encounter_choice", minSelections: 1, maxSelections: 1, optionIds: ["asset_45_automatic", "asset_38_revolver"] });
+    expect(before).toEqual(snapshot);
+    const result = chooseDiscard(offered, "asset_38_revolver");
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.state.players[0]?.assetIds).toEqual(["asset_45_automatic", "asset_personal_assistant"]);
+    expect(result.state.assetDiscardIds).toEqual(["asset_king_james_bible", "asset_38_revolver"]);
+    expect(result.state.reserveAssetIds).toEqual(before.reserveAssetIds); expect(result.state.privateState.deckOrderById.assets).toEqual(before.privateState.deckOrderById.assets);
+    expect(result.state.privateState.tokenPoolById).toEqual(before.privateState.tokenPoolById); expect(result.state.boardClues).toEqual(before.boardClues);
+    expect(result.state.privateState.deckOrderById["encounter:research_cthulhu"]).toEqual(["encounter_research_cthulhu_02", "encounter_research_cthulhu_03"]);
+    expect(result.events).toContainEqual({ type: "ASSET_DISCARDED", playerId: "host", assetId: "asset_38_revolver", reason: "encounter" });
+    expect(result.state.activePlayerId).toBe("guest");
+  });
+  it("keeps all Items on a successful test and awards the printed physical Clues", () => {
+    const before = discardState(1, ["asset_45_automatic"]);
+    before.privateState.tokenPoolById.clues = ["clue_london"];
+    const result = resolveResearchEncounter(before, "host", "chosen", discardContent, createDeterministicEngineContext({ dice: [6], tokenIndexes: [0] }));
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.state.players[0]?.assetIds).toEqual(before.players[0]?.assetIds);
+    expect(result.state.assetDiscardIds).toEqual(before.assetDiscardIds);
+    expect(result.state.players[0]?.clues).toBe(2); expect(result.state.boardClues).toEqual([]);
+    expect(result.state.privateState.tokenPoolById["held_clues:host"]).toEqual(["clue_arkham", "clue_london"]);
+    expect(result.events.some(event => event.type === "ASSET_DISCARDED")).toBe(false);
+  });
+  it("restores successive two-Item choices before nearest-Sea relocation", () => {
+    const before = discardState(2, ["asset_45_automatic", "asset_38_revolver", "asset_arcane_manuscripts"]);
+    const offered = startDiscard(before); const first = chooseDiscard(offered, "asset_45_automatic");
+    if (!first.ok) throw new Error(first.error.message);
+    const restored: GameState = JSON.parse(JSON.stringify(first.state));
+    expect(restored.pendingDecision?.optionIds).toEqual(["asset_38_revolver", "asset_arcane_manuscripts"]);
+    expect(restored.boardClues).toEqual(before.boardClues);
+    expect(restored.privateState.deckOrderById["encounter:research_cthulhu"]).toEqual(before.privateState.deckOrderById["encounter:research_cthulhu"]);
+    expect(executeCommand(restored, "guest", { type: "RESOLVE_DECISION", decisionId: restored.pendingDecision!.id, selectedOptionIds: ["asset_38_revolver"] }, discardContent, context())).toMatchObject({ ok: false, error: { code: "NOT_DECISION_OWNER" } });
+    expect(chooseDiscard(restored, "asset_45_automatic").ok).toBe(false);
+    const second = chooseDiscard(restored, "asset_arcane_manuscripts"); if (!second.ok) throw new Error(second.error.message);
+    expect(second.state.assetDiscardIds).toEqual(["asset_king_james_bible", "asset_45_automatic", "asset_arcane_manuscripts"]);
+    expect(second.state.pendingDecision?.optionIds).toEqual(["space_2", "space_3"]);
+    const finish = chooseDiscard(JSON.parse(JSON.stringify(second.state)), "space_3"); if (!finish.ok) throw new Error(finish.error.message);
+    expect(finish.state.boardClues).toEqual([{ id: "chosen", locationId: "space_3" }]);
+    expect(finish.state.players[0]?.assetIds).toEqual(["asset_38_revolver", "asset_personal_assistant"]);
+    expect(finish.state.privateState.tokenPoolById).toEqual(before.privateState.tokenPoolById);
+    expect(finish.state.pendingLocationEncounter).toBeUndefined(); expect(finish.state.activePlayerId).toBe("guest");
+  });
+  it.each([0, 1])("discards only available Items when two are required (held=%s)", held => {
+    const before = discardState(2, held ? ["asset_45_automatic"] : []);
+    let next = startDiscard(before);
+    if (held) { const result = chooseDiscard(next, "asset_45_automatic"); if (!result.ok) throw new Error(result.error.message); next = result.state; }
+    expect(next.pendingDecision?.optionIds).toEqual(["space_2", "space_3"]);
+    expect(next.players[0]?.assetIds).toEqual(["asset_personal_assistant"]);
+    expect(next.assetDiscardIds).toEqual(["asset_king_james_bible", ...(held ? ["asset_45_automatic"] : [])]);
+  });
+  it("rejects refusal, Allies, remote cards, vanished holdings and duplicate sources atomically", () => {
+    const offered = startDiscard(discardState(1, ["asset_45_automatic"]));
+    for (const id of ["asset_personal_assistant", "asset_holy_cross", "asset_unknown"]) expect(chooseDiscard(offered, id).ok).toBe(false);
+    expect(executeCommand(offered, "host", { type: "RESOLVE_DECISION", decisionId: offered.pendingDecision!.id, selectedOptionIds: [] }, discardContent, context()).ok).toBe(false);
+    for (const variation of ["vanished", "duplicated"] as const) {
+      const changed = structuredClone(offered);
+      if (variation === "vanished") changed.players[0]!.assetIds = ["asset_personal_assistant"];
+      else changed.privateState.deckOrderById.assets!.push("asset_45_automatic");
+      const snapshot = structuredClone(changed);
+      expect(chooseDiscard(changed, "asset_45_automatic")).toMatchObject({ ok: false, error: { code: "INVALID_DECISION_SELECTION" } }); expect(changed).toEqual(snapshot);
+    }
+  });
+  it.each(["deck", "reserve", "discard", "other_player", "defeated", "same_player"])("preflights duplicate physical Items in %s", pile => {
+    const before = discardState(1, ["asset_45_automatic"]);
+    if (pile === "deck") before.privateState.deckOrderById.assets!.push("asset_45_automatic");
+    else if (pile === "reserve") before.reserveAssetIds.push("asset_45_automatic");
+    else if (pile === "discard") before.assetDiscardIds.push("asset_45_automatic");
+    else if (pile === "other_player") before.players[1]!.assetIds = ["asset_45_automatic"];
+    else if (pile === "same_player") before.players[0]!.assetIds.push("asset_45_automatic");
+    else before.defeatedInvestigators = [{ investigatorId: "trish_scarborough", locationId: "arkham", cause: "health", assetIds: ["asset_45_automatic"], clues: 0, travelTickets: [] }];
+    const snapshot = structuredClone(before);
+    expect(resolveResearchEncounter(before, "host", "chosen", discardContent, createDeterministicEngineContext({}))).toMatchObject({ ok: false, error: { code: "ENCOUNTER_UNSUPPORTED" } }); expect(before).toEqual(snapshot);
   });
   it("preflights nested ambush branches for carried Assets and colleague combat auras", () => {
     for (const held of [true, false]) {

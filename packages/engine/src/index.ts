@@ -17,7 +17,7 @@ import { calculateDicePool, countTestSuccesses } from "./skill-tests.js";
 import { loseResource, recoverResource } from "./resources.js";
 import { buildArtifactDeck, buildGateStack, buildLocationEncounterDecks, buildMonsterPool, buildMythosDeck, type AncientSetup, type LocationEncounterDeckId, type EncounterDeckId, type ResearchEncounterDeckId, type MythosColor } from "./setup.js";
 import { bindResearchInstruction } from "./research-instructions.js";
-import { nonCombatEncounterAuraBonus, supportsEncounterAssets } from "./encounter-assets.js";
+import { encounterItemAssetIds, encounterItemsAreConserved, nonCombatEncounterAuraBonus, supportsEncounterAssets } from "./encounter-assets.js";
 import { resolveStandardCombat, type CombatCheck } from "./combat.js";
 import { conditionSuccessThreshold, publicConditionId, resolveBoonBaneGain } from "./conditions.js";
 import { advanceOmenTrack, omenTrack } from "./omen.js";
@@ -1706,7 +1706,7 @@ function applyLocationEncounterEffects(
       continue;
     }
     if (effect.kind === "discard_item_assets") {
-      if (player.assetIds.some(id => content.assets.find(asset => asset.id === id)?.traits?.includes("item"))) return failure("ENCOUNTER_UNSUPPORTED", "Item discard selection is not implemented.");
+      if (encounterItemAssetIds(player, content).length) return failure("ENCOUNTER_CONTENT_MISSING", "Choose the Item Asset to discard first.");
       continue;
     }
     if (effect.kind === "relocate_encountered_clue") {
@@ -1943,6 +1943,14 @@ function continueLocationEncounter(state: GameState, content: GameContent, conte
     }
     const firstEffect = node.effects[0];
     if (!firstEffect) { pending.queue.shift(); continue; }
+    if (firstEffect.kind === "discard_item_assets") {
+      if (!encounterItemsAreConserved(next, player, content)) return failure("ENCOUNTER_CONTENT_MISSING", "Item Asset identities are inconsistent.");
+      const targets = encounterItemAssetIds(player, content);
+      if (!targets.length) { node.effects.shift(); continue; }
+      createEncounterChoice(next, context, `Choose an Item Asset to discard (${firstEffect.amount} remaining).`, targets.map(id => [id, `Discard ${id.slice("asset_".length).replaceAll("_", " ")}`]));
+      next.stateVersion = state.stateVersion;
+      return success(next, events);
+    }
     if (firstEffect.kind === "relocate_encountered_clue" && !firstEffect.locationId) {
       const targets = nearestSeaSpaces(next, firstEffect.markerId, content);
       if (!targets.length) return failure("ENCOUNTER_CONTENT_MISSING", "No reachable Sea space exists for this Clue.");
@@ -2894,6 +2902,13 @@ export function executeCommand(
           pending.queue.splice(0, 1, { kind: "effects", effects: node.cost.map(effect => effect.kind === "delay" || effect.kind === "condition" ? { ...effect, accepted: true } : effect) }, node.reward);
         } else if (selected === "skip") pending.queue.shift();
         else return failure("INVALID_DECISION_SELECTION", "Choose whether to pay the printed cost.");
+      } else if (node.kind === "effects" && node.effects[0]?.kind === "discard_item_assets") {
+        if (!encounterItemAssetIds(actor, content).includes(selected) || !encounterItemsAreConserved(next, actor, content)) return failure("INVALID_DECISION_SELECTION", "That physical Item Asset cannot satisfy this discard.");
+        actor.assetIds.splice(actor.assetIds.indexOf(selected), 1);
+        next.assetDiscardIds.push(selected);
+        if (node.effects[0].amount === 2) node.effects[0].amount = 1;
+        else node.effects.shift();
+        events.push({ type: "ASSET_DISCARDED", playerId: actorPlayerId, assetId: selected, reason: "encounter" });
       } else if (node.kind === "effects" && node.effects[0]?.kind === "discard") {
         const effect = node.effects[0];
         const definition = content.conditions?.find(card => card.id === selected);
