@@ -17,6 +17,7 @@ import { calculateDicePool, countTestSuccesses } from "./skill-tests.js";
 import { loseResource, recoverResource } from "./resources.js";
 import { buildArtifactDeck, buildGateStack, buildLocationEncounterDecks, buildMonsterPool, buildMythosDeck, type AncientSetup, type LocationEncounterDeckId, type EncounterDeckId, type ResearchEncounterDeckId, type MythosColor } from "./setup.js";
 import { bindResearchInstruction } from "./research-instructions.js";
+import { nonCombatEncounterAuraBonus, supportsEncounterAssets } from "./encounter-assets.js";
 import { resolveStandardCombat, type CombatCheck } from "./combat.js";
 import { conditionSuccessThreshold, publicConditionId, resolveBoonBaneGain } from "./conditions.js";
 import { advanceOmenTrack, omenTrack } from "./omen.js";
@@ -212,6 +213,7 @@ export interface InvestigatorSetup {
 }
 
 export type AssetEngineEffect =
+  | { type: "city_test_aura"; amount: 1 }
   | { type: "skill_bonus"; skill: "influence"; amount: 1 }
   | { type: "acquire_six_counts_as_two" }
   | { type: "rest_recover_additional_sanity"; amount: 1 }
@@ -238,7 +240,7 @@ export interface GameContent {
   referenceCards?: readonly { playerCount: number; spawnClues: number; monsterSurge?: number; spawnGates?: number }[];
   map: GameMap;
   investigators: Readonly<Partial<Record<InvestigatorId, InvestigatorSetup>>>;
-  assets: readonly { id: string; value: number; traits?: readonly string[]; engineEffects: readonly AssetEngineEffect[] }[];
+  assets: readonly { id: string; value: number; traits?: readonly string[]; engineEffects: readonly AssetEngineEffect[]; nonCombatEncounterSupport?: "unsupported" | "irrelevant" | "city_test_aura" }[];
   mysteryIdsByAncientOne: Readonly<Partial<Record<AncientOneId, readonly string[]>>>;
   mysteryTargetsById: Readonly<Record<string, "investigator_count" | "half_investigator_count" | "twice_investigator_count" | "one">>;
 }
@@ -1703,8 +1705,7 @@ function applyLocationEncounterEffects(
       continue;
     }
     if (effect.kind === "discard_item_assets") {
-      // Live Research currently rejects every carried Asset before rolling.
-      if (player.assetIds.length) return failure("ENCOUNTER_UNSUPPORTED", "Item discard selection is not implemented.");
+      if (player.assetIds.some(id => content.assets.find(asset => asset.id === id)?.traits?.includes("item"))) return failure("ENCOUNTER_UNSUPPORTED", "Item discard selection is not implemented.");
       continue;
     }
     if (effect.kind === "relocate_encountered_clue") {
@@ -1921,7 +1922,8 @@ function continueLocationEncounter(state: GameState, content: GameContent, conte
     if (node.kind === "test") {
       const investigator = player.investigatorId && content.investigators[player.investigatorId];
       if (!investigator) return failure("INVESTIGATOR_CONTENT_MISSING", "Investigator skills are unavailable.");
-      const dicePool = calculateDicePool({ skill: node.skill, baseSkill: investigator.skills[node.skill], improvement: player.skillImprovements[node.skill], modifier: node.modifier }).dicePool;
+      const dicePool = calculateDicePool({ skill: node.skill, baseSkill: investigator.skills[node.skill], improvement: player.skillImprovements[node.skill], modifier: node.modifier,
+        otherBonuses: [nonCombatEncounterAuraBonus(next, player, content)] }).dicePool;
       const dice = Array.from({ length: dicePool }, () => context.rollDie());
       const successes = countTestSuccesses(dice, conditionSuccessThreshold(player.conditionIds ?? []));
       pending.dice = dice;
@@ -2040,7 +2042,7 @@ export function resolveResearchEncounter(state: GameState, playerId: string, mar
   const card = content.researchEncounters?.find(card => card.id === cardId && card.deck === deck);
   const section = content.map.locationTypes[player.locationId!];
   const instruction = bindResearchInstruction(card?.sections[section ?? ""], markerId);
-  if (!instruction || player.assetIds.length) return failure("ENCOUNTER_UNSUPPORTED", "This Research section needs unsupported effects or possession bonuses.");
+  if (!instruction || !supportsEncounterAssets(state, player, content, instruction)) return failure("ENCOUNTER_UNSUPPORTED", "This Research section needs unsupported effects or possession bonuses.");
   const ambushes = encounterAmbushes(instruction);
   if (ambushes.length && player.artifactIds?.length) return failure("MONSTER_EFFECT_UNSUPPORTED", "Ambush Artifact bonuses are not implemented.");
   for (const ambush of ambushes) {
@@ -2068,7 +2070,7 @@ export function resolveLocationEncounter(state: GameState, playerId: string, dec
   if (!card || !player.locationId) return failure("ENCOUNTER_CONTENT_MISSING", "The top encounter card or location is missing.");
   const section = regionalEncounterDeckByCity[player.locationId] === deck ? player.locationId : content.map.locationTypes[player.locationId];
   const instruction = parseLocationEncounterInstruction(card.sections?.[section ?? ""]);
-  if (!instruction || player.assetIds.length) {
+  if (!instruction || !supportsEncounterAssets(state, player, content, instruction)) {
     return failure("ENCOUNTER_UNSUPPORTED", "This encounter needs effects or possession bonuses that are not executable yet.");
   }
   const next = structuredClone(state);

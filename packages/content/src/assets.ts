@@ -11,6 +11,7 @@ export const assetAbilityTypes = [
 export type AssetAbilityType = (typeof assetAbilityTypes)[number];
 
 export type AssetEngineEffect =
+  | { type: "city_test_aura"; amount: 1 }
   | { type: "skill_bonus"; skill: "influence"; amount: 1 }
   | { type: "acquire_six_counts_as_two" }
   | { type: "rest_recover_additional_sanity"; amount: 1 }
@@ -27,6 +28,8 @@ export interface AssetCardData {
   abilityType: AssetAbilityType;
   effectText: string;
   engineEffects: readonly AssetEngineEffect[];
+  /** Verified applicability to ordinary location/Research, not combat or Other World. */
+  nonCombatEncounterSupport: "unsupported" | "irrelevant" | "city_test_aura";
   sourceImageFilename: string;
   imageUrl: string;
   backImageUrl: "/cards/assets/back.webp";
@@ -39,11 +42,19 @@ const engineEffectsByAssetId: Readonly<Partial<Record<AssetId, readonly AssetEng
   asset_fine_clothes: [{ type: "acquire_six_counts_as_two" }],
   asset_king_james_bible: [{ type: "rest_recover_additional_sanity", amount: 1 }],
   asset_private_care: [{ type: "on_gain_recover_all_and_discard" }],
+  asset_urban_guide: [{ type: "city_test_aura", amount: 1 }],
 };
+
+// Explicitly scan-verified scopes. An empty effect list alone never means safe.
+const nonCombatIrrelevantAssetIds: readonly string[] = [
+  "asset_arcane_manuscripts", "asset_fine_clothes", "asset_king_james_bible",
+  "asset_protective_amulet", "asset_38_revolver", "asset_45_automatic", "asset_holy_cross",
+];
 
 export const baseGameAssets: readonly AssetCardData[] = baseGameAssetDefinitions.map((definition) => ({
   ...definition,
   engineEffects: engineEffectsByAssetId[definition.id] ?? [],
+  nonCombatEncounterSupport: definition.id === "asset_urban_guide" ? "city_test_aura" : nonCombatIrrelevantAssetIds.includes(definition.id) ? "irrelevant" : "unsupported",
   imageUrl: `/cards/assets/${definition.id.slice("asset_".length)}.webp`,
   backImageUrl: "/cards/assets/back.webp",
   verification: "artwork_verified_from_scan",
@@ -58,11 +69,13 @@ const assetSchema = z.object({
   abilityType: z.enum(assetAbilityTypes),
   effectText: z.string().min(1),
   engineEffects: z.array(z.discriminatedUnion("type", [
+    z.object({ type: z.literal("city_test_aura"), amount: z.literal(1) }).strict(),
     z.object({ type: z.literal("skill_bonus"), skill: z.literal("influence"), amount: z.literal(1) }).strict(),
     z.object({ type: z.literal("acquire_six_counts_as_two") }).strict(),
     z.object({ type: z.literal("rest_recover_additional_sanity"), amount: z.literal(1) }).strict(),
     z.object({ type: z.literal("on_gain_recover_all_and_discard") }).strict(),
   ])),
+  nonCombatEncounterSupport: z.enum(["unsupported", "irrelevant", "city_test_aura"]),
   sourceImageFilename: z.string().regex(/^\d{2}_[a-z0-9_]+\.jpg$/),
   imageUrl: z.string().regex(/^\/cards\/assets\/[a-z0-9_]+\.webp$/),
   backImageUrl: z.literal("/cards/assets/back.webp"),
