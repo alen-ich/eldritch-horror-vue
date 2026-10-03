@@ -41,6 +41,7 @@ interface ClientPlayerState {
 }
 
 interface ClientGameState {
+  activeGateIds?: string
   monsters?: string
   encounteredMonsterInstanceIds?: string
   investigatorLifecycle?: string
@@ -99,6 +100,7 @@ const room = shallowRef<Room<unknown, ClientGameState>>()
 const players = ref<ClientPlayerState[]>([])
 const stateVersion = ref(0)
 const phase = ref('lobby')
+const activeGateIds = ref<string[]>([])
 const ancientOneId = ref('')
 const currentMythosCardId = ref('')
 const currentMythosIconIndex = ref(0)
@@ -141,6 +143,7 @@ export function useGameRoom() {
     tradeOffer.value = state.tradeOffer ? JSON.parse(state.tradeOffer) as TradeOffer : undefined
     stateVersion.value = state.stateVersion ?? 0
     phase.value = state.phase ?? 'lobby'
+    activeGateIds.value = state.activeGateIds ? state.activeGateIds.split(',') : []
     ancientOneId.value = state.ancientOneId ?? ''
     currentMythosCardId.value = state.currentMythosCardId ?? ''
     currentMythosIconIndex.value = state.currentMythosIconIndex ?? 0
@@ -279,6 +282,7 @@ export function useGameRoom() {
   }
 
   return {
+    activeGateIds: readonly(activeGateIds),
     investigatorLifecycle: readonly(investigatorLifecycle),
     usedArtifactActionIds: readonly(usedArtifactActionIds),
     doom: readonly(doom), omen: readonly(omen),

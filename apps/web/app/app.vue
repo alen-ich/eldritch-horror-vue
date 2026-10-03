@@ -55,6 +55,7 @@ const encounterDecks = computed(() => {
     : [{ id: 'general' as const, label: 'General' }]
 })
 const researchClues = computed(() => game.boardClues.value.filter(clue => clue.locationId === me.value?.locationId))
+const otherWorldGates = computed(() => game.activeGateIds.value.filter(id => gateById[id]?.locationId === me.value?.locationId))
 const latestEncounterCard = computed(() => [...baseGameScannedLocationEncounters, ...baseGameScannedTokenEncounters].find(card => card.id === (game.currentLocationEncounterCardId.value || game.lastLocationEncounterCardId.value)))
 const isDetained = computed(() => (me.value?.conditionIds?.split(',') ?? []).some(id => conditionById[id]?.kind === 'detained'))
 const canUseNormalActions = computed(() => isMyTurn.value && !isDetained.value)
@@ -475,6 +476,7 @@ async function copyInvite() {
             <template v-if="isMyEncounter && myEncounterMonsters.length"><button v-for="monster in myEncounterMonsters" :key="monster.id" :disabled="game.encounteredMonsterInstanceIds.value.includes(monster.id)" @click="game.send({ type: 'FIGHT_MONSTER', monsterInstanceId: monster.id })">{{ monsterById[monster.monsterId]?.name ?? monster.monsterId }} · {{ monster.damage }} damage{{ game.encounteredMonsterInstanceIds.value.includes(monster.id) ? ' · fought' : '' }}</button></template>
             <template v-if="isMyEncounter && !myEncounterMonsters.length"><button v-for="deck in encounterDecks" :key="deck.id" @click="game.send({ type: 'RESOLVE_LOCATION_ENCOUNTER', deck: deck.id })">{{ deck.label }}</button></template>
             <template v-if="isMyEncounter && !myEncounterMonsters.length"><button v-for="(clue, index) in researchClues" :key="clue.id" @click="game.send({ type: 'RESOLVE_RESEARCH_ENCOUNTER', clueId: clue.id })">Research Clue {{ index + 1 }}</button></template>
+            <template v-if="isMyEncounter && !myEncounterMonsters.length"><button v-for="(gateId, index) in otherWorldGates" :key="gateId" @click="game.send({ type: 'RESOLVE_OTHER_WORLD_ENCOUNTER', gateId })">Other World · Gate {{ index + 1 }}</button></template>
             <img v-if="latestEncounterCard" :src="latestEncounterCard.imageUrl" :alt="`${game.currentLocationEncounterCardId.value ? 'Active' : 'Last resolved'} encounter: ${latestEncounterCard.id}`" />
           </section>
           <section v-if="game.phase.value === 'mythos'" class="encounter-panel mythos-panel" aria-label="Mythos resolution">

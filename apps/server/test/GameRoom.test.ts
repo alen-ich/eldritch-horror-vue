@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { ColyseusTestServer, boot } from "@colyseus/testing";
 import { gainNamedArtifact, type GameState, type GameContent } from "@eldritch/engine";
-import { baseGameArtifacts, baseGameClues } from "@eldritch/content";
+import { baseGameArtifacts, baseGameClues, baseGameGates, baseGameScannedTokenEncounters } from "@eldritch/content";
 import {
   commandErrorMessageType,
   commandMessageType,
@@ -19,6 +19,75 @@ describe("authoritative game room", () => {
   before(async () => { colyseus = await boot(appConfig); });
   after(async () => colyseus.shutdown());
   beforeEach(async () => colyseus.cleanup());
+
+  it("binds Other World tests to the original Gate across private restoration and owner-only decisions", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "encounter"; state.ancientOneId = "azathoth"; state.doom = 15;
+    state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
+    Object.assign(state.players[0]!, { investigatorId: "trish_scarborough", locationId: "arkham", health: 7, sanity: 5, maxHealth: 7, maxSanity: 5, clues: 1, assetIds: [] });
+    Object.assign(state.players[1]!, { locationId: "london", clues: 0, assetIds: [] });
+    state.activeGateIds = ["gate_arkham"]; state.discardedGateIds = [];
+    state.privateState.deckOrderById.gates = baseGameGates.filter(gate => gate.id !== "gate_arkham").map(gate => gate.id);
+    const cardId = "encounter_other_world_02";
+    state.privateState.deckOrderById["encounter:other_world"] = [cardId, ...baseGameScannedTokenEncounters.filter(card => card.deck === "other_world" && card.id !== cardId).map(card => card.id)];
+    state.privateState.tokenPoolById.clues = baseGameClues.filter(clue => clue.id !== "clue_arkham").map(clue => clue.id);
+    state.privateState.tokenPoolById.clue_discard = [];
+    state.privateState.tokenPoolById[`held_clues:${state.players[0]!.id}`] = ["clue_arkham"];
+    state.privateState.tokenPoolById[`held_clues:${state.players[1]!.id}`] = [];
+    internal.applyEngineState(state);
+    const initialMessage = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "RESOLVE_OTHER_WORLD_ENCOUNTER", gateId: "gate_arkham" }); await room.waitForMessage(commandMessageType);
+    await initialMessage;
+    const initial = internal.toEngineState();
+    assert.equal(initial.activeTest?.skill, "will"); assert.deepEqual(initial.activeGateIds, ["gate_arkham"]);
+    initial.activeTest!.dice = [6]; initial.activeTest!.successes = 1;
+    const restoredMessage = host.waitForMessage(pendingDecisionMessageType);
+    internal.applyEngineState(JSON.parse(JSON.stringify(initial))); const restored = await restoredMessage as PendingDecision;
+    const denied = guest.waitForMessage(commandErrorMessageType);
+    sendCommand(room, guest, { type: "RESOLVE_DECISION", decisionId: restored.id, selectedOptionIds: [] }); await room.waitForMessage(commandMessageType);
+    assert.equal((await denied as { code: string }).code, "NOT_DECISION_OWNER");
+    const followMessage = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: restored.id, selectedOptionIds: [] }); await room.waitForMessage(commandMessageType);
+    await followMessage;
+    const follow = internal.toEngineState();
+    assert.equal(follow.activeTest?.skill, "observation"); assert.deepEqual(follow.activeGateIds, []); assert.deepEqual(follow.discardedGateIds, ["gate_arkham"]);
+    assert.equal(follow.pendingLocationEncounter?.gateClosed, true);
+    assert.equal(JSON.stringify(room.state).includes("gateClosed"), false);
+    assert.equal(JSON.stringify(room.state).includes("encounter_other_world_24"), false);
+    follow.activeTest!.dice = follow.activeTest!.dice.map(() => 6); follow.activeTest!.successes = follow.activeTest!.dice.length;
+    const followRestoredMessage = host.waitForMessage(pendingDecisionMessageType);
+    internal.applyEngineState(JSON.parse(JSON.stringify(follow))); const followRestored = await followRestoredMessage as PendingDecision;
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: followRestored.id, selectedOptionIds: [] }); await room.waitForMessage(commandMessageType);
+    const after = internal.toEngineState();
+    assert.equal(after.players[0]!.clues, 3); assert.equal(after.activePlayerId, state.players[1]!.id);
+    assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.doom, 15);
+    assert.deepEqual(after.discardedGateIds, ["gate_arkham"]);
+    assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.at(-1), cardId);
+    assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 24);
+  });
+
+  it("rejects an unsupported Other World top card without revealing it or changing components", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "encounter"; state.ancientOneId = "azathoth";
+    state.activePlayerId = state.players[0]!.id;
+    Object.assign(state.players[0]!, { investigatorId: "trish_scarborough", locationId: "arkham", health: 7, sanity: 5, assetIds: [] });
+    state.activeGateIds = ["gate_arkham"]; state.discardedGateIds = [];
+    state.privateState.deckOrderById.gates = baseGameGates.filter(gate => gate.id !== "gate_arkham").map(gate => gate.id);
+    state.privateState.deckOrderById["encounter:other_world"] = baseGameScannedTokenEncounters.filter(card => card.deck === "other_world").map(card => card.id);
+    internal.applyEngineState(state);
+    const before = internal.toEngineState(); const error = host.waitForMessage(commandErrorMessageType);
+    sendCommand(room, host, { type: "RESOLVE_OTHER_WORLD_ENCOUNTER", gateId: "gate_arkham" }); await room.waitForMessage(commandMessageType);
+    assert.equal((await error as { code: string }).code, "ENCOUNTER_UNSUPPORTED");
+    assert.deepEqual(internal.toEngineState(), before);
+    assert.equal(JSON.stringify(room.state).includes("encounter_other_world_01"), false);
+  });
 
   for (const source of ["artifact_cultes_des_goules", "artifact_de_vermis_mysteriis"] as const) {
     it(`restores Asset-modified Lore and authorized payment for ${source}`, async () => {
