@@ -95,9 +95,12 @@ export function parseLocationEncounterInstruction(value: unknown, depth = 0): Lo
     const reward = parseLocationEncounterInstruction(value.reward, depth + 1);
     const decline = "decline" in value ? parseLocationEncounterInstruction(value.decline, depth + 1) : undefined;
     if ("decline" in value && !decline) return undefined;
-    if (cost?.kind === "effects" && reward && cost.effects.every(effect => effect.kind === "delay" || effect.kind === "condition"
-      || (effect.kind === "clues" || effect.kind === "health" || effect.kind === "sanity") && effect.amount <= 0)) {
-      return { kind: "optional", cost: cost.effects, reward, ...(decline ? { decline } : {}) };
+    if (cost?.kind === "effects" && reward) {
+      // Item payment is a single atomic owner selection, never a partially paid bundle.
+      const singleItem = cost.effects.length === 1 && cost.effects[0]?.kind === "discard_item_assets" && cost.effects[0].amount === 1;
+      const ordinaryCost = cost.effects.every(effect => effect.kind === "delay" || effect.kind === "condition"
+        || (effect.kind === "clues" || effect.kind === "health" || effect.kind === "sanity") && effect.amount <= 0);
+      if (singleItem || ordinaryCost) return { kind: "optional", cost: cost.effects, reward, ...(decline ? { decline } : {}) };
     }
   }
   return undefined;

@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { baseGameAssets } from "../../content/src/assets.js";
 import { baseGameOtherWorldEncounterRules } from "../../content/src/other-world-encounter-rules.js";
 import { parseLocationEncounterInstruction } from "../src/encounter-instructions.js";
 import { createDeterministicEngineContext, executeCommand, projectStateForPlayer, resolveOtherWorldEncounter, type GameContent, type GameState } from "../src/index.js";
 
-const ids = ["encounter_other_world_02", "encounter_other_world_01", "encounter_other_world_04", "encounter_other_world_03", "encounter_other_world_05", "encounter_other_world_07", "encounter_other_world_08", "encounter_other_world_09", "encounter_other_world_10", "encounter_other_world_11", "encounter_other_world_12", "encounter_other_world_13", "encounter_other_world_14", "encounter_other_world_15", "encounter_other_world_16", "encounter_other_world_17"];
+const ids = ["encounter_other_world_02", "encounter_other_world_01", "encounter_other_world_04", "encounter_other_world_03", "encounter_other_world_05", "encounter_other_world_07", "encounter_other_world_08", "encounter_other_world_09", "encounter_other_world_10", "encounter_other_world_11", "encounter_other_world_12", "encounter_other_world_13", "encounter_other_world_14", "encounter_other_world_15", "encounter_other_world_16", "encounter_other_world_17", "encounter_other_world_18"];
 const content: GameContent = {
   otherWorldEncounters: baseGameOtherWorldEncounterRules, otherWorldEncounterIds: ids,
   conditions: [{ id: "condition_paranoia_01", kind: "paranoia", trait: "madness" }, { id: "condition_paranoia_02", kind: "paranoia", trait: "madness" }, { id: "condition_hallucinations_01", kind: "hallucinations", trait: "madness" }, { id: "condition_amnesia_01", kind: "amnesia", trait: "madness" }],
@@ -30,6 +31,157 @@ function accepted(result: ReturnType<typeof resolveOtherWorldEncounter>) {
   if (!result.ok) throw new Error(result.error.message);
   return result;
 }
+
+describe("Other World card 18: The Underworld", () => {
+  const leg1 = "condition_leg_injury_01", leg2 = "condition_leg_injury_02", back = "condition_back_injury_01";
+  const itemContent: GameContent = { ...content, assets: baseGameAssets, conditions: [...content.conditions!,
+    { id: leg1, kind: "leg_injury", trait: "injury" }, { id: leg2, kind: "leg_injury", trait: "injury" }, { id: back, kind: "back_injury", trait: "injury" }] };
+  function card18(items: string[] = [], clues = 0) {
+    const before = state(clues); before.players[0]!.assetIds = [...items];
+    before.privateState.deckOrderById["encounter:other_world"] = [ids[16]!, ...ids.filter(id => id !== ids[16])];
+    before.privateState.tokenPoolById["condition:leg_injury"] = [leg1, leg2]; before.privateState.tokenPoolById["condition:back_injury"] = [back];
+    return before;
+  }
+  function resolve(before: GameState, dice: number[], tokenIndexes = [0]) {
+    return resolveOtherWorldEncounter(before, "host", "gate_arkham", itemContent, createDeterministicEngineContext({ dice, tokenIndexes, ids: ["initial", "choice", "follow", "later"] }));
+  }
+  function choose(before: GameState, selection: string[] = [], dice: number[] = [], owner = "host") {
+    return executeCommand(JSON.parse(JSON.stringify(before)), owner, { type: "RESOLVE_DECISION", decisionId: before.pendingDecision!.id, selectedOptionIds: selection }, itemContent, rng(dice));
+  }
+  function offer(items = ["asset_38_revolver", "asset_45_automatic"]) { return accepted(resolve(card18(items), [1])).state; }
+  it.each([true, false])("Initial success tests Will and closes only on its success (%s)", pass => {
+    const initial = accepted(resolve(card18([], 1), [6]));
+    expect(initial.state.activeTest).toMatchObject({ skill: "influence", modifier: 0 });
+    const follow = accepted(choose(initial.state, [], pass ? [6, 6] : [1, 1]));
+    expect(follow.state.activeTest).toMatchObject({ skill: "will", modifier: 0, dicePool: 2 });
+    expect(follow.state.activeGateIds).toEqual(["gate_arkham"]);
+    const result = accepted(choose(follow.state));
+    expect(result.state.activeGateIds).toEqual(pass ? [] : ["gate_arkham"]);
+    expect(result.state.players[0]).toMatchObject({ health: 7, sanity: pass ? 5 : 4, clues: 1 });
+    expect(result.state.players[0]?.conditionIds ?? []).toEqual([]); expect(result.state.activePlayerId).toBe("guest");
+  });
+  it.each(["asset_38_revolver", "asset_45_automatic"])("owner selects exactly one physical Item (%s), payment precedes closure", id => {
+    const before = offer(); const snapshot = structuredClone(before);
+    expect(before.pendingDecision?.optionIds).toEqual(["asset_38_revolver", "asset_45_automatic", "skip"]);
+    expect(choose(before, [id], [], "guest")).toMatchObject({ ok: false, error: { code: "NOT_DECISION_OWNER" } });
+    const result = accepted(choose(before, [id]));
+    expect(result.state.players[0]?.assetIds).toEqual(snapshot.players[0]!.assetIds.filter(candidate => candidate !== id));
+    expect(result.state.assetDiscardIds).toEqual([id]); expect(result.state.activeGateIds).toEqual([]);
+    expect(result.state.players[0]).toMatchObject({ health: 7, sanity: 5 }); expect(result.state.players[0]?.conditionIds ?? []).toEqual([]);
+    expect(result.events.findIndex(event => event.type === "ASSET_DISCARDED")).toBeLessThan(result.events.findIndex(event => event.type === "GATE_CLOSED"));
+    expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.activePlayerId).toBe("guest");
+    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual([...ids.filter(id => id !== ids[16]), ids[16]]); expect(before).toEqual(snapshot);
+  });
+  it("refusal retains Items, loses Health then privately draws an Injury", () => {
+    const result = accepted(choose(offer(), ["skip"]));
+    expect(result.state.players[0]).toMatchObject({ health: 6, sanity: 5, assetIds: ["asset_38_revolver", "asset_45_automatic"], conditionIds: [leg1] });
+    expect(result.state.activeGateIds).toEqual(["gate_arkham"]); expect(result.state.assetDiscardIds).toEqual([]);
+    expect(result.state.privateState.tokenPoolById["condition:leg_injury"]).toEqual([leg2]);
+    expect(result.events.at(-2)).toMatchObject({ type: "CONDITION_GAINED", conditionId: "condition_leg_injury" });
+    expect(JSON.stringify(projectStateForPlayer(result.state, "guest"))).not.toContain(leg1);
+  });
+  it.each([{ assets: [] }, { assets: ["asset_puzzle_box"] }, { assets: ["asset_witch_doctor"] }])("no Item cannot pay, including a non-Item Asset ($assets)", ({ assets }) => {
+    const result = accepted(resolve(card18(assets), [1]));
+    expect(result.state.players[0]).toMatchObject({ health: 6, sanity: 5, assetIds: assets, conditionIds: [leg1] });
+    expect(result.state.activeGateIds).toEqual(["gate_arkham"]); expect(result.state.pendingDecision).toBeUndefined();
+  });
+  it("trait draw includes all available Injury copies, not a hard-coded named Injury", () => {
+    const result = accepted(resolve(card18(), [1], [2])); expect(result.state.players[0]?.conditionIds).toEqual([back]);
+  });
+  it("empty initialized Injury supply grants nothing after Health loss", () => {
+    const before = card18(); before.privateState.tokenPoolById["condition:leg_injury"] = []; before.privateState.tokenPoolById["condition:back_injury"] = [];
+    const result = accepted(resolve(before, [1])); expect(result.state.players[0]?.health).toBe(6); expect(result.state.players[0]?.conditionIds ?? []).toEqual([]);
+  });
+  it("drawing an already held kind does not duplicate it or substitute another kind", () => {
+    const before = card18(); before.players[0]!.conditionIds = [leg1]; before.privateState.tokenPoolById["condition:leg_injury"] = [leg2];
+    const result = accepted(resolve(before, [1])); expect(result.state.players[0]?.conditionIds).toEqual([leg1]);
+    expect(result.state.privateState.tokenPoolById["condition:leg_injury"]).toEqual([leg2]);
+  });
+  it("a different held Injury does not prevent gaining the drawn kind", () => {
+    const before = card18(); before.players[0]!.conditionIds = [back]; before.privateState.tokenPoolById["condition:back_injury"] = [];
+    expect(accepted(resolve(before, [1])).state.players[0]?.conditionIds).toEqual([back, leg1]);
+  });
+  it.each(["missing", "unknown", "wrong-kind", "duplicate", "held-overlap", "unknown-held"])("invalid Injury %s rejects before Initial RNG and restored payment", field => {
+    const mutate = (before: GameState) => {
+      if (field === "missing") delete before.privateState.tokenPoolById["condition:back_injury"];
+      if (field === "unknown") before.privateState.tokenPoolById["condition:leg_injury"] = ["unknown"];
+      if (field === "wrong-kind") before.privateState.tokenPoolById["condition:leg_injury"] = [back];
+      if (field === "duplicate") before.privateState.tokenPoolById["condition:leg_injury"] = [leg1, leg1];
+      if (field === "held-overlap") before.players[1]!.conditionIds = [leg1];
+      if (field === "unknown-held") before.players[0]!.conditionIds = ["unknown"];
+    };
+    const before = card18(); mutate(before); const snapshot = structuredClone(before);
+    expect(resolve(before, []).ok).toBe(false); expect(before).toEqual(snapshot);
+    const restored = offer(); mutate(restored); const restoredSnapshot = structuredClone(restored);
+    expect(choose(restored, ["asset_38_revolver"]).ok).toBe(false); expect(restored).toEqual(restoredSnapshot);
+  });
+  it.each(["missing", "other-seat", "deck", "reserve", "discard", "sheet", "gate", "location", "non-item", "accept"])("restored Item choice rejects changed %s atomically", field => {
+    const before = offer();
+    if (field === "missing") before.players[0]!.assetIds = [];
+    if (field === "other-seat") { before.players[0]!.assetIds = []; before.players[1]!.assetIds = ["asset_38_revolver"]; }
+    if (field === "deck") before.privateState.deckOrderById.assets = ["asset_38_revolver"];
+    if (field === "reserve") before.reserveAssetIds = ["asset_38_revolver"];
+    if (field === "discard") before.assetDiscardIds = ["asset_38_revolver"];
+    if (field === "sheet") before.defeatedInvestigators = [{ investigatorId: "mark_harrigan", locationId: "london", cause: "health", assetIds: ["asset_38_revolver"], clues: 0, travelTickets: [] }];
+    if (field === "gate") { before.activeGateIds = []; before.discardedGateIds = ["gate_arkham"]; }
+    if (field === "location") before.players[0]!.locationId = "london";
+    const snapshot = structuredClone(before);
+    expect(choose(before, [field === "non-item" ? "asset_fine_clothes" : field === "accept" ? "accept" : "asset_38_revolver"]).ok).toBe(false); expect(before).toEqual(snapshot);
+  });
+  it.each(["asset_personal_assistant", "asset_bandages", "artifact_gate_box", "artifact_the_silver_key"])("applicable possession %s remains guarded before RNG", id => {
+    const before = card18(); if (id.startsWith("asset_")) before.players[0]!.assetIds = [id]; else before.players[0]!.artifactIds = [id];
+    expect(resolve(before, []).ok).toBe(false);
+  });
+  it("a colleague's Item is not offered for the actor's payment", () => {
+    const before = card18(); before.players[1]!.locationId = "arkham"; before.players[1]!.assetIds = ["asset_38_revolver"];
+    const result = accepted(resolve(before, [1])); expect(result.state.players[0]?.health).toBe(6); expect(result.state.players[1]?.assetIds).toEqual(["asset_38_revolver"]);
+  });
+  it("final-Clue reroll failure continues to Item payment without a new test", () => {
+    const initial = accepted(resolve(card18(["asset_38_revolver"], 1), [1]));
+    const follow = accepted(choose(initial.state, ["die-0"], [1]));
+    expect(follow.state.players[0]?.clues).toBe(0); expect(follow.state.pendingDecision?.optionIds).toEqual(["asset_38_revolver", "skip"]);
+    expect(accepted(choose(follow.state, ["asset_38_revolver"])).state.activeGateIds).toEqual([]);
+  });
+  it.each(["no-item", "refusal", "will"])("lethal %s stops before Injury and handoff, cycling once", path => {
+    const before = card18(path === "refusal" ? ["asset_38_revolver"] : []); before.players[0]!.health = 1; before.players[0]!.sanity = 1;
+    let result = accepted(resolve(before, path === "will" ? [6, 1, 1] : [1]));
+    if (path === "refusal") result = accepted(choose(result.state, ["skip"]));
+    expect(result.state.pendingDefeat).toBeDefined(); expect(result.state.players[0]?.conditionIds ?? []).toEqual([]);
+    expect(result.state.activePlayerId).toBe("host"); expect(result.state.pendingLocationEncounter).toBeUndefined();
+    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual([...ids.filter(id => id !== ids[16]), ids[16]]);
+  });
+  it("one Health can still pay an Item and close without damage", () => {
+    const before = offer(); before.players[0]!.health = 1;
+    const result = accepted(choose(before, ["asset_38_revolver"])); expect(result.state.players[0]?.health).toBe(1); expect(result.state.activeGateIds).toEqual([]);
+  });
+  it("multiple selections cannot pay twice or combine payment with refusal", () => {
+    const before = offer(); const snapshot = structuredClone(before);
+    expect(choose(before, ["asset_38_revolver", "skip"]).ok).toBe(false); expect(before).toEqual(snapshot);
+  });
+  it("duplicate irrelevant Item rejects before Initial RNG", () => {
+    const before = card18(["asset_38_revolver"]); before.reserveAssetIds = ["asset_38_revolver"];
+    const snapshot = structuredClone(before); expect(resolve(before, []).ok).toBe(false); expect(before).toEqual(snapshot);
+  });
+  it.each(["missing", "duplicate"])("Injury catalog %s rejects before RNG", problem => {
+    const invalidContent = { ...itemContent, conditions: problem === "missing" ? content.conditions : [...itemContent.conditions!, itemContent.conditions!.at(-1)!] };
+    expect(resolveOtherWorldEncounter(card18(), "host", "gate_arkham", invalidContent, rng([])).ok).toBe(false);
+  });
+  it("Azathoth lethal refusal ends the game without drawing Injury", () => {
+    const before = offer(); before.doom = 1; before.players[0]!.health = 1;
+    const result = accepted(choose(before, ["skip"])); expect(result.state.gameResult).toBe("investigators_lose");
+    expect(result.state.players[0]?.conditionIds ?? []).toEqual([]); expect(result.state.activePlayerId).toBe("host");
+  });
+  it("unsupported awakening rejects restored refusal without damage or Injury", () => {
+    const before = offer(); before.doom = 1; before.ancientOneId = "cthulhu"; before.players[0]!.health = 1;
+    const snapshot = structuredClone(before); expect(choose(before, ["skip"]).ok).toBe(false); expect(before).toEqual(snapshot);
+  });
+  it("Item cost parser rejects mixed and multi-card costs instead of partial payment", () => {
+    const node = { kind: "optional", cost: [{ kind: "discard_item_assets", amount: 1 }], reward: { kind: "effects", effects: [] } };
+    expect(parseLocationEncounterInstruction(node)).toBeDefined();
+    expect(parseLocationEncounterInstruction({ ...node, cost: [{ kind: "discard_item_assets", amount: 2 }] })).toBeUndefined();
+    expect(parseLocationEncounterInstruction({ ...node, cost: [...node.cost, { kind: "clues", amount: -1 }] })).toBeUndefined();
+  });
+});
 
 describe("Other World card 17: Lost Carcosa", () => {
   function card17(clues = 0) {

@@ -423,15 +423,19 @@ export function gainCondition(state: GameState, playerId: string, kind: string, 
   const player = state.players.find(candidate => candidate.id === playerId);
   if (!player) return failure("PLAYER_NOT_FOUND", "Investigator not found.");
   if (player.defeated || player.eliminated) return failure("INVESTIGATOR_DEFEATED", "No active investigator can gain a Condition.");
-  if (kind === "madness") {
-    const definitions = content.conditions?.filter(card => card.trait === "madness") ?? [];
-    if (!definitions.length) return failure("CONDITION_CONTENT_MISSING", "Madness Condition traits are missing from content.");
+  if (kind === "madness" || kind === "injury") {
+    if (kind === "injury") {
+      const invalid = validateInjurySupply(state, content);
+      if (invalid) return invalid;
+    }
+    const definitions = content.conditions?.filter(card => card.trait === kind) ?? [];
+    if (!definitions.length) return failure("CONDITION_CONTENT_MISSING", "Condition traits are missing from content.");
     const kinds = [...new Set(definitions.map(card => card.kind))];
     const pool = kinds.flatMap(conditionKind => state.privateState.tokenPoolById[conditionPoolKey(conditionKind)] ?? []);
-    if (!pool.length) return failure("CONDITION_UNAVAILABLE", "No Madness Condition remains available.");
+    if (!pool.length) return failure("CONDITION_UNAVAILABLE", "No matching trait Condition remains available.");
     const { token } = context.drawToken(pool);
     const definition = definitions.find(card => card.id === token);
-    if (!definition) return failure("CONDITION_CONTENT_MISSING", "The drawn Madness Condition is missing.");
+    if (!definition) return failure("CONDITION_CONTENT_MISSING", "The drawn trait Condition is missing.");
     if (player.conditionIds?.some(id => content.conditions?.find(card => card.id === id)?.kind === definition.kind)) {
       return success(structuredClone(state), [{ type: "CONDITION_GAIN_PREVENTED", playerId, kind: definition.kind }]);
     }
@@ -1879,6 +1883,7 @@ function applyLocationEncounterEffects(
 }
 
 function canPayEncounterCost(state: GameState, player: EnginePlayer, cost: LocationEncounterEffect[], content: GameContent): boolean {
+  if (cost.length === 1 && cost[0]?.kind === "discard_item_assets" && cost[0].amount === 1) return encounterItemsAreConserved(state, player, content) && encounterItemAssetIds(player, content).length > 0;
   const total = (kind: "clues" | "health" | "sanity") => cost.reduce((sum, effect) => sum + (effect.kind === kind ? -effect.amount : 0), 0);
   if (total("clues") > player.clues || total("health") >= (player.health ?? 0) || total("sanity") >= (player.sanity ?? 0)) return false;
   return cost.every(effect => {
@@ -1912,8 +1917,31 @@ function nearestSeaSpaces(state: GameState, markerId: string, content: GameConte
 }
 
 /** Validate state-dependent printed mechanics before dice or restored payments. */
+function validateInjurySupply(state: GameState, content: GameContent): CommandResult | undefined {
+  const definitions = content.conditions?.filter(card => card.trait === "injury") ?? [];
+  if (!definitions.length || new Set(definitions.map(card => card.id)).size !== definitions.length) return failure("CONDITION_CONTENT_MISSING", "Injury definitions are missing or duplicated.");
+  const kinds = [...new Set(definitions.map(card => card.kind))];
+  const physical: string[] = [];
+  for (const kind of kinds) {
+    const pool = state.privateState.tokenPoolById[conditionPoolKey(kind)];
+    if (!pool || pool.some(id => !definitions.some(card => card.id === id && card.kind === kind))) return failure("CONDITION_CONTENT_MISSING", "Injury supply is inconsistent.");
+    physical.push(...pool);
+  }
+  for (const player of state.players) for (const id of player.conditionIds ?? []) {
+    const card = content.conditions?.find(card => card.id === id);
+    if (!card) return failure("CONDITION_CONTENT_MISSING", "A held Condition is unknown.");
+    if (card.trait === "injury") physical.push(id);
+  }
+  if (new Set(physical).size !== physical.length) return failure("CONDITION_CONTENT_MISSING", "Injury supply overlaps holdings.");
+  return undefined;
+}
+
 function validateEncounterDynamicInstructions(state: GameState, nodes: readonly LocationEncounterInstruction[], content: GameContent): CommandResult | undefined {
   for (const node of nodes) {
+    if (node.kind === "effects" && node.effects.some(effect => effect.kind === "condition" && effect.condition === "injury")) {
+      const invalid = validateInjurySupply(state, content);
+      if (invalid) return invalid;
+    }
     if (node.kind === "test" && node.diceBonus === "held_clues") {
       if (state.players.some(player => !Number.isSafeInteger(player.clues) || player.clues < 0)) return failure("CLUE_CONTENT_MISSING", "Clue counts must be nonnegative integers.");
       const invalid = validateArtifactClues(state, content);
@@ -2012,6 +2040,14 @@ function continueLocationEncounter(state: GameState, content: GameContent, conte
           const probe = gainNamedArtifact(next, player.id, effect.id, content);
           if (probe.ok === false && probe.error.code !== "ARTIFACT_UNAVAILABLE") return probe;
         }
+      }
+      if (node.cost.length === 1 && node.cost[0]?.kind === "discard_item_assets") {
+        createEncounterChoice(next, context, "Discard one of your Item Assets to pay, or decline.", [
+          ...encounterItemAssetIds(player, content).map(id => [id, `Discard ${content.assets.find(card => card.id === id)?.name ?? id}; then ${encounterInstructionLabel(node.reward)}`] as [string, string]),
+          ["skip", node.decline ? `Decline: ${encounterInstructionLabel(node.decline)}` : "Decline"],
+        ]);
+        next.stateVersion = state.stateVersion;
+        return success(next, events);
       }
       createEncounterChoice(next, context, "You may pay the printed cost to resolve this encounter effect.", [
         ["accept", `${encounterInstructionLabel({ kind: "effects", effects: node.cost })}; then ${encounterInstructionLabel(node.reward)}`], ["skip", node.decline ? `Decline: ${encounterInstructionLabel(node.decline)}` : "Decline"],
@@ -2163,6 +2199,12 @@ function validateEncounterDoomInstructions(state: GameState, instructions: reado
   return undefined;
 }
 
+/** Only scan-verified irrelevant Assets are admitted; applicable reactions and all Artifacts stay guarded. */
+function otherWorldPossessionsAreSupported(state: GameState, player: EnginePlayer, content: GameContent): boolean {
+  return !state.players.some(holder => holder.locationId === player.locationId && !holder.defeated && !holder.eliminated &&
+    (holder.artifactIds?.length || holder.assetIds.some(id => content.assets.find(card => card.id === id)?.nonCombatEncounterSupport !== "irrelevant" || !physicalAssetIsUnique(state, id))));
+}
+
 function otherWorldBindingIsValid(state: GameState, content: GameContent): boolean {
   const pending = state.pendingLocationEncounter;
   if (!pending || pending.deck !== "other_world" || !pending.gateId || !pending.gateLocationId) return false;
@@ -2173,7 +2215,7 @@ function otherWorldBindingIsValid(state: GameState, content: GameContent): boole
   const physicalGates = [...(state.activeGateIds ?? []), ...(state.discardedGateIds ?? []), ...(state.privateState.deckOrderById.gates ?? [])];
   return state.phase === "encounter" && state.activePlayerId === pending.playerId && state.currentLocationEncounterCardId === pending.cardId && player?.locationId === pending.gateLocationId && gate?.locationId === pending.gateLocationId
     && player.investigatorId !== "akachi_onyele" && state.ancientOneId !== "yog_sothoth"
-    && !state.players.some(holder => holder.locationId === player.locationId && !holder.defeated && !holder.eliminated && (holder.assetIds.length || holder.artifactIds?.length))
+    && otherWorldPossessionsAreSupported(state, player, content)
     && Boolean(catalog?.length && new Set(catalog).size === catalog.length && order?.length && order[0] === pending.cardId && order.length === catalog.length && new Set(order).size === order.length && order.every(id => catalog.includes(id)))
     && Boolean(state.privateState.deckOrderById.gates && content.gates?.length && new Set(content.gates.map(gate => gate.id)).size === content.gates.length && physicalGates.length === content.gates.length && new Set(physicalGates).size === physicalGates.length && physicalGates.every(id => content.gates!.some(gate => gate.id === id)))
     && (pending.gateClosed === true ? !state.activeGateIds?.includes(pending.gateId) : Boolean(state.activeGateIds?.includes(pending.gateId)));
@@ -2186,7 +2228,7 @@ export function resolveOtherWorldEncounter(state: GameState, playerId: string, g
   const player = state.players.find(player => player.id === playerId)!;
   if (state.monsterLocationIds.includes(player.locationId!) || state.monsters?.some(monster => monster.locationId === player.locationId)) return failure("ENCOUNTER_UNSUPPORTED", "Monsters must be encountered before Other Worlds.");
   if (!state.activeGateIds?.includes(gateId) || !content.gates?.some(gate => gate.id === gateId && gate.locationId === player.locationId)) return failure("GATE_UNAVAILABLE", "No such Gate is on this investigator's space.");
-  if (player.investigatorId === "akachi_onyele" || state.ancientOneId === "yog_sothoth" || state.players.some(holder => holder.locationId === player.locationId && !holder.defeated && !holder.eliminated && (holder.assetIds.length || holder.artifactIds?.length))) return failure("ENCOUNTER_UNSUPPORTED", "Other World possession effects, Akachi's closure ability, and Yog-Sothoth closure interactions are not executable yet.");
+  if (player.investigatorId === "akachi_onyele" || state.ancientOneId === "yog_sothoth" || !otherWorldPossessionsAreSupported(state, player, content)) return failure("ENCOUNTER_UNSUPPORTED", "Applicable Other World possession effects, Akachi's closure ability, and Yog-Sothoth closure interactions are not executable yet.");
   const cardId = state.privateState.deckOrderById["encounter:other_world"]?.[0];
   const card = content.otherWorldEncounters?.find(card => card.id === cardId);
   const instruction = parseLocationEncounterInstruction(card?.sections.initial);
@@ -3331,7 +3373,13 @@ export function executeCommand(
         if (!option) return failure("INVALID_DECISION_SELECTION", "The printed choice is unavailable.");
         pending.queue.splice(0, 1, option);
       } else if (node.kind === "optional") {
-        if (selected === "accept") {
+        if (node.cost.length === 1 && node.cost[0]?.kind === "discard_item_assets" && selected !== "skip") {
+          if (!canPayEncounterCost(next, actor, node.cost, content) || !encounterItemAssetIds(actor, content).includes(selected)) return failure("INVALID_DECISION_SELECTION", "Choose one conserved Item Asset you own.");
+          actor.assetIds.splice(actor.assetIds.indexOf(selected), 1);
+          next.assetDiscardIds.push(selected);
+          events.push({ type: "ASSET_DISCARDED", playerId: actorPlayerId, assetId: selected, reason: "encounter" });
+          pending.queue.splice(0, 1, node.reward);
+        } else if (selected === "accept") {
           if (!canPayEncounterCost(next, actor, node.cost, content)) return failure("INVALID_DECISION_SELECTION", "The printed cost cannot be paid in full.");
           pending.queue.splice(0, 1, { kind: "effects", effects: node.cost.map(effect => effect.kind === "delay" || effect.kind === "condition" ? { ...effect, accepted: true } : effect) }, node.reward);
         } else if (selected === "skip") {

@@ -7,7 +7,8 @@ const effect = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("clues"), amount: z.number().int() }).strict(),
   z.object({ kind: z.literal("sanity"), amount: z.number().int().negative() }).strict(),
   z.object({ kind: z.literal("health"), amount: z.number().int().negative() }).strict(),
-  z.object({ kind: z.literal("condition"), condition: z.enum(["paranoia", "hallucinations", "amnesia"]) }).strict(),
+  z.object({ kind: z.literal("condition"), condition: z.enum(["paranoia", "hallucinations", "amnesia", "injury"]) }).strict(),
+  z.object({ kind: z.literal("discard_item_assets"), amount: z.literal(1) }).strict(),
   z.object({ kind: z.literal("delay") }).strict(),
   z.object({ kind: z.literal("doom_advance"), amount: z.literal(1) }).strict(),
 ]);
@@ -110,6 +111,11 @@ export const baseGameOtherWorldEncounterRules = [
     number: 17, name: "Lost Carcosa",
     initial: t("will", t("lore", e(close), e({ kind: "sanity", amount: -1 })),
       t("lore", e(close), e({ kind: "health", amount: -2 }), -1)),
+  },
+  {
+    number: 18, name: "The Underworld",
+    initial: t("influence", t("will", e(close), e({ kind: "sanity", amount: -1 })),
+      { kind: "optional", cost: [{ kind: "discard_item_assets", amount: 1 }], reward: e(close), decline: e({ kind: "health", amount: -1 }, { kind: "condition", condition: "injury" }) }),
   },
 ].map(({ number, name, initial }) => {
   const scan = baseGameScannedTokenEncounters.find(card => card.deck === "other_world" && card.number === number)!;
