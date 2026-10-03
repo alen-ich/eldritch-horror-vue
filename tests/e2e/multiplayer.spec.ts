@@ -125,6 +125,17 @@ test('Personal Assistant offers an explicit free reroll during Acquire Assets', 
   // Retry only until the owner-private test is visible; never retry a reroll itself.
   await expect(async () => {
     await page.getByRole('button', { name: 'Acquire Assets' }).click()
+    const monsterError = page.getByRole('alert').filter({ hasText: 'cannot acquire Assets on a space containing a Monster' }).first()
+    await expect(freeReroll.or(monsterError)).toBeVisible()
+    if (await monsterError.isVisible()) {
+      // Setup can place its Gate Monster in San Francisco. Numbered City 1
+      // is adjacent and cannot contain a starting Gate; use legal Travel.
+      await page.getByRole('button', { name: 'Close investigator details' }).click()
+      await page.getByRole('button', { name: '1, city, legal destination', exact: true }).click()
+      await page.getByRole('button', { name: 'Confirm travel' }).click()
+      await expect(page.getByText('Your action · 1 remaining')).toBeVisible()
+      await page.getByRole('button', { name: 'Acquire Assets' }).click()
+    }
     await expect(freeReroll).toBeVisible()
   }).toPass({ timeout: 15000 })
   await freeReroll.click()
