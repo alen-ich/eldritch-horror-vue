@@ -4,7 +4,7 @@ import { baseGameOtherWorldEncounterRules } from "../../content/src/other-world-
 import { parseLocationEncounterInstruction } from "../src/encounter-instructions.js";
 import { createDeterministicEngineContext, executeCommand, projectStateForPlayer, resolveOtherWorldEncounter, type GameContent, type GameState } from "../src/index.js";
 
-const ids = ["encounter_other_world_02", "encounter_other_world_01", "encounter_other_world_04", "encounter_other_world_03", "encounter_other_world_05", "encounter_other_world_07", "encounter_other_world_08", "encounter_other_world_09", "encounter_other_world_10", "encounter_other_world_11", "encounter_other_world_12", "encounter_other_world_13", "encounter_other_world_14", "encounter_other_world_15", "encounter_other_world_16", "encounter_other_world_17", "encounter_other_world_18", "encounter_other_world_19"];
+const ids = ["encounter_other_world_02", "encounter_other_world_01", "encounter_other_world_04", "encounter_other_world_03", "encounter_other_world_05", "encounter_other_world_07", "encounter_other_world_08", "encounter_other_world_09", "encounter_other_world_10", "encounter_other_world_11", "encounter_other_world_12", "encounter_other_world_13", "encounter_other_world_14", "encounter_other_world_15", "encounter_other_world_16", "encounter_other_world_17", "encounter_other_world_18", "encounter_other_world_19", "encounter_other_world_21"];
 const content: GameContent = {
   otherWorldEncounters: baseGameOtherWorldEncounterRules, otherWorldEncounterIds: ids,
   conditions: [{ id: "condition_paranoia_01", kind: "paranoia", trait: "madness" }, { id: "condition_paranoia_02", kind: "paranoia", trait: "madness" }, { id: "condition_hallucinations_01", kind: "hallucinations", trait: "madness" }, { id: "condition_amnesia_01", kind: "amnesia", trait: "madness" }],
@@ -31,6 +31,147 @@ function accepted(result: ReturnType<typeof resolveOtherWorldEncounter>) {
   if (!result.ok) throw new Error(result.error.message);
   return result;
 }
+
+describe("Other World card 21: The Dreamlands", () => {
+  const cardId = "encounter_other_world_21";
+  const dreamContent: GameContent = { ...content, assets: baseGameAssets,
+    investigators: { ...content.investigators, mark_harrigan: content.investigators.trish_scarborough! } };
+  function card21(items: string[] = [], clues = 0) {
+    const before = state(clues); before.players[0]!.assetIds = [...items];
+    before.privateState.deckOrderById["encounter:other_world"] = [cardId, ...ids.filter(id => id !== cardId)];
+    before.privateState.deckOrderById.assets = baseGameAssets.filter(card => !items.includes(card.id)).map(card => card.id);
+    return before;
+  }
+  function resolve(before: GameState, dice: number[]) { return resolveOtherWorldEncounter(before, "host", "gate_arkham", dreamContent, rng(dice)); }
+  function choose(before: GameState, selection: string[] = [], dice: number[] = [], owner = "host") {
+    return executeCommand(JSON.parse(JSON.stringify(before)), owner, { type: "RESOLVE_DECISION", decisionId: before.pendingDecision!.id, selectedOptionIds: selection }, dreamContent, rng(dice));
+  }
+  function payment() { return accepted(resolve(card21(), [6])).state; }
+  function discard() { return accepted(resolve(card21(["asset_38_revolver", "asset_45_automatic"]), [1, 1])).state; }
+  function finished(after: GameState, close = false, defeat = false) {
+    expect(after.activeGateIds).toEqual(close ? [] : ["gate_arkham"]);
+    expect(after.activePlayerId).toBe(defeat ? "host" : "guest"); expect(after.pendingLocationEncounter).toBeUndefined();
+    expect(after.privateState.deckOrderById["encounter:other_world"]).toEqual([...ids.filter(id => id !== cardId), cardId]);
+  }
+  it.each(["accept", "skip"])("reward precedes %s Health choice, only paid Health closes", option => {
+    const before = card21(); const snapshot = structuredClone(before);
+    const offered = accepted(resolve(before, [6]));
+    expect(offered.state.players[0]).toMatchObject({ clues: 2, health: 7 });
+    expect(offered.state.privateState.tokenPoolById["held_clues:host"]).toEqual(["clue_a", "clue_b"]);
+    expect(offered.state.pendingDecision?.optionIds).toEqual(["accept", "skip"]);
+    expect(offered.state.activeGateIds).toEqual(["gate_arkham"]);
+    expect(choose(offered.state, [option], [], "guest")).toMatchObject({ ok: false, error: { code: "NOT_DECISION_OWNER" } });
+    const result = accepted(choose(offered.state, [option]));
+    expect(result.state.players[0]).toMatchObject({ health: option === "accept" ? 6 : 7, clues: 2, sanity: 5 });
+    expect(result.state.players[0]?.delayed ?? false).toBe(option === "skip"); finished(result.state, option === "accept");
+    expect(result.state.stateVersion).toBe(offered.state.stateVersion + 1); expect(before).toEqual(snapshot);
+  });
+  it("cannot spend last Health but keeps two Clues and becomes Delayed", () => {
+    const before = card21(); before.players[0]!.health = 1;
+    const result = accepted(resolve(before, [6]));
+    expect(result.state.players[0]).toMatchObject({ health: 1, clues: 2, delayed: true }); expect(result.state.pendingDefeat).toBeUndefined(); finished(result.state);
+  });
+  it.each(["accept", "skip"])("already Delayed can %s spending Health", option => {
+    const before = payment(); before.players[0]!.delayed = true;
+    const result = accepted(choose(before, [option])); expect(result.state.players[0]?.delayed).toBe(true);
+    expect(result.state.players[0]?.health).toBe(option === "accept" ? 6 : 7); finished(result.state, option === "accept");
+  });
+  it.each(["accept", "refuse"])("Mark may %s mandatory Delay after declining Health without free closure", option => {
+    const before = payment(); before.players[0]!.investigatorId = "mark_harrigan";
+    const delayed = accepted(choose(before, ["skip"])); expect(delayed.state.pendingDecision?.optionIds).toEqual(["accept", "refuse"]);
+    const result = accepted(choose(delayed.state, [option])); expect(result.state.players[0]?.delayed ?? false).toBe(option === "accept");
+    expect(result.state.players[0]).toMatchObject({ health: 7, clues: 2 }); finished(result.state);
+  });
+  it("Initial Clue reroll spends before the success reward and payment", () => {
+    const initial = accepted(resolve(card21([], 1), [1]));
+    expect(initial.state.activeTest).toMatchObject({ skill: "lore", modifier: 0 }); expect(initial.state.players[0]?.clues).toBe(1);
+    const offer = accepted(choose(initial.state, ["die-0"], [6]));
+    expect(offer.state.players[0]?.clues).toBe(2); expect(offer.state.privateState.tokenPoolById.clue_discard).toEqual(["clue_a"]);
+    finished(accepted(choose(offer.state, ["accept"])).state, true);
+  });
+  it.each([0, 1])("depleted supply grants only %i Clues without skipping payment", available => {
+    const before = card21(); before.privateState.tokenPoolById.clues = available ? ["clue_a"] : [];
+    const offered = accepted(resolve(before, [6])); expect(offered.state.players[0]?.clues).toBe(available);
+    finished(accepted(choose(offered.state, ["accept"])).state, true);
+  });
+  it("Clue award recycles discards without collecting board markers", () => {
+    const before = card21(); before.privateState.tokenPoolById.clues = []; before.privateState.tokenPoolById.clue_discard = ["clue_a", "clue_b"];
+    before.boardClues = [{ id: "marker", locationId: "arkham" }]; before.privateState.tokenPoolById["board_clue:marker"] = ["clue_c"];
+    const offer = accepted(resolveOtherWorldEncounter(before, "host", "gate_arkham", dreamContent,
+      createDeterministicEngineContext({ dice: [6], shuffleIndexes: [0], tokenIndexes: [0, 0], ids: ["choice"] })));
+    expect(offer.state.players[0]?.clues).toBe(2); expect(offer.state.boardClues).toEqual(before.boardClues);
+    expect(offer.state.privateState.tokenPoolById["board_clue:marker"]).toEqual(["clue_c"]);
+  });
+  it.each([true, false])("Health loss precedes Observation and its outcome (%s)", pass => {
+    const initial = accepted(resolve(card21(["asset_38_revolver"], 1), [1]));
+    const follow = accepted(choose(initial.state, [], [pass ? 6 : 1]));
+    expect(follow.state.players[0]).toMatchObject({ health: 6, clues: 1 }); expect(follow.state.activeTest).toMatchObject({ skill: "observation", modifier: 0 });
+    expect(follow.events.findIndex(event => event.type === "INVESTIGATOR_DAMAGED")).toBeLessThan(follow.events.findIndex(event => event.type === "TEST_ROLLED"));
+    const kept = accepted(choose(follow.state));
+    const result = pass ? kept : accepted(choose(kept.state, ["asset_38_revolver"]));
+    expect(result.state.players[0]?.assetIds).toEqual(pass ? ["asset_38_revolver"] : []); expect(result.state.assetDiscardIds).toEqual(pass ? [] : ["asset_38_revolver"]);
+    expect(result.state.players[0]?.clues).toBe(1); finished(result.state);
+  });
+  it.each(["asset_38_revolver", "asset_45_automatic"])("failed Observation selects exactly one owned physical Item (%s)", id => {
+    const before = discard(); const snapshot = structuredClone(before);
+    expect(before.pendingDecision?.optionIds).toEqual(["asset_38_revolver", "asset_45_automatic"]);
+    expect(choose(before, [id], [], "guest")).toMatchObject({ ok: false, error: { code: "NOT_DECISION_OWNER" } });
+    const result = accepted(choose(before, [id])); expect(result.state.players[0]?.assetIds).toEqual(snapshot.players[0]!.assetIds.filter(item => item !== id));
+    expect(result.state.assetDiscardIds).toEqual([id]); expect(result.state.players[0]?.health).toBe(6); finished(result.state); expect(before).toEqual(snapshot);
+  });
+  it.each([{ items: [] }, { items: ["asset_puzzle_box"] }, { items: ["asset_witch_doctor"] }])("no Item means no discard choice ($items)", ({ items }) => {
+    const result = accepted(resolve(card21(items), [1, 1])); expect(result.state.players[0]?.assetIds).toEqual(items);
+    expect(result.state.players[0]?.health).toBe(6); expect(result.state.pendingDecision).toBeUndefined(); finished(result.state);
+  });
+  it("a colleague's Item is not a discard target", () => {
+    const before = card21(); before.players[1]!.assetIds = ["asset_38_revolver"];
+    before.privateState.deckOrderById.assets = baseGameAssets.filter(card => card.id !== "asset_38_revolver").map(card => card.id);
+    const result = accepted(resolve(before, [1, 1])); expect(result.state.players[1]?.assetIds).toEqual(["asset_38_revolver"]); finished(result.state);
+  });
+  it("Observation reroll can avoid Item loss but never restore lost Health or close", () => {
+    const initial = accepted(resolve(card21(["asset_38_revolver"], 1), [1]));
+    const follow = accepted(choose(initial.state, [], [1])); const result = accepted(choose(follow.state, ["die-0"], [6]));
+    expect(result.state.players[0]).toMatchObject({ health: 6, clues: 0, assetIds: ["asset_38_revolver"] }); finished(result.state);
+  });
+  it.each(["gate", "location", "deck", "health", "asset", "option"])("restored payment rejects changed %s atomically", field => {
+    const before = payment();
+    if (field === "gate") { before.activeGateIds = []; before.discardedGateIds = ["gate_arkham"]; }
+    if (field === "location") before.players[0]!.locationId = "london";
+    if (field === "deck") before.privateState.deckOrderById["encounter:other_world"]!.reverse();
+    if (field === "health") before.players[0]!.health = 1;
+    if (field === "asset") before.players[0]!.assetIds = ["unsupported"];
+    const snapshot = structuredClone(before); expect(choose(before, [field === "option" ? "close" : "accept"]).ok).toBe(false); expect(before).toEqual(snapshot);
+  });
+  it.each(["ownership", "deck-overlap", "non-item", "skip", "two-items", "gate"])("mandatory discard rejects %s atomically", field => {
+    const before = discard(); let selection = ["asset_38_revolver"];
+    if (field === "ownership") { before.players[0]!.assetIds = ["asset_45_automatic"]; before.players[1]!.assetIds = ["asset_38_revolver"]; }
+    if (field === "deck-overlap") before.privateState.deckOrderById.assets!.push("asset_38_revolver");
+    if (field === "non-item") selection = ["asset_puzzle_box"];
+    if (field === "skip") selection = ["skip"];
+    if (field === "two-items") selection.push("asset_45_automatic");
+    if (field === "gate") { before.activeGateIds = []; before.discardedGateIds = ["gate_arkham"]; }
+    const snapshot = structuredClone(before); expect(choose(before, selection).ok).toBe(false); expect(before).toEqual(snapshot);
+  });
+  it.each(["artifact", "bandages", "unknown"])("unsupported %s rejects whole card before RNG", kind => {
+    const before = card21();
+    if (kind === "artifact") before.players[0]!.artifactIds = ["artifact_ttka_halot"];
+    else before.players[0]!.assetIds = [kind === "bandages" ? "asset_bandages" : "unknown"];
+    const snapshot = structuredClone(before); expect(resolve(before, []).ok).toBe(false); expect(before).toEqual(snapshot);
+  });
+  it("lethal Initial failure stops before Observation and Item selection, cycling once", () => {
+    const before = card21(["asset_38_revolver"]); before.players[0]!.health = 1;
+    const result = accepted(resolve(before, [1])); expect(result.state.players[0]).toMatchObject({ health: 0, assetIds: ["asset_38_revolver"] });
+    expect(result.state.pendingDefeat).toBeDefined(); expect(result.state.activeTest).toBeUndefined(); finished(result.state, false, true);
+  });
+  it("Azathoth loses on lethal prefix damage at Doom 1", () => {
+    const before = card21(); before.players[0]!.health = 1; before.doom = 1;
+    const result = accepted(resolve(before, [1])); expect(result.state.gameResult).toBe("investigators_lose"); finished(result.state, false, true);
+  });
+  it("unsupported awakening rejects lethal prefix damage atomically", () => {
+    const before = card21(); before.players[0]!.health = 1; before.doom = 1; before.ancientOneId = "cthulhu";
+    const snapshot = structuredClone(before); expect(resolve(before, [1]).ok).toBe(false); expect(before).toEqual(snapshot);
+  });
+});
 
 describe("Other World card 19: City of the Great Race", () => {
   function card19(clues = 0) {

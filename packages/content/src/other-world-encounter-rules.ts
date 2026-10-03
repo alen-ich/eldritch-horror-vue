@@ -122,6 +122,12 @@ export const baseGameOtherWorldEncounterRules = [
     initial: t("influence", { kind: "sequence", steps: [e({ kind: "clues", amount: 2 }), t("lore", e(close), e({ kind: "sanity", amount: -1 }), -1)] },
       { kind: "optional", cost: [{ kind: "delay" }], reward: e(), decline: e({ kind: "condition", condition: "paranoia" }, { kind: "sanity", amount: -1 }) }),
   },
+  {
+    number: 21, name: "The Dreamlands",
+    initial: t("lore", { kind: "sequence", steps: [e({ kind: "clues", amount: 2 }),
+      { kind: "optional", cost: [{ kind: "health", amount: -1 }], reward: e(close), decline: e({ kind: "delay" }) }] },
+      { kind: "sequence", steps: [e({ kind: "health", amount: -1 }), t("observation", e(), e({ kind: "discard_item_assets", amount: 1 }))] }),
+  },
 ].map(({ number, name, initial }) => {
   const scan = baseGameScannedTokenEncounters.find(card => card.deck === "other_world" && card.number === number)!;
   return schema.parse({ id: scan.id, deck: "other_world", number, name, sourceScan: scan.sourceScan, sourceCellIndex: scan.sourceCellIndex,
