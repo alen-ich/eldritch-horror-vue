@@ -20,6 +20,61 @@ describe("authoritative game room", () => {
   after(async () => colyseus.shutdown());
   beforeEach(async () => colyseus.cleanup());
 
+  for (const source of ["artifact_cultes_des_goules", "artifact_de_vermis_mysteriis"] as const) {
+    it(`restores Asset-modified Lore and authorized payment for ${source}`, async () => {
+      const room = await colyseus.createRoom<GameRoom>("game", {});
+      const host = await colyseus.connectTo(room, { displayName: "Host" });
+      const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+      const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+      const state = internal.toEngineState();
+      state.phase = "action"; state.ancientOneId = "cthulhu"; state.doom = 12; state.actionsRemaining = 2;
+      state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
+      Object.assign(state.players[0]!, { investigatorId: "akachi_onyele", locationId: "arkham", health: 5, sanity: 7, clues: 0, assetIds: ["asset_lucky_rabbits_foot", "asset_lucky_cigarette_case", "asset_arcane_manuscripts", "asset_whiskey"], artifactIds: [source] });
+      Object.assign(state.players[1]!, { investigatorId: "trish_scarborough", locationId: "arkham", health: 7, sanity: 5, assetIds: ["asset_urban_guide"] });
+      state.privateState.deckOrderById.artifacts = baseGameArtifacts.filter(card => card.id !== source).map(card => card.id);
+      state.privateState.tokenPoolById.clues = baseGameClues.map(card => card.id);
+      state.privateState.tokenPoolById[`held_clues:${state.players[0]!.id}`] = [];
+      internal.applyEngineState(state);
+      const testMessage = host.waitForMessage(pendingDecisionMessageType);
+      sendCommand(room, host, { type: "USE_ARTIFACT_ACTION", artifactId: source }); await room.waitForMessage(commandMessageType);
+      await testMessage;
+      const rolled = internal.toEngineState();
+      assert.equal(rolled.activeTest?.dicePool, 4); // Printed Akachi Lore 3 + local Urban Guide 1, not Spell-only Manuscripts.
+      rolled.activeTest!.dice = [4, 1, 1, 1]; rolled.activeTest!.successes = 0;
+      // Keep the trusted deterministic checkpoint's offered modifier in sync with its edited die.
+      const modifier = "asset-increment:asset_lucky_cigarette_case:0";
+      if (!rolled.pendingDecision!.optionIds.includes(modifier)) rolled.pendingDecision!.optionIds.push(modifier);
+      rolled.pendingDecision!.optionLabels = { ...rolled.pendingDecision!.optionLabels, [modifier]: "Lucky Cigarette Case: add 1 to die 1 (4 → 5; no Clue)" };
+      const refreshed = host.waitForMessage(pendingDecisionMessageType);
+      internal.applyEngineState(JSON.parse(JSON.stringify(rolled))); const test = await refreshed as PendingDecision;
+      assert.ok(test.optionLabels?.[modifier]?.includes("4 → 5"));
+      const denied = guest.waitForMessage(commandErrorMessageType);
+      sendCommand(room, guest, { type: "RESOLVE_DECISION", decisionId: test.id, selectedOptionIds: [modifier] }); await room.waitForMessage(commandMessageType);
+      assert.equal((await denied as { code: string }).code, "NOT_DECISION_OWNER");
+      const footMessage = host.waitForMessage(pendingDecisionMessageType);
+      sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: test.id, selectedOptionIds: [modifier] }); await room.waitForMessage(commandMessageType);
+      const footChoice = await footMessage as PendingDecision;
+      const checkpoint = internal.toEngineState(); assert.equal(checkpoint.activeTest?.successes, 1);
+      assert.deepEqual(checkpoint.usedAssetDieModifierIds, ["asset_lucky_cigarette_case"]);
+      assert.equal(JSON.stringify(room.state).includes("asset-reroll:"), false);
+      assert.equal(JSON.stringify(room.state).includes("artifact_grotesque_statue"), false);
+      const restoreFoot = host.waitForMessage(pendingDecisionMessageType);
+      internal.applyEngineState(JSON.parse(JSON.stringify(checkpoint))); await restoreFoot;
+      const paymentMessage = host.waitForMessage(pendingDecisionMessageType);
+      sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: footChoice.id, selectedOptionIds: ["asset-reroll:asset_lucky_rabbits_foot:1"] }); await room.waitForMessage(commandMessageType);
+      const payment = await paymentMessage as PendingDecision; assert.equal(payment.kind, "artifact_payment");
+      const beforePay = internal.toEngineState(); assert.deepEqual(beforePay.usedAssetRerollIds, ["asset_lucky_rabbits_foot"]);
+      assert.equal(beforePay.players[0]?.clues, 0); assert.equal(beforePay.players[0]?.sanity, 7); assert.equal(beforePay.actionsRemaining, 2);
+      sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: payment.id, selectedOptionIds: [source === "artifact_cultes_des_goules" ? "cultes:accept" : "vermis:will:1"] }); await room.waitForMessage(commandMessageType);
+      const after = internal.toEngineState(); assert.equal(after.players[0]?.sanity, 6); assert.equal(after.actionsRemaining, 1);
+      assert.equal(after.stateVersion, beforePay.stateVersion + 1);
+      assert.deepEqual(after.players[0]?.assetIds, state.players[0]?.assetIds); assert.deepEqual(after.assetDiscardIds, []);
+      if (source === "artifact_cultes_des_goules") assert.equal(after.players[0]?.clues, 2);
+      else assert.equal(after.players[0]?.skillImprovements.will, 1);
+      assert.deepEqual(after.usedArtifactActionIds, [source]);
+    });
+  }
+
   for (const lily of [false, true]) {
     it(`restores De Vermis Mysteriis' private skill payment for ${lily ? "Lily's double improvement" : "an ordinary improvement"}`, async () => {
       const room = await colyseus.createRoom<GameRoom>("game", {});
