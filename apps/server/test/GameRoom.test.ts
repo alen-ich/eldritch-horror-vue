@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { ColyseusTestServer, boot } from "@colyseus/testing";
 import { gainNamedArtifact, type GameState, type GameContent } from "@eldritch/engine";
-import { baseGameArtifacts, baseGameClues, baseGameGates, baseGameScannedTokenEncounters } from "@eldritch/content";
+import { baseGameArtifacts, baseGameClues, baseGameConditions, baseGameGates, baseGameScannedTokenEncounters } from "@eldritch/content";
 import {
   commandErrorMessageType,
   commandMessageType,
@@ -19,6 +19,66 @@ describe("authoritative game room", () => {
   before(async () => { colyseus = await boot(appConfig); });
   after(async () => colyseus.shutdown());
   beforeEach(async () => colyseus.cleanup());
+
+  for (const option of ["accept", "skip"]) {
+    it(`restores card 3's private Clue-or-Paranoia decision (${option})`, async () => {
+      const room = await colyseus.createRoom<GameRoom>("game", {});
+      const host = await colyseus.connectTo(room, { displayName: "Host" });
+      const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+      const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+      const state = internal.toEngineState();
+      state.phase = "encounter"; state.ancientOneId = "azathoth"; state.doom = 15;
+      state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
+      Object.assign(state.players[0]!, { investigatorId: "trish_scarborough", locationId: "arkham", health: 7, sanity: 5, maxHealth: 7, maxSanity: 5, clues: 1, assetIds: [] });
+      Object.assign(state.players[1]!, { locationId: "london", clues: 0, assetIds: [] });
+      state.activeGateIds = ["gate_arkham"]; state.discardedGateIds = [];
+      state.privateState.deckOrderById.gates = baseGameGates.filter(gate => gate.id !== "gate_arkham").map(gate => gate.id);
+      const cardId = "encounter_other_world_03";
+      state.privateState.deckOrderById["encounter:other_world"] = [cardId, ...baseGameScannedTokenEncounters.filter(card => card.deck === "other_world" && card.id !== cardId).map(card => card.id)];
+      state.privateState.tokenPoolById.clues = baseGameClues.filter(clue => clue.id !== "clue_arkham").map(clue => clue.id);
+      state.privateState.tokenPoolById.clue_discard = [];
+      state.privateState.tokenPoolById[`held_clues:${state.players[0]!.id}`] = ["clue_arkham"];
+      state.privateState.tokenPoolById[`held_clues:${state.players[1]!.id}`] = [];
+      const paranoia = baseGameConditions.filter(card => card.kind === "paranoia").map(card => card.id);
+      state.privateState.tokenPoolById["condition:paranoia"] = paranoia;
+      internal.applyEngineState(state);
+      const initialMessage = host.waitForMessage(pendingDecisionMessageType);
+      sendCommand(room, host, { type: "RESOLVE_OTHER_WORLD_ENCOUNTER", gateId: "gate_arkham" }); await room.waitForMessage(commandMessageType);
+      await initialMessage;
+      const initial = internal.toEngineState();
+      assert.equal(initial.activeTest?.skill, "lore"); assert.equal(initial.activeTest?.modifier, -1);
+      initial.activeTest!.dice = [1]; initial.activeTest!.successes = 0;
+      const restoredTestMessage = host.waitForMessage(pendingDecisionMessageType);
+      internal.applyEngineState(JSON.parse(JSON.stringify(initial))); const test = await restoredTestMessage as PendingDecision;
+      const offeredMessage = host.waitForMessage(pendingDecisionMessageType);
+      sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: test.id, selectedOptionIds: [] }); await room.waitForMessage(commandMessageType);
+      await offeredMessage;
+      const before = internal.toEngineState();
+      assert.equal(before.pendingDecision?.kind, "encounter_choice");
+      assert.ok(before.pendingDecision?.optionLabels?.skip?.includes("paranoia"));
+      const restoredChoiceMessage = host.waitForMessage(pendingDecisionMessageType);
+      internal.applyEngineState(JSON.parse(JSON.stringify(before))); const choice = await restoredChoiceMessage as PendingDecision;
+      assert.equal(JSON.stringify(room.state).includes("condition_paranoia_01"), false);
+      assert.equal(JSON.stringify(room.state).includes("Spend 1 clues"), false);
+      const denied = guest.waitForMessage(commandErrorMessageType);
+      sendCommand(room, guest, { type: "RESOLVE_DECISION", decisionId: choice.id, selectedOptionIds: [option] }); await room.waitForMessage(commandMessageType);
+      assert.equal((await denied as { code: string }).code, "NOT_DECISION_OWNER");
+      assert.deepEqual(internal.toEngineState(), before);
+      sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: choice.id, selectedOptionIds: [option] }); await room.waitForMessage(commandMessageType);
+      const after = internal.toEngineState();
+      assert.equal(after.players[0]!.clues, option === "accept" ? 0 : 1);
+      assert.equal(after.players[0]!.sanity, option === "accept" ? 5 : 3);
+      assert.equal(after.players[0]!.conditionIds?.length ?? 0, option === "accept" ? 0 : 1);
+      assert.equal(after.privateState.tokenPoolById["condition:paranoia"]!.length, option === "accept" ? 3 : 2);
+      assert.deepEqual(after.activeGateIds, ["gate_arkham"]); assert.deepEqual(after.discardedGateIds, []);
+      assert.equal(after.activePlayerId, state.players[1]!.id); assert.equal(after.pendingLocationEncounter, undefined);
+      assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.at(-1), cardId);
+      assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 24);
+      const publicHost = [...room.state.players.values()].find(player => player.id === state.players[0]!.id)!;
+      assert.equal(publicHost.conditionIds, option === "accept" ? "" : "condition_paranoia");
+      assert.equal(JSON.stringify(room.state).includes("condition_paranoia_0"), false);
+    });
+  }
 
   it("binds Other World tests to the original Gate across private restoration and owner-only decisions", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
