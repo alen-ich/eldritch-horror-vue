@@ -26,8 +26,12 @@ test('two browsers join, resolve an Asset test, and share Travel state', async (
     await expect(host.getByRole('button', { name: 'Acquire Assets' })).toBeVisible()
     await expect(guest.getByRole('button', { name: 'Acquire Assets' })).toBeVisible()
 
-    await host.getByRole('button', { name: 'Acquire Assets' }).click()
-    await expect(host.getByRole('dialog', { name: /influence test/i })).toBeVisible()
+    // The first post-start intent can precede the client's state-version patch.
+    // Retry only until the test opens; never retry an accepted reroll.
+    await expect(async () => {
+      await host.getByRole('button', { name: 'Acquire Assets' }).click()
+      await expect(host.getByRole('dialog', { name: /influence test/i })).toBeVisible()
+    }).toPass({ timeout: 15000 })
     await expect(host.getByRole('button', { name: 'Spend 1 Clue: reroll die 1', exact: true })).toBeVisible()
     await host.getByRole('button', { name: 'Keep result' }).click()
     await expect(host.getByRole('button', { name: 'Buy nothing' })).toBeVisible()
