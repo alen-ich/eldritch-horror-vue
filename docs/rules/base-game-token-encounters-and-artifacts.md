@@ -64,7 +64,7 @@ The subsequent Asset integration now applies `validateArtifactTestAssets` to all
 
 ## Other World foundation: The Future (card 2)
 
-`other-world-encounter-rules.ts` preserves full scan-linked trees for cards 1–5 and 7–10. Card 1, Great Hall of Celaeno, tests Observation −1; passing closes the Gate then tests Lore for a choice of one Clue or one Spell, with 2 Sanity loss on that Lore failure. Its Initial failure loses 3 Sanity unless spending one Clue. Spell rewards are not executable, so the engine rejects the **whole card** before RNG or closure rather than deleting that option.
+`other-world-encounter-rules.ts` preserves full scan-linked trees for cards 1–5 and 7–11. Card 1, Great Hall of Celaeno, tests Observation −1; passing closes the Gate then tests Lore for a choice of one Clue or one Spell, with 2 Sanity loss on that Lore failure. Its Initial failure loses 3 Sanity unless spending one Clue. Spell rewards are not executable, so the engine rejects the **whole card** before RNG or closure rather than deleting that option.
 
 Card 2 tests Will −1. Passing immediately closes the encountered Gate, then tests Observation (0): pass gains two physical supply Clues, fail has no effect. Initial failure instead tests Lore (0): pass has no effect, fail loses 6 Sanity. That entire failure branch leaves the Gate active, including when the Lore test succeeds. Lethal loss stops the card and enters the existing defeat flow; no later reward runs.
 
@@ -128,7 +128,13 @@ The existing optional-cost, exact physical payment, ordered test and Sanity/defe
 
 Twenty engine cases, one content case and four room cases verify both payment choices, no-Clue/last-Clue paths, nested rerolls and closure ordering, restored owner/payment/source guards, distinct Sanity losses, lethal refusal/Lore loss and end-game. Only cards 2–5 and 7–10 are executable within existing possession/Ancient One guards. Cards 1, 6 and 11–24 remain unsupported; full-session and whole-family readiness remain incomplete.
 
-Next: card 11, Great Hall of Celaeno (scan inspected). Initial Lore (0); pass tests Will (0), closing only on success and becoming Delayed on failure. Initial failure offers one physical Clue to avoid Amnesia. Reuse optional `decline`, Condition supply and Delay handlers; test Mark's refusal, restored nested tests/payment, exhausted/duplicate Conditions and exact Gate retention. No new scans are needed. Cards 1 and 6 still require Spell gains/holdings.
+### Great Hall of Celaeno
+
+Initial Lore passes to a Will follow-up: success closes the bound Gate; failure becomes Delayed, leaving the Gate active. Mark may refuse this mandatory Delay. Initial Lore failure offers one physical Clue to avoid Amnesia; no Clue, refusal or a failed reroll spending the final Clue gains Amnesia instead. Held/depleted Conditions follow existing non-duplication semantics.
+
+The scan-linked content tree reuses the existing interpreter, optional refusal, physical Clue payment, Amnesia supply preflight and Delay handlers. No new engine handler, protocol command or state field was needed. Twenty-one engine cases, one content case and four real room cases cover both choices, nested rerolls, Gate retention/closure, Mark's restored refusal, invalid sources/payment, exhausted/held Conditions and public front-only privacy. Root lint/typecheck/test/build passed with 797 engine, 91 server, 88 content and 19 protocol cases (995 total). All three shared browser journeys passed; these are not dedicated Other World browser scenarios. Only cards 2–5 and 7–11 are executable within existing guards; whole-family/full-session readiness remains incomplete.
+
+Next: **Lost Carcosa (card 12)**, already scanned and inspected. Initial Observation (0) passes to Lore (0): success closes the Gate; failure gains Paranoia. Initial failure loses 2 Sanity unless becoming Delayed. Verify Paranoia supply preflight, optional Delay affordability/Mark's cost semantics, restored ownership/source choices, rerolls and lethal Sanity loss. No new scans are needed. Cards 1 and 6 retain the Spell gains/holdings dependency.
 
 ## Cthulhu Research
 
