@@ -20,6 +20,65 @@ describe("authoritative game room", () => {
   after(async () => colyseus.shutdown());
   beforeEach(async () => colyseus.cleanup());
 
+  for (const branch of ["close", "defeat", "hallucinations"]) {
+    it(`restores Dreamlands' ${branch} branch with authoritative Clue dice`, async () => {
+      const room = await colyseus.createRoom<GameRoom>("game", {});
+      const host = await colyseus.connectTo(room, { displayName: "Host" });
+      const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+      const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+      const state = internal.toEngineState();
+      state.phase = "encounter"; state.ancientOneId = "azathoth"; state.doom = 15;
+      state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
+      Object.assign(state.players[0]!, { investigatorId: "trish_scarborough", locationId: "arkham", health: branch === "defeat" ? 2 : 7, sanity: 5, maxHealth: 7, maxSanity: 5, clues: 2, assetIds: [] });
+      Object.assign(state.players[1]!, { locationId: "london", clues: 0, assetIds: [] });
+      state.activeGateIds = ["gate_arkham"]; state.discardedGateIds = [];
+      state.privateState.deckOrderById.gates = baseGameGates.filter(gate => gate.id !== "gate_arkham").map(gate => gate.id);
+      const cardId = "encounter_other_world_07";
+      state.privateState.deckOrderById["encounter:other_world"] = [cardId, ...baseGameScannedTokenEncounters.filter(card => card.deck === "other_world" && card.id !== cardId).map(card => card.id)];
+      const held = baseGameClues.slice(0, 2).map(clue => clue.id);
+      state.privateState.tokenPoolById.clues = baseGameClues.filter(clue => !held.includes(clue.id)).map(clue => clue.id);
+      state.privateState.tokenPoolById.clue_discard = [];
+      state.privateState.tokenPoolById[`held_clues:${state.players[0]!.id}`] = held;
+      state.privateState.tokenPoolById[`held_clues:${state.players[1]!.id}`] = [];
+      state.privateState.tokenPoolById["condition:hallucinations"] = baseGameConditions.filter(card => card.kind === "hallucinations").map(card => card.id);
+      internal.applyEngineState(state);
+      const initialMessage = host.waitForMessage(pendingDecisionMessageType);
+      sendCommand(room, host, { type: "RESOLVE_OTHER_WORLD_ENCOUNTER", gateId: "gate_arkham" }); await room.waitForMessage(commandMessageType); await initialMessage;
+      const initial = internal.toEngineState();
+      assert.equal(initial.activeTest?.skill, "will"); assert.equal(initial.activeTest?.modifier, -1); assert.equal(initial.activeTest?.dicePool, 3);
+      initial.activeTest!.dice = initial.activeTest!.dice.map(() => branch === "hallucinations" ? 1 : 6);
+      initial.activeTest!.successes = branch === "hallucinations" ? 0 : 3;
+      const restoredInitialMessage = host.waitForMessage(pendingDecisionMessageType);
+      internal.applyEngineState(JSON.parse(JSON.stringify(initial))); const choice = await restoredInitialMessage as PendingDecision;
+      const denied = guest.waitForMessage(commandErrorMessageType);
+      sendCommand(room, guest, { type: "RESOLVE_DECISION", decisionId: choice.id, selectedOptionIds: [] }); await room.waitForMessage(commandMessageType);
+      assert.equal((await denied as { code: string }).code, "NOT_DECISION_OWNER"); assert.deepEqual(internal.toEngineState(), initial);
+      const followMessage = branch === "hallucinations" ? undefined : host.waitForMessage(pendingDecisionMessageType);
+      sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: choice.id, selectedOptionIds: [] }); await room.waitForMessage(commandMessageType);
+      if (followMessage) {
+        await followMessage;
+        const follow = internal.toEngineState();
+        assert.equal(follow.activeTest?.skill, "strength"); assert.equal(follow.activeTest?.dicePool, 3);
+        assert.deepEqual(follow.activeGateIds, ["gate_arkham"]);
+        follow.activeTest!.dice = follow.activeTest!.dice.map(() => branch === "close" ? 6 : 1);
+        follow.activeTest!.successes = branch === "close" ? 3 : 0;
+        const restoredFollowMessage = host.waitForMessage(pendingDecisionMessageType);
+        internal.applyEngineState(JSON.parse(JSON.stringify(follow))); const followChoice = await restoredFollowMessage as PendingDecision;
+        sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: followChoice.id, selectedOptionIds: [] }); await room.waitForMessage(commandMessageType);
+      }
+      const after = internal.toEngineState();
+      assert.equal(after.players[0]!.clues, 2); assert.equal(after.players[0]!.health, branch === "defeat" ? 0 : 7);
+      assert.equal(after.players[0]!.delayed ?? false, branch === "hallucinations");
+      assert.equal(after.players[0]!.conditionIds?.length ?? 0, branch === "hallucinations" ? 1 : 0);
+      assert.equal(Boolean(after.pendingDefeat), branch === "defeat");
+      assert.deepEqual(after.activeGateIds, branch === "close" ? [] : ["gate_arkham"]);
+      assert.equal(after.activePlayerId, branch === "defeat" ? state.players[0]!.id : state.players[1]!.id);
+      assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 24);
+      assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.at(-1), cardId);
+      assert.equal(JSON.stringify(room.state).includes("condition_hallucinations_0"), false); assert.equal(JSON.stringify(room.state).includes("encounter_other_world_24"), false);
+    });
+  }
+
   for (const branch of ["accept", "skip", "defeat"]) {
     it(`restores The Past's ${branch} branch with an open Gate and owner-only choices`, async () => {
       const room = await colyseus.createRoom<GameRoom>("game", {});
