@@ -20,6 +20,44 @@ describe("authoritative game room", () => {
   after(async () => colyseus.shutdown());
   beforeEach(async () => colyseus.cleanup());
 
+  it("applies a colleague's Urban Guide aura to a carried-Asset Research test and restores the bonus die", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "encounter"; state.ancientOneId = "cthulhu"; state.doom = 12;
+    state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
+    state.players[0] = { ...state.players[0]!, investigatorId: "akachi_onyele", locationId: "arkham", health: 5, sanity: 7, clues: 1, assetIds: ["asset_45_automatic"] };
+    state.players[1] = { ...state.players[1]!, investigatorId: "trish_scarborough", locationId: "arkham", health: 7, sanity: 5, assetIds: ["asset_urban_guide"] };
+    state.boardClues = [{ id: "aura-clue", locationId: "arkham" }];
+    state.privateState.tokenPoolById = { "board_clue:aura-clue": ["clue_arkham"], [`held_clues:${state.players[0]!.id}`]: ["clue_london"], clues: [], clue_discard: [] };
+    state.privateState.deckOrderById["encounter:research_cthulhu"] = ["encounter_research_cthulhu_01", "encounter_research_cthulhu_02"];
+    internal.applyEngineState(state);
+    const decisionMessage = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "RESOLVE_RESEARCH_ENCOUNTER", clueId: "aura-clue" });
+    await room.waitForMessage(commandMessageType);
+    const decision = await decisionMessage as PendingDecision;
+    const paused = internal.toEngineState();
+    assert.equal(paused.activeTest?.dicePool, 3);
+    assert.deepEqual(decision.optionIds, ["die-0", "die-1", "die-2"]);
+    paused.activeTest!.dice = [6, 1, 1]; paused.activeTest!.successes = 1;
+    const refreshed = host.waitForMessage(pendingDecisionMessageType);
+    internal.applyEngineState(JSON.parse(JSON.stringify(paused))); await refreshed;
+    assert.equal(JSON.stringify(room.state).includes("pendingLocationEncounter"), false);
+    const rejected = guest.waitForMessage(commandErrorMessageType);
+    sendCommand(room, guest, { type: "RESOLVE_DECISION", decisionId: decision.id, selectedOptionIds: [] });
+    await room.waitForMessage(commandMessageType);
+    assert.equal((await rejected as { code: string }).code, "NOT_DECISION_OWNER");
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: decision.id, selectedOptionIds: [] });
+    await room.waitForMessage(commandMessageType);
+    const after = internal.toEngineState();
+    assert.equal(after.players[0]?.clues, 2); assert.equal(after.boardClues?.length, 0);
+    assert.deepEqual(after.players[0]?.assetIds, ["asset_45_automatic"]);
+    assert.deepEqual(after.players[1]?.assetIds, ["asset_urban_guide"]);
+    assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.activePlayerId, after.players[1]?.id);
+  });
+
   it("restores Star Spawn Research failure and its private ambush checkpoint", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });

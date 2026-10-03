@@ -60,6 +60,8 @@ Last updated: 2026-10-03
 
 ### Current verification evidence
 
+- Scoped non-combat Asset update (2026-10-03): eight scan-verified Assets can be carried in supported location/Research encounters: seven have no applicable effects and Urban Guide contributes one die to same-City investigators. Explicit applicability metadata replaces the blanket guard only for this slice; unknown/reaction cards, Item-discard branches with held Items, and carried-Asset/local-aura ambush branches reject atomically before rolling. Seventeen engine cases, one content case and one multiplayer case verify dice, scope exclusions, physical Clue rerolls, serialization and ownership. Next: Personal Assistant's global Influence bonus and optional Asset reroll in encounters. Combat, Reckoning, other possession effects and full Task 1 remain incomplete; no new scans needed.
+
 - Engine: 75 tests passing, including generic combat resolution and combat-to-defeat integration in addition to delayed timing, Trade, setup tracks, staged Mythos composition, damage/defeat/replacement, and prior skill, Asset, and Mystery behavior.
 - Server: 7 multiplayer integration tests passing, including actual dropped-connection recovery and private decision restoration.
 - Root `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm build` pass; `pnpm test:e2e` passes its two-browser journey. Server and browser tests need local-port permission in restricted environments.

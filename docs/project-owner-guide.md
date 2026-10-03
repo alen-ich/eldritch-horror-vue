@@ -105,6 +105,7 @@ The server currently permits up to four connected seats. Game start requires at 
 | `setup.ts` | Deck/pool construction and setup helpers. |
 | `encounter-instructions.ts` | Supported executable encounter vocabulary, recursive parser, labels. |
 | `research-instructions.ts` | Binds printed “this Clue” to the exact server-selected board marker. |
+| `encounter-assets.ts` | Explicit non-combat possession preflight and Urban Guide's same-City aura; rejects unsupported branches before any roll. |
 
 The large `index.ts` is a real maintainability limitation. Do not read it top-to-bottom first. Search for a symbol and inspect the small chain of helpers it calls. Splitting it into subsystem modules is useful future maintenance, but should preserve behavior and tests rather than become a prerequisite for every feature.
 
@@ -277,11 +278,11 @@ The following snapshot distinguishes working slices from complete families:
 | Actions | Travel/tickets, Rest, Acquire Assets, accepted trades, action usage, Delay, selected component actions | Investigator abilities and possession actions incomplete. |
 | Tests | Dice arithmetic, improvements, thresholds, highest Item bonus primitive, owner-only Clue rerolls | The arithmetic primitive does not mean every possession bonus is integrated. |
 | Combat | Basic printed-stat combat and phase ordering; Deep One/Star Spawn Research ambush continuation | Board-combat rerolls, Cultists, special abilities and possession effects incomplete. |
-| Location | All 36 cards transcribed; 64/108 sections accepted by the parser | Remaining 44 unsupported; any carried Asset currently blocks live location resolution. |
-| Research | All 24 Azathoth and 18/24 Cthulhu sections supported | Asset guards; remaining Cthulhu rewards/Cultists; Shub/Yog transcription/execution. |
+| Location | All 36 cards transcribed; 64/108 sections accepted by the parser; eight Assets have verified non-combat applicability | Remaining 44 unsupported; other carried Assets still block live resolution. |
+| Research | All 24 Azathoth and 18/24 Cthulhu sections supported; eight-Asset non-combat scope | Other Asset and ambush guards; remaining Cthulhu rewards/Cultists; Shub/Yog transcription/execution. |
 | Mythos | All 51 icon sequences cataloged; 17 printed texts have typed effects | Remaining 34 texts and broad Reckoning can stop the round. |
 | Conditions | Physical copies, several actions/conflicts, thresholds, five typed reverse handlers | Most reverses and full trigger sequencing incomplete. |
-| Assets | 40-card catalog; four mappings with supported partial/full effects | Most effects remain display-only or guarded. |
+| Assets | 40-card catalog; five mappings with supported partial/full effects, plus explicit encounter applicability | Most effects remain display-only or guarded; Urban Guide is wired only into non-combat location/Research. |
 | Spells | 20 physical cards / 10 types with paired artwork | Live casting and back execution absent. |
 | Artifacts | 14-card supply/holdings; T'tka Halot gain/action | Other executable effects/gains incomplete. |
 | Other World/Expedition/Special | Artwork/catalogs imported | Complex resolution and live family handlers absent. |
@@ -343,7 +344,7 @@ pnpm test:e2e
 
 Current `lint` scripts primarily run TypeScript/Nuxt checks; they are not a broad stylistic ESLint suite. The web package's `test` script is also typechecking, not Vue behavioral tests. The browser smoke test covers two clients, Acquire Assets and Travel—not a complete session.
 
-The most recent implementation run passed 315 engine tests and 46 server tests. Those are a dated baseline, not checks rerun automatically by reading this guide.
+The scoped encounter-Asset implementation run passed 332 engine tests and 47 server tests. Those are a dated baseline, not checks rerun automatically by reading this guide.
 
 ## 12. Your first exercise: add a small test
 
@@ -501,3 +502,15 @@ You can ask for future work in a learning mode: “Explain the files and tests f
 - Server boundary: [GameRoom.ts](/Users/alenichshanov/Desktop/personal/eldritch-horror-vue/apps/server/src/rooms/GameRoom.ts).
 
 Start with the threshold exercise. When you can predict the result and explain why the test passes, you already own a small, real part of this project.
+
+## 20. A small real change to study: possession-aware encounters
+
+The next implemented slice after this guide is a useful example of the ownership boundaries:
+
+1. `assets.ts` records `nonCombatEncounterSupport` for eight visually verified cards. Seven have no effect in this context; Urban Guide has a typed City aura. An empty effect list is never used as evidence that a card is harmless.
+2. `encounter-assets.ts` checks every branch, including unchosen failure branches, for unsupported possession effects. It calculates Urban Guide's additional die from living same-City holders, including a different player.
+3. Engine `index.ts` invokes that preflight before drawing/rolling, and passes the aura into `calculateDicePool` as a non-Item bonus.
+4. `GameRoom.ts` supplies the new content metadata. No new network command is needed because the player still requests an ordinary encounter or Research.
+5. `encounter-assets.test.ts` covers both encounter families, metadata guards, dice, failure branches, token conservation and private rerolls. The room regression checks the actual content adapter and serialized decision.
+
+The scope is deliberately narrow: ambush combat with possessions/local auras, other Assets, and Item-discard choices are still guarded. For example, a held .45 Automatic no longer blocks an ordinary Research section, but it does not yet enable an ambush branch that needs its combat bonus. Personal Assistant remains guarded because its optional Influence reroll must not be silently omitted. This is why explicit context support is different from “this card is completely implemented.”
