@@ -2,10 +2,17 @@ import { expect, it } from "vitest";
 import { baseGameOtherWorldEncounterRules, validateOtherWorldEncounterContent } from "../src/other-world-encounter-rules.js";
 import { baseGameScannedTokenEncounters } from "../src/token-encounters.js";
 
-it("links nineteen mechanical transcriptions to the existing base-only scans", () => {
-  expect(baseGameOtherWorldEncounterRules.map(card => card.number)).toEqual([1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21]);
+it("links twenty mechanical transcriptions to the existing base-only scans", () => {
+  expect(baseGameOtherWorldEncounterRules.map(card => card.number)).toEqual([1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 23]);
   for (const card of baseGameOtherWorldEncounterRules) expect(baseGameScannedTokenEncounters.find(scan => scan.id === card.id)).toMatchObject({ sourceScan: card.sourceScan, sourceCellIndex: card.sourceCellIndex, deck: "other_world" });
   expect(baseGameScannedTokenEncounters.filter(card => card.deck === "other_world")).toHaveLength(24);
+});
+it("preserves card 23's Will improvement and distinct named Injury/test branches", () => {
+  expect(baseGameOtherWorldEncounterRules[19]!.sections.initial).toEqual({ kind: "test", skill: "observation", modifier: 0,
+    pass: { kind: "sequence", steps: [{ kind: "effects", effects: [{ kind: "improve", skill: "will" }] },
+      { kind: "test", skill: "strength", modifier: -1, pass: { kind: "effects", effects: [{ kind: "close_encountered_gate" }] }, fail: { kind: "effects", effects: [{ kind: "condition", condition: "back_injury" }] } }] },
+    fail: { kind: "sequence", steps: [{ kind: "effects", effects: [{ kind: "condition", condition: "leg_injury" }] },
+      { kind: "test", skill: "will", modifier: 0, pass: { kind: "effects", effects: [] }, fail: { kind: "effects", effects: [{ kind: "health", amount: -1 }, { kind: "sanity", amount: -1 }] } }] } });
 });
 it("preserves card 21's reward before Health payment and damage before Observation/Item discard", () => {
   expect(baseGameOtherWorldEncounterRules[18]!.sections.initial).toEqual({ kind: "test", skill: "lore", modifier: 0,

@@ -4,7 +4,7 @@ import { baseGameOtherWorldEncounterRules } from "../../content/src/other-world-
 import { parseLocationEncounterInstruction } from "../src/encounter-instructions.js";
 import { createDeterministicEngineContext, executeCommand, projectStateForPlayer, resolveOtherWorldEncounter, type GameContent, type GameState } from "../src/index.js";
 
-const ids = ["encounter_other_world_02", "encounter_other_world_01", "encounter_other_world_04", "encounter_other_world_03", "encounter_other_world_05", "encounter_other_world_07", "encounter_other_world_08", "encounter_other_world_09", "encounter_other_world_10", "encounter_other_world_11", "encounter_other_world_12", "encounter_other_world_13", "encounter_other_world_14", "encounter_other_world_15", "encounter_other_world_16", "encounter_other_world_17", "encounter_other_world_18", "encounter_other_world_19", "encounter_other_world_21"];
+const ids = ["encounter_other_world_02", "encounter_other_world_01", "encounter_other_world_04", "encounter_other_world_03", "encounter_other_world_05", "encounter_other_world_07", "encounter_other_world_08", "encounter_other_world_09", "encounter_other_world_10", "encounter_other_world_11", "encounter_other_world_12", "encounter_other_world_13", "encounter_other_world_14", "encounter_other_world_15", "encounter_other_world_16", "encounter_other_world_17", "encounter_other_world_18", "encounter_other_world_19", "encounter_other_world_21", "encounter_other_world_23"];
 const content: GameContent = {
   otherWorldEncounters: baseGameOtherWorldEncounterRules, otherWorldEncounterIds: ids,
   conditions: [{ id: "condition_paranoia_01", kind: "paranoia", trait: "madness" }, { id: "condition_paranoia_02", kind: "paranoia", trait: "madness" }, { id: "condition_hallucinations_01", kind: "hallucinations", trait: "madness" }, { id: "condition_amnesia_01", kind: "amnesia", trait: "madness" }],
@@ -31,6 +31,136 @@ function accepted(result: ReturnType<typeof resolveOtherWorldEncounter>) {
   if (!result.ok) throw new Error(result.error.message);
   return result;
 }
+
+describe("Other World card 23: The Abyss", () => {
+  const cardId = "encounter_other_world_23", back = "condition_back_injury_01", back2 = "condition_back_injury_02", leg = "condition_leg_injury_01", leg2 = "condition_leg_injury_02";
+  const abyssContent: GameContent = { ...content, conditions: [...content.conditions!,
+    { id: back, kind: "back_injury", trait: "injury" }, { id: back2, kind: "back_injury", trait: "injury" },
+    { id: leg, kind: "leg_injury", trait: "injury" }, { id: leg2, kind: "leg_injury", trait: "injury" }],
+    investigators: { ...content.investigators, lily_chen: content.investigators.trish_scarborough! } };
+  function card23(clues = 0) {
+    const before = state(clues); before.privateState.deckOrderById["encounter:other_world"] = [cardId, ...ids.filter(id => id !== cardId)];
+    before.privateState.tokenPoolById["condition:back_injury"] = [back, back2]; before.privateState.tokenPoolById["condition:leg_injury"] = [leg, leg2]; return before;
+  }
+  function resolve(before: GameState, dice: number[]) { return resolveOtherWorldEncounter(before, "host", "gate_arkham", abyssContent, rng(dice)); }
+  function choose(before: GameState, selection: string[] = [], dice: number[] = [], owner = "host", rules = abyssContent) {
+    return executeCommand(JSON.parse(JSON.stringify(before)), owner, { type: "RESOLVE_DECISION", decisionId: before.pendingDecision!.id, selectedOptionIds: selection }, rules, rng(dice));
+  }
+  function initial(pass: boolean) { return accepted(resolve(card23(1), [pass ? 6 : 1])).state; }
+  function finished(after: GameState, close = false, defeat = false) {
+    expect(after.activeGateIds).toEqual(close ? [] : ["gate_arkham"]); expect(after.activePlayerId).toBe(defeat ? "host" : "guest");
+    expect(after.pendingLocationEncounter).toBeUndefined(); expect(after.privateState.deckOrderById["encounter:other_world"]).toEqual([...ids.filter(id => id !== cardId), cardId]);
+  }
+  it.each([true, false])("improves Will before Strength -1, closes only on success (%s)", pass => {
+    const before = initial(true); const snapshot = structuredClone(before);
+    const follow = accepted(choose(before, [], [pass ? 6 : 1]));
+    expect(follow.state.players[0]?.skillImprovements.will).toBe(1); expect(follow.state.activeTest).toMatchObject({ skill: "strength", modifier: -1, dicePool: 1 });
+    expect(follow.events.findIndex(event => event.type === "SKILL_IMPROVED")).toBeLessThan(follow.events.findIndex(event => event.type === "TEST_ROLLED"));
+    expect(follow.state.activeGateIds).toEqual(["gate_arkham"]);
+    const result = accepted(choose(follow.state)); expect(result.state.players[0]).toMatchObject({ health: 7, sanity: 5, clues: 1, skillImprovements: { will: 1 } });
+    expect(result.state.players[0]?.conditionIds ?? []).toEqual(pass ? [] : [back]); finished(result.state, pass); expect(before).toEqual(snapshot);
+  });
+  it.each([0, 1, 2])("Will improvement caps at +2 from %i", improvement => {
+    const before = card23(); before.players[0]!.skillImprovements.will = improvement;
+    const result = accepted(resolve(before, [6, 6])); expect(result.state.players[0]?.skillImprovements.will).toBe(Math.min(2, improvement + 1)); finished(result.state, true);
+  });
+  it.each([true, false])("Leg Injury precedes Will test; failure loses both resources (%s)", pass => {
+    const follow = accepted(choose(initial(false), [], pass ? [6, 6] : [1, 1]));
+    expect(follow.state.players[0]?.conditionIds).toEqual([leg]); expect(follow.state.activeTest).toMatchObject({ skill: "will", modifier: 0, dicePool: 2 });
+    expect(follow.events.findIndex(event => event.type === "CONDITION_GAINED")).toBeLessThan(follow.events.findIndex(event => event.type === "TEST_ROLLED"));
+    const result = accepted(choose(follow.state)); expect(result.state.players[0]).toMatchObject({ health: pass ? 7 : 6, sanity: pass ? 5 : 4, clues: 1 });
+    expect(result.state.players[0]?.skillImprovements.will).toBeUndefined(); finished(result.state);
+  });
+  it.each(["once", "twice"])("Lily's restored %s improvement is owner-only and precedes Strength", option => {
+    const before = card23(); before.players[0]!.investigatorId = "lily_chen";
+    const offer = accepted(resolve(before, [6])); expect(offer.state.pendingDecision?.optionIds).toEqual(["once", "twice"]);
+    expect(offer.state.players[0]?.skillImprovements.will).toBeUndefined();
+    expect(choose(offer.state, [option], [], "guest")).toMatchObject({ ok: false, error: { code: "NOT_DECISION_OWNER" } });
+    const result = accepted(choose(offer.state, [option], [6])); expect(result.state.players[0]?.skillImprovements.will).toBe(option === "twice" ? 2 : 1); finished(result.state, true);
+  });
+  it.each(["identity", "option"])("Lily's restored choice rejects changed %s atomically", field => {
+    const before = card23(); before.players[0]!.investigatorId = "lily_chen";
+    const offer = accepted(resolve(before, [6])).state;
+    if (field === "identity") offer.players[0]!.investigatorId = "trish_scarborough";
+    const snapshot = structuredClone(offer); expect(choose(offer, [field === "option" ? "thrice" : "twice"]).ok).toBe(false); expect(offer).toEqual(snapshot);
+  });
+  it("Lily's double improvement respects the cap", () => {
+    const before = card23(); before.players[0]!.investigatorId = "lily_chen"; before.players[0]!.skillImprovements.will = 1;
+    const offer = accepted(resolve(before, [6])); const result = accepted(choose(offer.state, ["twice"], [6]));
+    expect(result.state.players[0]?.skillImprovements.will).toBe(2); finished(result.state, true);
+  });
+  it.each(["back_injury", "leg_injury"])("held %s does not duplicate or substitute another kind", kind => {
+    const before = card23(); const id = kind === "back_injury" ? back : leg;
+    before.players[0]!.conditionIds = [id]; before.privateState.tokenPoolById[`condition:${kind}`] = [kind === "back_injury" ? back2 : leg2];
+    const result = accepted(resolve(before, kind === "back_injury" ? [6, 1] : [1, 6, 6]));
+    expect(result.state.players[0]?.conditionIds).toEqual([id]); expect(result.state.privateState.tokenPoolById[`condition:${kind}`]).toHaveLength(1); finished(result.state);
+  });
+  it.each(["back_injury", "leg_injury"])("empty %s supply does not skip later outcomes", kind => {
+    const before = card23(); before.privateState.tokenPoolById[`condition:${kind}`] = [];
+    const result = accepted(resolve(before, kind === "back_injury" ? [6, 1] : [1, 1, 1])); expect(result.state.players[0]?.conditionIds ?? []).toEqual([]);
+    expect(result.state.players[0]?.health).toBe(kind === "leg_injury" ? 6 : 7); finished(result.state);
+  });
+  it("named gain can select a second physical copy without exposing its reverse identity", () => {
+    const result = accepted(resolveOtherWorldEncounter(card23(), "host", "gate_arkham", abyssContent,
+      createDeterministicEngineContext({ dice: [6, 1], tokenIndexes: [1], ids: [] })));
+    expect(result.state.players[0]?.conditionIds).toEqual([back2]); expect(result.state.privateState.tokenPoolById["condition:back_injury"]).toEqual([back]);
+    expect(JSON.stringify(projectStateForPlayer(result.state, "guest"))).not.toContain(back2); finished(result.state);
+  });
+  it.each(["back_injury", "leg_injury"])("invalid %s pool rejects before dice and restored choices", kind => {
+    for (const field of ["missing", "unknown", "wrong-kind", "duplicate", "overlap"]) {
+      const mutate = (before: GameState) => {
+        const id = kind === "back_injury" ? back : leg;
+        if (field === "missing") delete before.privateState.tokenPoolById[`condition:${kind}`];
+        if (field === "unknown") before.privateState.tokenPoolById[`condition:${kind}`] = ["unknown"];
+        if (field === "wrong-kind") before.privateState.tokenPoolById[`condition:${kind}`] = [kind === "back_injury" ? leg : back];
+        if (field === "duplicate") before.privateState.tokenPoolById[`condition:${kind}`] = [id, id];
+        if (field === "overlap") before.players[1]!.conditionIds = [id];
+      };
+      const before = card23(); mutate(before); const snapshot = structuredClone(before); expect(resolve(before, []).ok).toBe(false); expect(before).toEqual(snapshot);
+      const restored = initial(true); mutate(restored); const saved = structuredClone(restored); expect(choose(restored).ok).toBe(false); expect(restored).toEqual(saved);
+    }
+  });
+  it.each(["back_injury", "leg_injury"])("wrong trait in %s catalog rejects atomically", kind => {
+    const bad: GameContent = { ...abyssContent, conditions: abyssContent.conditions!.map(card => card.kind === kind ? { ...card, trait: "madness" } : card) };
+    const before = card23(); const snapshot = structuredClone(before);
+    expect(resolveOtherWorldEncounter(before, "host", "gate_arkham", bad, rng([])).ok).toBe(false); expect(before).toEqual(snapshot);
+  });
+  it("unknown held Condition rejects named Injury preflight", () => {
+    const before = card23(); before.players[1]!.conditionIds = ["unknown"]; const snapshot = structuredClone(before);
+    expect(resolve(before, []).ok).toBe(false); expect(before).toEqual(snapshot);
+  });
+  it("Initial reroll success improves Will once before Strength", () => {
+    const result = accepted(choose(initial(false), ["die-0"], [6, 6])); expect(result.state.players[0]).toMatchObject({ clues: 0, skillImprovements: { will: 1 } }); finished(result.state, true);
+  });
+  it.each([true, false])("nested reroll preserves prefix improvement/Injury (%s)", pass => {
+    const follow = accepted(choose(initial(pass), [], pass ? [1] : [1, 1]));
+    const result = accepted(choose(follow.state, ["die-0"], [6])); expect(result.state.players[0]?.clues).toBe(0);
+    if (pass) expect(result.state.players[0]?.skillImprovements.will).toBe(1);
+    else expect(result.state.players[0]).toMatchObject({ health: 7, sanity: 5, conditionIds: [leg] }); finished(result.state, pass);
+  });
+  it.each(["gate", "location", "deck", "card", "artifact", "option"])("restored Initial rejects changed %s atomically", field => {
+    const before = initial(true);
+    if (field === "gate") { before.activeGateIds = []; before.discardedGateIds = ["gate_arkham"]; }
+    if (field === "location") before.players[0]!.locationId = "london";
+    if (field === "deck") before.privateState.deckOrderById["encounter:other_world"]!.reverse();
+    if (field === "card") before.currentLocationEncounterCardId = ids[0];
+    if (field === "artifact") before.players[0]!.artifactIds = ["artifact_ttka_halot"];
+    const snapshot = structuredClone(before); expect(choose(before, field === "option" ? ["twice"] : []).ok).toBe(false); expect(before).toEqual(snapshot);
+  });
+  it.each(["health", "sanity", "both"])("lethal %s loss preserves prior Leg Injury and suppresses handoff", resource => {
+    const before = card23(); if (resource !== "sanity") before.players[0]!.health = 1; if (resource !== "health") before.players[0]!.sanity = 1;
+    const result = accepted(resolve(before, [1, 1, 1])); expect(result.state.pendingDefeat).toBeDefined(); expect(result.state.players[0]?.conditionIds).toEqual([leg]);
+    expect(result.state.players[0]?.health).toBe(resource === "sanity" ? 6 : 0); expect(result.state.players[0]?.sanity).toBe(resource === "health" ? 4 : 0); finished(result.state, false, true);
+  });
+  it("Azathoth loses on lethal failure at Doom 1", () => {
+    const before = card23(); before.players[0]!.health = 1; before.doom = 1;
+    const result = accepted(resolve(before, [1, 1, 1])); expect(result.state.gameResult).toBe("investigators_lose"); finished(result.state, false, true);
+  });
+  it("unsupported awakening rejects restored final damage without mutating the prior Injury", () => {
+    const before = accepted(choose(initial(false), [], [1, 1])).state; before.players[0]!.health = 1; before.doom = 1; before.ancientOneId = "cthulhu";
+    const snapshot = structuredClone(before); expect(choose(before).ok).toBe(false); expect(before).toEqual(snapshot);
+  });
+});
 
 describe("Other World card 21: The Dreamlands", () => {
   const cardId = "encounter_other_world_21";

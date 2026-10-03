@@ -11,7 +11,7 @@ const content: GameContent = {
     { id: "encounter_general_04", deck: "general", sections: { city: { kind: "test", skill: "influence", modifier: 0,
       pass: { kind: "effects", effects: [] }, fail: { kind: "effects", effects: [{ kind: "condition", condition: "leg_injury" }] } } } },
   ],
-  conditions: [{ id: "condition_leg_injury_01", kind: "leg_injury" }],
+  conditions: [{ id: "condition_leg_injury_01", kind: "leg_injury", trait: "injury" }],
   clues: [{ id: "clue_arkham", locationId: "arkham" }, { id: "clue_london", locationId: "london" }],
   map: { adjacentLocationIds: { space_2: ["arkham", "london"] }, routes: [], locationTypes: { space_2: "sea", arkham: "city", london: "city" } },
   investigators: { akachi_onyele: { startingLocationId: "space_2", health: 5, sanity: 7, skills: { lore: 3, influence: 2, observation: 2, strength: 2, will: 4 }, startingAssetIds: [], startingClues: 0 } },

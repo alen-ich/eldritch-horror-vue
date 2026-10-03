@@ -1938,7 +1938,7 @@ function validateInjurySupply(state: GameState, content: GameContent): CommandRe
 
 function validateEncounterDynamicInstructions(state: GameState, nodes: readonly LocationEncounterInstruction[], content: GameContent): CommandResult | undefined {
   for (const node of nodes) {
-    if (node.kind === "effects" && node.effects.some(effect => effect.kind === "condition" && effect.condition === "injury")) {
+    if (node.kind === "effects" && node.effects.some(effect => effect.kind === "condition" && ["injury", "back_injury", "leg_injury"].includes(effect.condition))) {
       const invalid = validateInjurySupply(state, content);
       if (invalid) return invalid;
     }
@@ -1947,9 +1947,10 @@ function validateEncounterDynamicInstructions(state: GameState, nodes: readonly 
       const invalid = validateArtifactClues(state, content);
       if (invalid) return invalid;
     }
-    for (const kind of ["hallucinations", "amnesia", "paranoia"] as const) {
+    for (const kind of ["hallucinations", "amnesia", "paranoia", "back_injury", "leg_injury"] as const) {
       if (node.kind !== "effects" || !node.effects.some(effect => effect.kind === "condition" && effect.condition === kind)) continue;
       const catalog = content.conditions?.filter(card => card.kind === kind).map(card => card.id);
+      if ((kind === "back_injury" || kind === "leg_injury") && content.conditions?.some(card => card.kind === kind && card.trait !== "injury")) return failure("CONDITION_CONTENT_MISSING", "The named Injury has an invalid trait.");
       const pool = state.privateState.tokenPoolById[conditionPoolKey(kind)];
       const owned = state.players.flatMap(player => player.conditionIds ?? []).filter(id => catalog?.includes(id));
       const physical = [...(pool ?? []), ...owned];

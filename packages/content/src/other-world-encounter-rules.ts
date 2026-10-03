@@ -7,7 +7,8 @@ const effect = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("clues"), amount: z.number().int() }).strict(),
   z.object({ kind: z.literal("sanity"), amount: z.number().int().negative() }).strict(),
   z.object({ kind: z.literal("health"), amount: z.number().int().negative() }).strict(),
-  z.object({ kind: z.literal("condition"), condition: z.enum(["paranoia", "hallucinations", "amnesia", "injury"]) }).strict(),
+  z.object({ kind: z.literal("condition"), condition: z.enum(["paranoia", "hallucinations", "amnesia", "injury", "back_injury", "leg_injury"]) }).strict(),
+  z.object({ kind: z.literal("improve"), skill: z.enum(["observation", "lore", "will", "influence", "strength"]) }).strict(),
   z.object({ kind: z.literal("discard_item_assets"), amount: z.literal(1) }).strict(),
   z.object({ kind: z.literal("delay") }).strict(),
   z.object({ kind: z.literal("doom_advance"), amount: z.literal(1) }).strict(),
@@ -127,6 +128,13 @@ export const baseGameOtherWorldEncounterRules = [
     initial: t("lore", { kind: "sequence", steps: [e({ kind: "clues", amount: 2 }),
       { kind: "optional", cost: [{ kind: "health", amount: -1 }], reward: e(close), decline: e({ kind: "delay" }) }] },
       { kind: "sequence", steps: [e({ kind: "health", amount: -1 }), t("observation", e(), e({ kind: "discard_item_assets", amount: 1 }))] }),
+  },
+  {
+    number: 23, name: "The Abyss",
+    initial: t("observation", { kind: "sequence", steps: [e({ kind: "improve", skill: "will" }),
+      t("strength", e(close), e({ kind: "condition", condition: "back_injury" }), -1)] },
+      { kind: "sequence", steps: [e({ kind: "condition", condition: "leg_injury" }),
+        t("will", e(), e({ kind: "health", amount: -1 }, { kind: "sanity", amount: -1 }))] }),
   },
 ].map(({ number, name, initial }) => {
   const scan = baseGameScannedTokenEncounters.find(card => card.deck === "other_world" && card.number === number)!;
