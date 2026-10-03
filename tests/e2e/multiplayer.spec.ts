@@ -61,13 +61,20 @@ test('Personal Assistant offers an explicit free reroll during Acquire Assets', 
   const guest = await guestContext.newPage()
   await guest.goto(page.url())
   await guest.waitForLoadState('networkidle')
+  await expect(guest.locator('.roster article').filter({ hasText: 'Charlie Kane' })).toBeVisible()
   await guest.getByRole('button', { name: /Trish Scarborough/i }).click()
+  await expect(page.locator('.roster article').filter({ hasText: 'Trish Scarborough' })).toBeVisible()
   await page.getByRole('button', { name: /Cthulhu.*Doom 12/i }).click()
+  await expect(page.getByRole('button', { name: 'Start game' })).toBeEnabled()
   await page.getByRole('button', { name: 'Start game' }).click()
-  await page.getByRole('button', { name: 'Acquire Assets' }).click()
   const dialog = page.getByRole('dialog', { name: /influence test/i })
   const freeReroll = dialog.getByRole('button', { name: 'Personal Assistant: reroll die 1 (no Clue)', exact: true })
-  await expect(freeReroll).toBeVisible()
+  // The first click can use a pre-start version while the final room patch arrives.
+  // Retry only until the owner-private test is visible; never retry a reroll itself.
+  await expect(async () => {
+    await page.getByRole('button', { name: 'Acquire Assets' }).click()
+    await expect(freeReroll).toBeVisible()
+  }).toPass({ timeout: 15000 })
   await freeReroll.click()
   await dialog.getByRole('button', { name: 'Use selected reroll' }).click()
   await expect(page.getByRole('button', { name: /Personal Assistant: reroll die/ })).toHaveCount(0)
