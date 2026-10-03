@@ -28,12 +28,13 @@ export function physicalAssetIsUnique(state: GameState, id: string): boolean {
     .filter(candidate => candidate === id).length === 1;
 }
 
-export function encounterHealthPreventions(state: GameState, recipient: EnginePlayer, content: GameContent) {
+export function encounterDamagePreventions(state: GameState, recipient: EnginePlayer, content: GameContent): { playerId: string; assetId: string; amount: number; resource: "health" | "sanity" }[] {
   return state.players.filter(holder => !holder.defeated && !holder.eliminated && recipient.locationId && holder.locationId === recipient.locationId)
     .flatMap(holder => holder.assetIds.flatMap(assetId => {
       const asset = content.assets.find(card => card.id === assetId);
-      if (asset?.nonCombatEncounterSupport !== "health_prevention") return [];
-      return asset.engineEffects.flatMap(effect => effect.type === "discard_prevent_health_loss" ? [{ playerId: holder.id, assetId, amount: effect.amount }] : []);
+      if (asset?.nonCombatEncounterSupport !== "health_prevention" && asset?.nonCombatEncounterSupport !== "sanity_prevention") return [];
+      return asset.engineEffects.flatMap(effect => effect.type === "discard_prevent_health_loss" || effect.type === "discard_prevent_sanity_loss"
+        ? [{ playerId: holder.id, assetId, amount: effect.amount, resource: effect.type === "discard_prevent_health_loss" ? "health" as const : "sanity" as const }] : []);
     }));
 }
 
@@ -55,11 +56,12 @@ export function supportsEncounterAssets(state: GameState, player: EnginePlayer, 
   const assets = player.assetIds.map(id => content.assets.find(asset => asset.id === id));
   if (assets.some(asset => !asset || !asset.nonCombatEncounterSupport || asset.nonCombatEncounterSupport === "unsupported")) return false;
   const all = nodes(instruction);
-  const preventions = encounterHealthPreventions(state, player, content);
+  const preventions = encounterDamagePreventions(state, player, content);
   if (preventions.some(source => !physicalAssetIsUnique(state, source.assetId))) return false;
   // Paid costs and combat damage need their own reaction semantics; never silently
   // treat these as ordinary loss or bypass a colleague's applicable prevention.
-  if (preventions.length && all.some(node => node.kind === "optional" && node.cost.some(effect => effect.kind === "health" && effect.amount < 0))) return false;
+  if (all.some(node => node.kind === "optional" && node.cost.some(effect =>
+    (effect.kind === "health" || effect.kind === "sanity") && effect.amount < 0 && preventions.some(source => source.resource === effect.kind)))) return false;
   if (all.some(node => node.kind === "ambush" || node.kind === "ambush_result")
     && (assets.length > 0 || nonCombatEncounterAuraBonus(state, player, content) > 0 || preventions.length > 0)) return false;
   if (all.some(node => node.kind === "effects" && node.effects.some(effect => effect.kind === "discard_item_assets"))

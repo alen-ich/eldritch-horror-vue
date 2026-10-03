@@ -20,7 +20,7 @@ export type LocationEncounterEffect =
 
 export type LocationEncounterInstruction =
   /** Server-created checkpoint, never accepted by the printed-content parser. */
-  | { kind: "damage_reaction"; healthLoss: number; sanityLoss: number; declinedPlayerIds: string[] }
+  | { kind: "damage_reaction"; healthLoss: number; sanityLoss: number; declinedPlayerIds: string[]; declinedAssetIds?: string[] }
   | { kind: "ambush"; monsterId: "monster_deep_one" | "monster_star_spawn"; defeated: LocationEncounterInstruction; notDefeated: LocationEncounterInstruction }
   | { kind: "ambush_result"; monsterId: "monster_deep_one" | "monster_star_spawn"; damage: number; toughness: number; defeated: LocationEncounterInstruction; notDefeated: LocationEncounterInstruction }
   | { kind: "effects"; effects: LocationEncounterEffect[] }

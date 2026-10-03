@@ -11,6 +11,7 @@ export const assetAbilityTypes = [
 export type AssetAbilityType = (typeof assetAbilityTypes)[number];
 
 export type AssetEngineEffect =
+  | { type: "discard_prevent_sanity_loss"; amount: 2 }
   | { type: "discard_prevent_health_loss"; amount: 2 }
   | { type: "round_test_reroll" }
   | { type: "test_reroll"; skill: "influence" | "strength" }
@@ -32,7 +33,7 @@ export interface AssetCardData {
   effectText: string;
   engineEffects: readonly AssetEngineEffect[];
   /** Verified applicability to ordinary location/Research, not combat or Other World. */
-  nonCombatEncounterSupport: "unsupported" | "irrelevant" | "city_test_aura" | "skill_test" | "health_prevention";
+  nonCombatEncounterSupport: "unsupported" | "irrelevant" | "city_test_aura" | "skill_test" | "health_prevention" | "sanity_prevention";
   sourceImageFilename: string;
   imageUrl: string;
   backImageUrl: "/cards/assets/back.webp";
@@ -49,6 +50,7 @@ const engineEffectsByAssetId: Readonly<Partial<Record<AssetId, readonly AssetEng
   asset_lucky_rabbits_foot: [{ type: "round_test_reroll" }],
   asset_hired_muscle: [{ type: "skill_bonus", skill: "strength", amount: 1 }, { type: "test_reroll", skill: "strength" }],
   asset_bandages: [{ type: "discard_prevent_health_loss", amount: 2 }],
+  asset_whiskey: [{ type: "discard_prevent_sanity_loss", amount: 2 }],
 };
 
 // Explicitly scan-verified scopes. An empty effect list alone never means safe.
@@ -60,7 +62,7 @@ const nonCombatIrrelevantAssetIds: readonly string[] = [
 export const baseGameAssets: readonly AssetCardData[] = baseGameAssetDefinitions.map((definition) => ({
   ...definition,
   engineEffects: engineEffectsByAssetId[definition.id] ?? [],
-  nonCombatEncounterSupport: definition.id === "asset_bandages" ? "health_prevention" : ["asset_personal_assistant", "asset_lucky_rabbits_foot", "asset_hired_muscle"].includes(definition.id) ? "skill_test" : definition.id === "asset_urban_guide" ? "city_test_aura" : nonCombatIrrelevantAssetIds.includes(definition.id) ? "irrelevant" : "unsupported",
+  nonCombatEncounterSupport: definition.id === "asset_whiskey" ? "sanity_prevention" : definition.id === "asset_bandages" ? "health_prevention" : ["asset_personal_assistant", "asset_lucky_rabbits_foot", "asset_hired_muscle"].includes(definition.id) ? "skill_test" : definition.id === "asset_urban_guide" ? "city_test_aura" : nonCombatIrrelevantAssetIds.includes(definition.id) ? "irrelevant" : "unsupported",
   imageUrl: `/cards/assets/${definition.id.slice("asset_".length)}.webp`,
   backImageUrl: "/cards/assets/back.webp",
   verification: "artwork_verified_from_scan",
@@ -75,6 +77,7 @@ const assetSchema = z.object({
   abilityType: z.enum(assetAbilityTypes),
   effectText: z.string().min(1),
   engineEffects: z.array(z.discriminatedUnion("type", [
+    z.object({ type: z.literal("discard_prevent_sanity_loss"), amount: z.literal(2) }).strict(),
     z.object({ type: z.literal("discard_prevent_health_loss"), amount: z.literal(2) }).strict(),
     z.object({ type: z.literal("round_test_reroll") }).strict(),
     z.object({ type: z.literal("test_reroll"), skill: z.enum(["influence", "strength"]) }).strict(),
@@ -84,7 +87,7 @@ const assetSchema = z.object({
     z.object({ type: z.literal("rest_recover_additional_sanity"), amount: z.literal(1) }).strict(),
     z.object({ type: z.literal("on_gain_recover_all_and_discard") }).strict(),
   ])),
-  nonCombatEncounterSupport: z.enum(["unsupported", "irrelevant", "city_test_aura", "skill_test", "health_prevention"]),
+  nonCombatEncounterSupport: z.enum(["unsupported", "irrelevant", "city_test_aura", "skill_test", "health_prevention", "sanity_prevention"]),
   sourceImageFilename: z.string().regex(/^\d{2}_[a-z0-9_]+\.jpg$/),
   imageUrl: z.string().regex(/^\/cards\/assets\/[a-z0-9_]+\.webp$/),
   backImageUrl: z.literal("/cards/assets/back.webp"),

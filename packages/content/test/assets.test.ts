@@ -71,10 +71,13 @@ describe("base-game Asset cards", () => {
     expect(baseGameAssets.find(({ id }) => id === "asset_hired_muscle")?.traits).toEqual(["ally"]);
     expect(baseGameAssets.find(({ id }) => id === "asset_bandages")?.engineEffects).toEqual([{ type: "discard_prevent_health_loss", amount: 2 }]);
     expect(baseGameAssets.find(({ id }) => id === "asset_bandages")?.traits).toEqual(["item"]);
-    expect(baseGameAssets.filter(({ engineEffects }) => engineEffects.length > 0)).toHaveLength(8);
+    expect(baseGameAssets.find(({ id }) => id === "asset_whiskey")?.engineEffects).toEqual([{ type: "discard_prevent_sanity_loss", amount: 2 }]);
+    expect(baseGameAssets.find(({ id }) => id === "asset_whiskey")?.traits).toEqual(["item"]);
+    expect(baseGameAssets.filter(({ engineEffects }) => engineEffects.length > 0)).toHaveLength(9);
   });
 
-  it("explicitly scopes twelve scan-verified Assets to non-combat encounters", () => {
+  it("explicitly scopes thirteen scan-verified Assets to non-combat encounters", () => {
+    expect(baseGameAssets.filter(asset => asset.nonCombatEncounterSupport !== "unsupported")).toHaveLength(13);
     expect(baseGameAssets.filter(asset => asset.nonCombatEncounterSupport === "irrelevant").map(asset => asset.id).sort()).toEqual([
       "asset_38_revolver", "asset_45_automatic", "asset_arcane_manuscripts", "asset_fine_clothes", "asset_holy_cross", "asset_king_james_bible", "asset_protective_amulet",
     ]);
@@ -83,6 +86,7 @@ describe("base-game Asset cards", () => {
     expect(baseGameAssets.find(asset => asset.id === "asset_lucky_rabbits_foot")?.nonCombatEncounterSupport).toBe("skill_test");
     expect(baseGameAssets.find(asset => asset.id === "asset_hired_muscle")?.nonCombatEncounterSupport).toBe("skill_test");
     expect(baseGameAssets.find(asset => asset.id === "asset_bandages")?.nonCombatEncounterSupport).toBe("health_prevention");
+    expect(baseGameAssets.find(asset => asset.id === "asset_whiskey")?.nonCombatEncounterSupport).toBe("sanity_prevention");
   });
 
   it("rejects incomplete and duplicate catalogs", () => {

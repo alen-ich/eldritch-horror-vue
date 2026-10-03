@@ -367,7 +367,7 @@ describe("scoped non-combat encounter Assets", () => {
     expect(result.state.privateState.tokenPoolById["held_clues:host"]).toEqual(["clue_arkham"]);
     expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.activePlayerId).toBe("guest");
   });
-  it.each(["asset_whiskey", "asset_unknown"])("retains atomic guards for %s", id => {
+  it.each(["asset_spirit_dagger", "asset_unknown"])("retains atomic guards for %s", id => {
     for (const research of [false, true]) {
       const before = state([id]); const snapshot = structuredClone(before);
       const result = research ? resolveResearchEncounter(before, "host", "chosen", content, createDeterministicEngineContext({})) : resolveLocationEncounter(before, "host", "general", content, createDeterministicEngineContext({}));
