@@ -278,8 +278,8 @@ The following snapshot distinguishes working slices from complete families:
 | Actions | Travel/tickets, Rest, Acquire Assets, accepted trades, action usage, Delay, selected component actions | Investigator abilities and possession actions incomplete. |
 | Tests | Dice arithmetic, improvements, thresholds, highest Item bonus primitive, owner-only Clue rerolls | The arithmetic primitive does not mean every possession bonus is integrated. |
 | Combat | Basic printed-stat combat and phase ordering; Deep One/Star Spawn Research ambush continuation | Board-combat rerolls, Cultists, special abilities and possession effects incomplete. |
-| Location | All 36 cards transcribed; 64/108 sections accepted by the parser; eight Assets have verified non-combat applicability | Remaining 44 unsupported; other carried Assets still block live resolution. |
-| Research | All 24 Azathoth and 18/24 Cthulhu sections supported; eight-Asset non-combat scope | Other Asset and ambush guards; remaining Cthulhu rewards/Cultists; Shub/Yog transcription/execution. |
+| Location | All 36 cards transcribed; 64/108 sections accepted by the parser; nine Assets have verified non-combat applicability | Remaining 44 unsupported; other carried Assets still block live resolution. |
+| Research | All 24 Azathoth and 18/24 Cthulhu sections supported; nine-Asset non-combat scope | Other Asset and ambush guards; remaining Cthulhu rewards/Cultists; Shub/Yog transcription/execution. |
 | Mythos | All 51 icon sequences cataloged; 17 printed texts have typed effects | Remaining 34 texts and broad Reckoning can stop the round. |
 | Conditions | Physical copies, several actions/conflicts, thresholds, five typed reverse handlers | Most reverses and full trigger sequencing incomplete. |
 | Assets | 40-card catalog; five mappings with supported partial/full effects, plus explicit encounter applicability | Most effects remain display-only or guarded; Urban Guide is wired only into non-combat location/Research. |
@@ -513,4 +513,16 @@ The next implemented slice after this guide is a useful example of the ownership
 4. `GameRoom.ts` supplies the new content metadata. No new network command is needed because the player still requests an ordinary encounter or Research.
 5. `encounter-assets.test.ts` covers both encounter families, metadata guards, dice, failure branches, token conservation and private rerolls. The room regression checks the actual content adapter and serialized decision.
 
-The scope is deliberately narrow: ambush combat with possessions/local auras, other Assets, and Item-discard choices are still guarded. For example, a held .45 Automatic no longer blocks an ordinary Research section, but it does not yet enable an ambush branch that needs its combat bonus. Personal Assistant remains guarded because its optional Influence reroll must not be silently omitted. This is why explicit context support is different from “this card is completely implemented.”
+The scope is deliberately narrow: ambush combat with possessions/local auras, other Assets, and Item-discard choices are still guarded. For example, a held .45 Automatic no longer blocks an ordinary Research section, but it does not yet enable an ambush branch that needs its combat bonus. This is why explicit context support is different from “this card is completely implemented.”
+
+## 21. Follow the next change: an optional Asset reroll
+
+Personal Assistant is now the ninth supported non-combat Asset. Read its two typed nodes in `packages/content/src/assets.ts`: `skill_bonus` adds one Influence die, and `test_reroll` grants an optional reroll for that skill. No runtime code parses the printed text.
+
+In engine `index.ts`, `createTestRerollDecision` builds the source-specific options. `die-0` means spend one physical Clue to reroll the first die; `asset-reroll:asset_personal_assistant:0` means use the free Asset source. Both enter the existing `RESOLVE_DECISION` command. The engine rechecks ownership, held source, matching skill, index and prior usage before changing dice. It only consumes a Clue for the Clue option.
+
+`ActiveTest.usedRerollAssetIds`, defined in `packages/protocol/src/index.ts`, is an optional array so old states still behave as having no consumed sources. Each free use adds its physical source ID. The room retains the canonical test, and JSON restoration preserves that array; the public schema does not need it to decide outcomes. After a reroll, the engine offers remaining sources or resumes the encounter/Acquire Assets continuation. Keeping the result skips the remaining optional rerolls. A new test has a fresh usage list.
+
+The web dialog in `apps/web/app/app.vue` displays rolled dice separately from labeled source choices and sends the selected option ID; it never rolls a die or consumes resources itself. Study `encounter-assets.test.ts` for deterministic source-order cases, `GameRoom.test.ts` for actual connection authorization/restoration, and `tests/e2e/multiplayer.spec.ts` for Charlie Kane's free-reroll click path.
+
+Verification for this slice passed lint, typecheck, build, 337 engine tests, 48 server tests, 77 content tests, 18 protocol tests and both browser journeys. Still outside this slice: Other World and possession-aware combat/ambush, other Asset reactions, and Research Item-discard choices. The next small task is the Item-discard continuation, not another card import.

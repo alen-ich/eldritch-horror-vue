@@ -17,7 +17,7 @@ The authoritative engine now removes starting Assets from the deck, grants them 
 
 Five cards have explicit typed effect nodes and executable tests (coverage is scoped, not full-family support):
 
-- Personal Assistant adds one die to Influence tests, including Acquire Assets. Its optional reroll remains pending the general test/reroll system.
+- Personal Assistant adds one die and an optional one-die free reroll to Influence tests in the generic test lifecycle (including Acquire Assets) and supported location/Research. Its reroll can be used once per test, independently of Clue rerolls, and consumed-source tracking survives serialization. It does not grant a bonus or reroll to another skill.
 - Fine Clothes makes each 6 count as two successes during Acquire Assets.
 - King James Bible recovers one additional Sanity during Rest. Its combat reroll remains pending combat tests.
 - Private Care immediately restores Health and Sanity to maximum, then enters the Asset discard pile.
@@ -32,6 +32,16 @@ Eight generated English fronts were visually checked. `nonCombatEncounterSupport
 Seventeen engine cases plus a content test and a room regression cover scoped applicability, owner/colleague aura, remote/defeated/eliminated exclusions, Sea exclusion, ordinary Lore versus Spell-only Manuscripts, minimum dice, physical-Clue rerolls, serialization/ownership and atomic branch guards. This reduces blanket Asset blocking; it does not remove Reckoning, combat, reaction/reroll or general possession limitations. Next: encounter Asset-granted test rerolls and global skill bonuses, starting with Personal Assistant.
 
 The engine never parses `effectText`. Cards without typed nodes remain display-only until their prerequisites and verified handlers are present.
+
+## Personal Assistant follow-up (3 October 2026)
+
+The generated English front was visually verified: the +1 die and optional reroll both apply to Influence. The card now uses `skill_test` applicability, bringing the supported non-combat roster to nine cards; the other 31 remain guarded. The prior eight-card paragraph records the earlier slice, not the current count.
+
+`ActiveTest.usedRerollAssetIds` records physical sources consumed in the current test. Owner-private options distinguish `die-N` (spend a physical Clue) from `asset-reroll:asset_personal_assistant:N` (no Clue). After each reroll the server offers only remaining legal sources; keeping the result declines all remaining rerolls and resumes the original continuation. Tests can reroll the same die using different sources, but cannot reuse Personal Assistant in the same test. A new test starts with unused sources. Fixed, non-test rolls are unchanged.
+
+Engine tests cover no-Clue availability, combined Ally bonuses, refusal, new-test reset, both source orders, restoration, ownership, consumed-source rejection and other-skill exclusion. A real room regression verifies Acquire Assets and restoration; the browser regression uses Charlie Kane's starting Personal Assistant and explicitly selects the free source. The browser displays source-specific labels rather than describing every reroll as a Clue payment.
+
+Combat/ambush, Other World, and other card-specific reaction timing are not enabled by this change. Next scan-independent slice: Research Item-discard choices with physical Asset discard conservation; these remain preflight guarded today.
 
 The scanned **Rally the People** Mythos Event now grants the Lead the first Ally in the private shuffled Asset deck, falling back to the discard pile if necessary and reshuffling the deck after a gain. The granted physical card leaves its source pile and becomes the Lead's possession; if no Ally remains in either pile, no card is gained. The remaining deck order is never synchronized to clients.
 

@@ -60,6 +60,10 @@ Last updated: 2026-10-03
 
 ### Current verification evidence
 
+- Latest Personal Assistant verification: root lint/typecheck/test/build passed; 337 engine, 48 server, 77 content and 18 protocol tests passed; both browser journeys passed. Earlier counts below describe historical slices.
+
+- Personal Assistant update (2026-10-03): visually verified Influence bonus and optional one-die free reroll are wired to generic tests (including Acquire Assets) and ordinary location/Research. Nine Assets now have explicit non-combat support. Per-test consumed-source tracking survives restoration; free and physical-Clue rerolls are separately labeled, owner-authorized and usable in either order. Engine, room and browser regressions added. Combat/ambush and Other World remain guarded. Next: implement Research Item-discard choices and physical discard conservation using existing scans. Full Task 1 remains incomplete.
+
 - Scoped non-combat Asset update (2026-10-03): eight scan-verified Assets can be carried in supported location/Research encounters: seven have no applicable effects and Urban Guide contributes one die to same-City investigators. Explicit applicability metadata replaces the blanket guard only for this slice; unknown/reaction cards, Item-discard branches with held Items, and carried-Asset/local-aura ambush branches reject atomically before rolling. Seventeen engine cases, one content case and one multiplayer case verify dice, scope exclusions, physical Clue rerolls, serialization and ownership. Next: Personal Assistant's global Influence bonus and optional Asset reroll in encounters. Combat, Reckoning, other possession effects and full Task 1 remain incomplete; no new scans needed.
 
 - Engine: 75 tests passing, including generic combat resolution and combat-to-defeat integration in addition to delayed timing, Trade, setup tracks, staged Mythos composition, damage/defeat/replacement, and prior skill, Asset, and Mystery behavior.

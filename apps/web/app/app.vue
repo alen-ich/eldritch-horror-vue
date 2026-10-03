@@ -497,16 +497,21 @@ async function copyInvite() {
             <h2 id="test-title">{{ game.activeTest.value.skill }} test</h2>
             <p>{{ privateRerollDecision.prompt }}</p>
             <div class="test-dice" role="group" aria-label="Rolled dice">
-              <button
+              <span
                 v-for="(die, index) in game.activeTest.value.dice"
                 :key="index"
-                :class="{ selected: selectedRerollOptionId === `die-${index}`, success: die >= game.activeTest.value.successThreshold }"
-                :aria-pressed="selectedRerollOptionId === `die-${index}`"
-                @click="selectedRerollOptionId = selectedRerollOptionId === `die-${index}` ? undefined : `die-${index}`"
-              >{{ die }}</button>
+                :class="{ success: die >= game.activeTest.value.successThreshold }"
+              >{{ die }}</span>
+            </div>
+            <div class="test-dice reroll-sources" role="group" aria-label="Reroll source and die">
+              <button v-for="optionId in privateRerollDecision.optionIds" :key="optionId"
+                :class="{ selected: selectedRerollOptionId === optionId }"
+                :aria-pressed="selectedRerollOptionId === optionId"
+                @click="selectedRerollOptionId = selectedRerollOptionId === optionId ? undefined : optionId"
+              >{{ privateRerollDecision.optionLabels?.[optionId] ?? optionId }}</button>
             </div>
             <strong>{{ game.activeTest.value.successes }} {{ game.activeTest.value.successes === 1 ? 'success' : 'successes' }}</strong>
-            <button class="primary" @click="resolveRerollDecision">{{ selectedRerollOptionId ? 'Spend 1 Clue and reroll' : 'Keep result' }}</button>
+            <button class="primary" @click="resolveRerollDecision">{{ selectedRerollOptionId ? 'Use selected reroll' : 'Keep result' }}</button>
           </section>
           <section v-if="privateConditionRecoveryDecision" class="test-dialog" role="dialog" aria-modal="true" aria-labelledby="condition-recovery-title">
             <p class="chapter">Rest recovery</p>
@@ -781,5 +786,9 @@ input:focus { border-color: #d5aa63; box-shadow: 0 0 0 3px #d5aa6322; }
   .board-stage { padding: 4px 62px 4px 4px; }.game-shell.tray-peek { grid-template-rows: 54px minmax(0, 1fr) 170px; }.game-shell.tray-expanded { grid-template-rows: 54px minmax(0, 1fr) 55vh; }
   .tray-tabs button { width: 43px; justify-content: center; overflow: hidden; color: transparent; gap: 0; padding: 0; }.tray-tabs button > span { color: #d5aa63; font-size: .9rem; }.tray-tabs .tray-resize { width: 43px; color: #d5aa63; }.tray-content { padding: 15px; }
 }
+.test-dialog { max-height: calc(100% - 32px); overflow-y: auto; }
+.test-dice > span { display: grid; place-items: center; width: 40px; height: 40px; border: 1px solid #58727a; border-radius: 9px; font-size: 1.25rem; }
+.test-dice > span.success { color: #d9f2c5; border-color: #7aa46c; }
+.reroll-sources button { width: auto; height: auto; min-height: 40px; flex: 1 1 160px; padding: 8px; font-size: .85rem; font-weight: 600; }
 @media (prefers-reduced-motion: reduce) { .route.legal, .location.available circle { animation: none; }.token { transition: none; } }
 </style>

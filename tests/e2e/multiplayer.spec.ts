@@ -28,6 +28,7 @@ test('two browsers join, resolve an Asset test, and share Travel state', async (
 
     await host.getByRole('button', { name: 'Acquire Assets' }).click()
     await expect(host.getByRole('dialog', { name: /influence test/i })).toBeVisible()
+    await expect(host.getByRole('button', { name: 'Spend 1 Clue: reroll die 1', exact: true })).toBeVisible()
     await host.getByRole('button', { name: 'Keep result' }).click()
     await expect(host.getByRole('button', { name: 'Buy nothing' })).toBeVisible()
     await host.getByRole('button', { name: 'Buy nothing' }).click()
@@ -46,5 +47,33 @@ test('two browsers join, resolve an Asset test, and share Travel state', async (
   } finally {
     await guestContext.close()
     await hostContext.close()
+  }
+})
+
+test('Personal Assistant offers an explicit free reroll during Acquire Assets', async ({ page, browser }) => {
+  const guestContext = await browser.newContext()
+  try {
+  await page.goto('/')
+  await page.waitForLoadState('networkidle')
+  await page.getByLabel('Display name').fill('Charlie player')
+  await page.getByRole('button', { name: 'Create game' }).click()
+  await page.getByRole('button', { name: /Charlie Kane/i }).click()
+  const guest = await guestContext.newPage()
+  await guest.goto(page.url())
+  await guest.waitForLoadState('networkidle')
+  await guest.getByRole('button', { name: /Trish Scarborough/i }).click()
+  await page.getByRole('button', { name: /Cthulhu.*Doom 12/i }).click()
+  await page.getByRole('button', { name: 'Start game' }).click()
+  await page.getByRole('button', { name: 'Acquire Assets' }).click()
+  const dialog = page.getByRole('dialog', { name: /influence test/i })
+  const freeReroll = dialog.getByRole('button', { name: 'Personal Assistant: reroll die 1 (no Clue)', exact: true })
+  await expect(freeReroll).toBeVisible()
+  await freeReroll.click()
+  await dialog.getByRole('button', { name: 'Use selected reroll' }).click()
+  await expect(page.getByRole('button', { name: /Personal Assistant: reroll die/ })).toHaveCount(0)
+  if (await dialog.isVisible()) await dialog.getByRole('button', { name: 'Keep result' }).click()
+  await expect(page.getByRole('button', { name: 'Buy nothing' })).toBeVisible()
+  } finally {
+    await guestContext.close()
   }
 })

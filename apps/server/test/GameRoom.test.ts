@@ -20,6 +20,43 @@ describe("authoritative game room", () => {
   after(async () => colyseus.shutdown());
   beforeEach(async () => colyseus.cleanup());
 
+  it("preserves Personal Assistant's consumed free reroll across room state restoration", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState();
+    state.phase = "action"; state.ancientOneId = "cthulhu"; state.actionsRemaining = 2;
+    state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
+    state.players[0] = { ...state.players[0]!, investigatorId: "akachi_onyele", locationId: "arkham", health: 5, sanity: 7, clues: 1, assetIds: ["asset_personal_assistant"] };
+    state.privateState.tokenPoolById[`held_clues:${state.players[0]!.id}`] = ["clue_london"];
+    internal.applyEngineState(state);
+    const offered = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "ACQUIRE_ASSETS" }); await room.waitForMessage(commandMessageType);
+    const decision = await offered as PendingDecision;
+    assert.equal(internal.toEngineState().activeTest?.dicePool, 3);
+    assert.ok(decision.optionIds.includes("asset-reroll:asset_personal_assistant:0"));
+    const rejected = guest.waitForMessage(commandErrorMessageType);
+    sendCommand(room, guest, { type: "RESOLVE_DECISION", decisionId: decision.id, selectedOptionIds: ["asset-reroll:asset_personal_assistant:0"] });
+    await room.waitForMessage(commandMessageType); assert.equal((await rejected as { code: string }).code, "NOT_DECISION_OWNER");
+    const nextMessage = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: decision.id, selectedOptionIds: ["asset-reroll:asset_personal_assistant:0"] });
+    await room.waitForMessage(commandMessageType); const clueDecision = await nextMessage as PendingDecision;
+    const paused = internal.toEngineState();
+    assert.equal(paused.players[0]?.clues, 1); assert.deepEqual(paused.activeTest?.usedRerollAssetIds, ["asset_personal_assistant"]);
+    assert.ok(clueDecision.optionIds.every(id => id.startsWith("die-")));
+    const restored = host.waitForMessage(pendingDecisionMessageType);
+    internal.applyEngineState(JSON.parse(JSON.stringify(paused))); await restored;
+    assert.deepEqual(internal.toEngineState().activeTest?.usedRerollAssetIds, ["asset_personal_assistant"]);
+    const invalid = host.waitForMessage(commandErrorMessageType);
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: clueDecision.id, selectedOptionIds: ["asset-reroll:asset_personal_assistant:1"] });
+    await room.waitForMessage(commandMessageType); assert.equal((await invalid as { code: string }).code, "INVALID_DECISION_SELECTION");
+    const acquisition = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: clueDecision.id, selectedOptionIds: [] });
+    await room.waitForMessage(commandMessageType); assert.equal((await acquisition as PendingDecision).kind, "select_acquired_cards");
+    assert.equal(internal.toEngineState().activeTest, undefined);
+  });
+
   it("applies a colleague's Urban Guide aura to a carried-Asset Research test and restores the bonus die", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
