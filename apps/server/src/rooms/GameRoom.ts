@@ -235,6 +235,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       usedConditionActionIds: this.state.usedConditionActionIds ? this.state.usedConditionActionIds.split(",") : [],
       usedArtifactActionIds: this.state.usedArtifactActionIds ? this.state.usedArtifactActionIds.split(",") : [],
       usedAssetRerollIds: this.state.usedAssetRerollIds ? this.state.usedAssetRerollIds.split(",") : [],
+      usedAssetDieModifierIds: this.state.usedAssetDieModifierIds ? this.state.usedAssetDieModifierIds.split(",") : [],
       monsterLocationIds: [...new Set(monsters.map(monster => monster.locationId))],
       monsters,
       encounteredMonsterInstanceIds: this.state.encounteredMonsterInstanceIds ? this.state.encounteredMonsterInstanceIds.split(",") : [],
@@ -311,6 +312,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     this.state.usedConditionActionIds = (engineState.usedConditionActionIds ?? []).join(",");
     this.state.usedArtifactActionIds = (engineState.usedArtifactActionIds ?? []).join(",");
     this.state.usedAssetRerollIds = (engineState.usedAssetRerollIds ?? []).join(",");
+    this.state.usedAssetDieModifierIds = (engineState.usedAssetDieModifierIds ?? []).join(",");
     this.state.monsters = JSON.stringify(engineState.monsters ?? []);
     this.state.encounteredMonsterInstanceIds = (engineState.encounteredMonsterInstanceIds ?? []).join(",");
     this.state.activeGateIds = (engineState.activeGateIds ?? []).join(",");

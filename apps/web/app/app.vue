@@ -511,7 +511,7 @@ async function copyInvite() {
               >{{ privateRerollDecision.optionLabels?.[optionId] ?? optionId }}</button>
             </div>
             <strong>{{ game.activeTest.value.successes }} {{ game.activeTest.value.successes === 1 ? 'success' : 'successes' }}</strong>
-            <button class="primary" @click="resolveRerollDecision">{{ selectedRerollOptionId ? 'Use selected reroll' : 'Keep result' }}</button>
+            <button class="primary" @click="resolveRerollDecision">{{ selectedRerollOptionId?.startsWith('asset-increment:') ? 'Use selected die modifier' : selectedRerollOptionId ? 'Use selected reroll' : 'Keep result' }}</button>
           </section>
           <section v-if="privateConditionRecoveryDecision" class="test-dialog" role="dialog" aria-modal="true" aria-labelledby="condition-recovery-title">
             <p class="chapter">Rest recovery</p>

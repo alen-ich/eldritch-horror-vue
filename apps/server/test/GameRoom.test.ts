@@ -20,6 +20,43 @@ describe("authoritative game room", () => {
   after(async () => colyseus.shutdown());
   beforeEach(async () => colyseus.cleanup());
 
+  it("restores an owner-private Lucky Cigarette Case modifier independently of the Foot", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState(); state.phase = "action"; state.ancientOneId = "cthulhu"; state.doom = 12; state.actionsRemaining = 2;
+    state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
+    Object.assign(state.players[0]!, { investigatorId: "akachi_onyele", locationId: "arkham", health: 5, sanity: 7, clues: 0,
+      assetIds: ["asset_lucky_cigarette_case", "asset_lucky_rabbits_foot", "asset_fine_clothes"] });
+    internal.applyEngineState(state);
+    const initialMessage = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "ACQUIRE_ASSETS" }); await room.waitForMessage(commandMessageType); await initialMessage;
+    const rolled = internal.toEngineState(); rolled.activeTest!.dice = [5, 1]; rolled.activeTest!.successes = 1;
+    // Rebuild options from a genuine remaining reroll; the room owns the dice.
+    const refresh = host.waitForMessage(pendingDecisionMessageType); internal.applyEngineState(rolled); await refresh;
+    const bumpedMessage = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: rolled.pendingDecision!.id, selectedOptionIds: ["asset-reroll:asset_lucky_rabbits_foot:1"] });
+    await room.waitForMessage(commandMessageType); const decision = await bumpedMessage as PendingDecision;
+    const option = "asset-increment:asset_lucky_cigarette_case:0";
+    assert.equal(decision.optionLabels?.[option], "Lucky Cigarette Case: add 1 to die 1 (5 → 6; no Clue)");
+    const checkpoint = internal.toEngineState();
+    const restored = host.waitForMessage(pendingDecisionMessageType); internal.applyEngineState(JSON.parse(JSON.stringify(checkpoint))); await restored;
+    assert.equal(JSON.stringify(room.state).includes("asset-increment:"), false);
+    const denied = guest.waitForMessage(commandErrorMessageType);
+    sendCommand(room, guest, { type: "RESOLVE_DECISION", decisionId: decision.id, selectedOptionIds: [option] }); await room.waitForMessage(commandMessageType);
+    assert.equal((await denied as { code: string }).code, "NOT_DECISION_OWNER");
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: decision.id, selectedOptionIds: [option] }); await room.waitForMessage(commandMessageType);
+    const after = internal.toEngineState();
+    assert.deepEqual(after.usedAssetDieModifierIds, ["asset_lucky_cigarette_case"]);
+    assert.deepEqual(after.usedAssetRerollIds, ["asset_lucky_rabbits_foot"]);
+    assert.equal(after.players[0]?.clues, 0); assert.deepEqual(after.players[0]?.assetIds, state.players[0]?.assetIds);
+    assert.equal(after.pendingDecision?.selectionBudget, checkpoint.activeTest!.successes + 1);
+    assert.equal(room.state.usedAssetDieModifierIds, "asset_lucky_cigarette_case");
+    internal.applyEngineState(JSON.parse(JSON.stringify(after)));
+    assert.deepEqual(internal.toEngineState().usedAssetDieModifierIds, ["asset_lucky_cigarette_case"]);
+  });
+
   for (const resource of ["health", "sanity"] as const) {
     it(`restores a colleague's private ${resource === "health" ? "Bandages" : "Whiskey"} decision before Research damage and defeat`, async () => {
       const assetId = resource === "health" ? "asset_bandages" : "asset_whiskey";
