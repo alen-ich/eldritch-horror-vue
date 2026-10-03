@@ -15,7 +15,7 @@ The Asset family remains `needs_review` rather than `verified` because:
 
 The authoritative engine now removes starting Assets from the deck, grants them by stable ID, shuffles the remaining deck privately, and exposes a four-card Reserve. Acquire Assets uses the generic Influence-test lifecycle, including improvements, supported bonuses, and sequential Clue rerolls; it then validates selected cards against total successes, refills the Reserve, and supports the optional one-card discard after buying nothing. Active tests and owner-only choices survive serialization and reconnection. Bank Loan is intentionally unavailable until Debt Conditions are implemented.
 
-Eight cards have explicit typed effect nodes and executable tests (coverage is scoped, not full-family support):
+Nine cards have explicit typed effect nodes and executable tests (coverage is scoped, not full-family support):
 
 - Personal Assistant adds one die and an optional one-die free reroll to Influence tests in the generic test lifecycle (including Acquire Assets) and supported location/Research. Its reroll can be used once per test, independently of Clue rerolls, and consumed-source tracking survives serialization. It does not grant a bonus or reroll to another skill.
 - Fine Clothes makes each 6 count as two successes during Acquire Assets.
@@ -25,6 +25,7 @@ Eight cards have explicit typed effect nodes and executable tests (coverage is s
 - Lucky Rabbit's Foot grants an optional one-die reroll during supported tests, once per physical card per round. It grants no dice bonus. Combat/ambush and Other World remain guarded.
 - Hired Muscle adds one Strength die and an optional free Strength-test reroll for its holder in supported non-combat tests. It is an Ally bonus, not an Item bonus or City aura. Combat remains separate.
 - Bandages optionally discards its physical Item to prevent one or two Health loss for a same-space investigator during ordinary location/Research damage. It does not heal or prevent Sanity loss. Other damage contexts and paid Health costs are not enabled.
+- Whiskey optionally discards its physical Item to prevent one or two Sanity loss for a same-space investigator during ordinary location/Research damage. It does not heal or prevent Health loss. Other damage contexts and paid Sanity costs are not enabled.
 
 ## Scoped encounter applicability (3 October 2026)
 
@@ -88,7 +89,21 @@ Twenty-nine engine cases cover amount bounds, simultaneous Sanity, lethal preven
 
 Paid Health-cost sections with an eligible Bandages and nested ambushes with a same-space holder reject before rolling; costs and combat need different timing semantics. Combat/ambush, Mythos/Condition/other damage handlers and Other World integration are not enabled by this slice. Existing unsupported awakening still rejects atomically if remaining damage would trigger it.
 
-Next: Whiskey's analogous optional same-space Sanity-loss prevention in ordinary encounters, using its existing scan, with simultaneous-loss/defeat, source conservation and multiplayer restoration tests. Broader damage-source integration remains separate.
+The planned Whiskey follow-up is implemented below. Broader damage-source integration remains separate.
+
+## Whiskey: ordinary encounter Sanity prevention (3 October 2026)
+
+The existing English front was visually checked: value 1, Item, optional physical discard to prevent up to two Sanity loss for an investigator on the holder's space. `discard_prevent_sanity_loss` and `sanity_prevention` applicability bring the ordinary encounter roster to thirteen Assets; 27 others remain guarded.
+
+`encounterDamagePreventions` identifies each living same-space physical source and its resource. The existing internal checkpoint offers only sources with remaining matching loss. New checkpoints record declines by Asset ID, so declining Bandages does not decline the same holder's Whiskey, or vice versa. Older checkpoints without that list still restore; their legacy declined-holder list remains respected. Decisions bind to the exact originally offered card even when declining, rejecting vanished, duplicated or moved sources instead of silently switching cards.
+
+All eligible prevention decisions complete before remaining Health and Sanity losses apply simultaneously. Both cards can save simultaneous lethal damage; insufficient prevention retains the appropriate defeat causes and suppresses later rewards. Discarding removes the whole card even when preventing just one. The original encounter owner and physical Clue/deck identity stay unchanged while a colleague decides. No new client command, public queue or client-calculated outcome is introduced.
+
+Twenty-seven additional engine cases cover Sanity amounts, optional partial prevention, both source orders, independent declines, same/different holders, privacy/restoration, lethal damage and Doom-one guards, duplicate/vanished sources, matching paid-cost guards and legacy checkpoints. A real two-client Azathoth Research 3 City failure verifies Whiskey's private colleague choice, state restoration, wrong-owner rejection, pre-defeat prevention, exact Clue retention, physical discard and single deck cycling. The existing Bandages room regression remains covered.
+
+Paid Sanity costs with eligible Whiskey, paid Health costs with eligible Bandages and nested ambush reactions remain guarded. Combat, Mythos, Condition and Other World damage handlers are not integrated by this change. Next: Lucky Cigarette Case's optional once-per-round +1 to one test die result, verified from its existing scan; this is not a reroll. Broader damage timing remains separate.
+
+Whiskey verification passed lint/typecheck/test/build with 432 engine, 53 server, 77 content and 18 protocol cases. All three existing browser journeys passed three repetitions each after correcting Charlie's fixture for a legal random starting Monster; these are shared UI regressions, not dedicated Whiskey browser coverage.
 
 The scanned **Rally the People** Mythos Event now grants the Lead the first Ally in the private shuffled Asset deck, falling back to the discard pile if necessary and reshuffling the deck after a gain. The granted physical card leaves its source pile and becomes the Lead's possession; if no Ally remains in either pile, no card is gained. The remaining deck order is never synchronized to clients.
 
