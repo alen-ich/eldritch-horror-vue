@@ -673,7 +673,16 @@ async function copyInvite() {
           </nav>
           <div v-if="trayState !== 'collapsed'" class="tray-content">
             <div v-if="activeTrayTab === 'assets' && ownedAssets.length" class="owned-assets"><article v-for="asset in ownedAssets" :key="asset.id"><img :src="asset.imageUrl" :alt="asset.name"><div><p class="chapter">Value {{ asset.value }} · {{ asset.traits.join(', ') }}</p><h3>{{ asset.name }}</h3><p>{{ asset.effectText }}</p></div></article></div>
-            <div v-else-if="activeTrayTab === 'artifacts' && ownedArtifacts.length" class="owned-assets"><article v-for="artifact in ownedArtifacts" :key="artifact.id"><img :src="artifact.imageUrl" :alt="artifact.name"><div><p class="chapter">{{ artifact.traits.join(', ') }} · {{ artifact.id === 'artifact_ttka_halot' || artifact.id === 'artifact_cultes_des_goules' ? 'Action available' : 'Effects pending' }}</p><h3>{{ artifact.name }}</h3><p>{{ artifact.effectText }}</p><button v-if="artifact.id === 'artifact_ttka_halot' || artifact.id === 'artifact_cultes_des_goules'" :disabled="!canUseNormalActions || game.usedArtifactActionIds.value.includes(artifact.id)" @click="game.send({ type: 'USE_ARTIFACT_ACTION', artifactId: artifact.id })">Use {{ artifact.name }} · 1 action</button></div></article></div>
+            <div v-else-if="activeTrayTab === 'artifacts' && ownedArtifacts.length" class="owned-assets">
+              <article v-for="artifact in ownedArtifacts" :key="artifact.id">
+                <img :src="artifact.imageUrl" :alt="artifact.name">
+                <div>
+                  <p class="chapter">{{ artifact.traits.join(', ') }} · {{ artifact.id === 'artifact_ttka_halot' || artifact.id === 'artifact_cultes_des_goules' || artifact.id === 'artifact_de_vermis_mysteriis' ? 'Action available' : 'Effects pending' }}</p>
+                  <h3>{{ artifact.name }}</h3><p>{{ artifact.effectText }}</p>
+                  <button v-if="artifact.id === 'artifact_ttka_halot' || artifact.id === 'artifact_cultes_des_goules' || artifact.id === 'artifact_de_vermis_mysteriis'" :disabled="!canUseNormalActions || game.usedArtifactActionIds.value.includes(artifact.id)" @click="game.send({ type: 'USE_ARTIFACT_ACTION', artifactId: artifact.id })">Use {{ artifact.name }} · 1 action</button>
+                </div>
+              </article>
+            </div>
             <div v-else-if="activeTrayTab === 'conditions' && ownedConditions.length" class="owned-assets"><article v-for="condition in ownedConditions" :key="condition.id"><img :src="condition.frontImageUrl" :alt="condition.name"><div><p class="chapter">{{ condition.trait }}</p><h3>{{ condition.name }}</h3><p>{{ condition.frontText }}</p></div></article></div>
             <div v-else><p class="chapter">{{ trayTabs.find(tab => tab.id === activeTrayTab)?.label }}</p><h3>{{ activeTrayTab === 'log' ? 'No recorded events yet' : `No ${activeTrayTab} in your public game state` }}</h3><p>{{ activeTrayTab === 'log' ? 'Authoritative game events will appear here as the rules engine grows.' : 'This area shows only server-synchronized cards and tokens.' }}</p></div>
           </div>
