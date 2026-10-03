@@ -20,6 +20,47 @@ describe("authoritative game room", () => {
   after(async () => colyseus.shutdown());
   beforeEach(async () => colyseus.cleanup());
 
+  it("restores a colleague's private Bandages decision before Research damage and defeat", async () => {
+    const room = await colyseus.createRoom<GameRoom>("game", {});
+    const host = await colyseus.connectTo(room, { displayName: "Host" });
+    const guest = await colyseus.connectTo(room, { displayName: "Guest" });
+    const hostErrors: unknown[] = []; host.onMessage(commandErrorMessageType, error => hostErrors.push(error));
+    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const state = internal.toEngineState(); state.phase = "encounter"; state.ancientOneId = "azathoth"; state.doom = 15;
+    state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
+    Object.assign(state.players[0]!, { investigatorId: "akachi_onyele", locationId: "the_amazon", health: 1, sanity: 7, clues: 1, assetIds: [] });
+    Object.assign(state.players[1]!, { investigatorId: "trish_scarborough", locationId: "the_amazon", health: 7, sanity: 5, assetIds: ["asset_bandages"] });
+    state.boardClues = [{ id: "research-clue", locationId: "the_amazon" }];
+    state.privateState.tokenPoolById = { "board_clue:research-clue": ["clue_arkham"], [`held_clues:${state.players[0]!.id}`]: ["clue_london"], clues: [], clue_discard: [] };
+    state.privateState.deckOrderById["encounter:research_azathoth"] = ["encounter_research_azathoth_01", "encounter_research_azathoth_02"];
+    internal.applyEngineState(state);
+    const testMessage = host.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "RESOLVE_RESEARCH_ENCOUNTER", clueId: "research-clue" }); await room.waitForMessage(commandMessageType);
+    assert.deepEqual(hostErrors, []);
+    const testDecision = await testMessage as PendingDecision;
+    const failed = internal.toEngineState(); failed.activeTest!.dice = failed.activeTest!.dice.map(() => 1); failed.activeTest!.successes = 0;
+    const refreshedTest = host.waitForMessage(pendingDecisionMessageType); internal.applyEngineState(failed); await refreshedTest;
+    const preventionMessage = guest.waitForMessage(pendingDecisionMessageType);
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: testDecision.id, selectedOptionIds: [] }); await room.waitForMessage(commandMessageType);
+    assert.deepEqual(hostErrors, []);
+    const decision = await preventionMessage as PendingDecision;
+    assert.equal(decision.playerId, state.players[1]?.id); assert.equal(decision.optionLabels?.asset_bandages, "Discard Bandages: prevent 1 Health loss");
+    const paused = internal.toEngineState(); assert.equal(paused.players[0]?.health, 1); assert.equal(paused.pendingDefeat, undefined);
+    assert.equal(paused.pendingLocationEncounter?.playerId, state.players[0]?.id);
+    assert.deepEqual(paused.privateState.deckOrderById["encounter:research_azathoth"], state.privateState.deckOrderById["encounter:research_azathoth"]);
+    assert.equal(JSON.stringify(room.state).includes("damage_reaction"), false); assert.equal(JSON.stringify(room.state).includes("optionIds"), false);
+    const refresh = guest.waitForMessage(pendingDecisionMessageType); internal.applyEngineState(JSON.parse(JSON.stringify(paused))); await refresh;
+    const denied = host.waitForMessage(commandErrorMessageType);
+    sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: decision.id, selectedOptionIds: ["asset_bandages"] }); await room.waitForMessage(commandMessageType);
+    assert.equal((await denied as { code: string }).code, "NOT_DECISION_OWNER");
+    sendCommand(room, guest, { type: "RESOLVE_DECISION", decisionId: decision.id, selectedOptionIds: ["asset_bandages"] }); await room.waitForMessage(commandMessageType);
+    const after = internal.toEngineState(); assert.equal(after.players[0]?.health, 1); assert.equal(after.doom, 15);
+    assert.deepEqual(after.assetDiscardIds, ["asset_bandages"]); assert.deepEqual(after.players[1]?.assetIds, []);
+    assert.deepEqual(after.boardClues, state.boardClues); assert.equal(after.pendingDefeat, undefined);
+    assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.activePlayerId, state.players[1]?.id);
+    assert.deepEqual(after.privateState.deckOrderById["encounter:research_azathoth"], ["encounter_research_azathoth_02", "encounter_research_azathoth_01"]);
+  });
+
   it("round-trips Hired Muscle's private Strength bonus and consumed reroll", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
@@ -1518,6 +1559,9 @@ describe("authoritative game room", () => {
     await room.waitForMessage(commandMessageType);
     sendCommand(room, host, { type: "START_GAME" });
     await room.waitForMessage(commandMessageType);
+    // A randomly selected Mystery can grant a starting Condition. The loan
+    // adds Debt; it must preserve, not erase, those pre-existing fronts.
+    const priorConditionFronts = [...room.state.players.values()].find(player => player.isHost)!.conditionIds.split(",").filter(Boolean);
     const privateDecision = host.waitForMessage(pendingDecisionMessageType);
     sendCommand(room, host, { type: "ACQUIRE_ASSETS" });
     await room.waitForMessage(commandMessageType);
@@ -1535,7 +1579,7 @@ describe("authoritative game room", () => {
     }
     await room.waitForMessage(commandMessageType);
     const hostSeat = [...room.state.players.values()].find(player => player.isHost)!;
-    assert.equal(hostSeat.conditionIds, "condition_debt");
+    assert.deepEqual(hostSeat.conditionIds.split(",").sort(), [...priorConditionFronts, "condition_debt"].sort());
     assert.doesNotMatch(JSON.stringify(room.state), /condition_debt_\d{2}/);
     assert.equal(JSON.stringify(room.state).includes("Unwilling Servant"), false);
     assert.equal(JSON.stringify(room.state).includes("Debt Collector"), false);

@@ -278,7 +278,7 @@ The following snapshot distinguishes working slices from complete families:
 | Actions | Travel/tickets, Rest, Acquire Assets, accepted trades, action usage, Delay, selected component actions | Investigator abilities and possession actions incomplete. |
 | Tests | Dice arithmetic, improvements, thresholds, highest Item bonus primitive, owner-only Clue rerolls | The arithmetic primitive does not mean every possession bonus is integrated. |
 | Combat | Basic printed-stat combat and phase ordering; Deep One/Star Spawn Research ambush continuation | Board-combat rerolls, Cultists, special abilities and possession effects incomplete. |
-| Location | All 36 cards transcribed; 64/108 sections accepted by the parser; eleven Assets have verified non-combat applicability | Remaining 44 unsupported; other carried Assets still block live resolution. |
+| Location | All 36 cards transcribed; 64/108 sections accepted by the parser; twelve Assets have verified non-combat applicability | Remaining 44 unsupported; other carried Assets still block live resolution. |
 | Research | All 24 Azathoth and 18/24 Cthulhu sections supported; ten-Asset non-combat scope | Other Asset and ambush guards; remaining Cthulhu rewards/Cultists; Shub/Yog transcription/execution. |
 | Mythos | All 51 icon sequences cataloged; 17 printed texts have typed effects | Remaining 34 texts and broad Reckoning can stop the round. |
 | Conditions | Physical copies, several actions/conflicts, thresholds, five typed reverse handlers | Most reverses and full trigger sequencing incomplete. |
@@ -562,3 +562,15 @@ Study the Hired Muscle cases in `packages/engine/test/encounter-assets.test.ts` 
 Next: Bandages needs a different pattern, because optional damage prevention must pause before Health loss and defeat. The plan starts with ordinary encounter damage and explicitly keeps other damage contexts guarded.
 
 Verification for Hired Muscle passed lint/typecheck/test/build with 376 engine, 51 server, 77 content and 18 protocol cases, plus all three existing browser journeys. The room regression is Hired Muscle-specific; the browser journeys are shared reroll UI regressions, not dedicated Hired Muscle coverage.
+
+## 25. Pause before damage, not after defeat
+
+Bandages differs from a dice bonus: the player decides before Health is lost. Its typed content node in `packages/content/src/assets.ts` enables only ordinary encounter Health prevention. `encounterHealthPreventions` in engine `encounter-assets.ts` locates living holders on the injured investigator's space; `physicalAssetIsUnique` rejects duplicate cards across physical piles.
+
+In engine `continueLocationEncounter`, adjacent Health/Sanity losses become an internal `damage_reaction` node. The damage amounts and declined-holder list stay in the private encounter queue, which is already cloned and restored by the room. The choice is assigned to the card holder, not necessarily the encounter investigator. The existing `RESOLVE_DECISION` handler rechecks eligibility, discards the physical Asset if accepted, and lowers only the pending Health amount. Then the original investigator takes remaining Health and Sanity loss simultaneously, before later instructions or defeat handoff.
+
+The existing browser `EncounterChoicePanel.vue` shows the server's labels and sends one option ID. It neither calculates prevention nor decides defeat. No new wire command or public state field is needed. The printed-content parser rejects `damage_reaction`: it is runtime state, not a card instruction supplied by a client or imported scan.
+
+Read `packages/engine/test/encounter-prevention.test.ts` for one/two prevention, decline, colleague privacy, repeat losses, lethal/Sanity boundaries, restoration and invalid sources. The room regression uses a real Azathoth Research card and two connections. Ordinary location/Research damage is supported; paid Health costs and ambush contexts remain guarded, and other damage handlers are not integrated. Next: Whiskey's same-space Sanity-loss prevention from its existing scan.
+
+Verification passed lint/typecheck/test/build with 405 engine, 52 server, 77 content and 18 protocol cases. All three existing browser journeys passed three repetitions each. They are shared UI regressions, not a dedicated Bandages journey. The Bandages-specific room test verifies the real owner-private decision path.

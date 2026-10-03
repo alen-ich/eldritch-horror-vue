@@ -15,7 +15,7 @@ The Asset family remains `needs_review` rather than `verified` because:
 
 The authoritative engine now removes starting Assets from the deck, grants them by stable ID, shuffles the remaining deck privately, and exposes a four-card Reserve. Acquire Assets uses the generic Influence-test lifecycle, including improvements, supported bonuses, and sequential Clue rerolls; it then validates selected cards against total successes, refills the Reserve, and supports the optional one-card discard after buying nothing. Active tests and owner-only choices survive serialization and reconnection. Bank Loan is intentionally unavailable until Debt Conditions are implemented.
 
-Seven cards have explicit typed effect nodes and executable tests (coverage is scoped, not full-family support):
+Eight cards have explicit typed effect nodes and executable tests (coverage is scoped, not full-family support):
 
 - Personal Assistant adds one die and an optional one-die free reroll to Influence tests in the generic test lifecycle (including Acquire Assets) and supported location/Research. Its reroll can be used once per test, independently of Clue rerolls, and consumed-source tracking survives serialization. It does not grant a bonus or reroll to another skill.
 - Fine Clothes makes each 6 count as two successes during Acquire Assets.
@@ -24,6 +24,7 @@ Seven cards have explicit typed effect nodes and executable tests (coverage is s
 - Urban Guide grants one additional die to investigators on its holder's City space during supported non-combat location/Research tests. It is a non-Item aura and combines with improvements before the minimum-one-die rule. Defeated/eliminated and remote holders do not contribute. Other World, board combat, ambush and Action-test integration remain pending.
 - Lucky Rabbit's Foot grants an optional one-die reroll during supported tests, once per physical card per round. It grants no dice bonus. Combat/ambush and Other World remain guarded.
 - Hired Muscle adds one Strength die and an optional free Strength-test reroll for its holder in supported non-combat tests. It is an Ally bonus, not an Item bonus or City aura. Combat remains separate.
+- Bandages optionally discards its physical Item to prevent one or two Health loss for a same-space investigator during ordinary location/Research damage. It does not heal or prevent Sanity loss. Other damage contexts and paid Health costs are not enabled.
 
 ## Scoped encounter applicability (3 October 2026)
 
@@ -73,7 +74,21 @@ The holder's non-Item bonus combines with skill improvements, printed modifiers 
 
 Twelve engine cases cover combinations, four other skills, colleague exclusion, minimum dice, no-Clue payment, decline/new-test reset, generic Condition Reckoning Strength tests, Foot source order/restoration, illegal selections, Ally preservation and atomic nested-ambush rejection. A two-client room test uses General 10 Sea to verify actual content adaptation, improved Strength dice, owner authorization, private consumed-source restoration and continuation handoff. The existing browser reroll journeys exercise the same unchanged dialog, but are not a dedicated Hired Muscle browser test. Combat/ambush and Other World are not enabled.
 
-Next scan-independent slice: Bandages' optional physical discard to prevent up to two Health loss for an investigator on the holder's space, starting with ordinary encounter damage. Its existing scan is available. This requires a pending-damage/reaction checkpoint before defeat, ownership and same-space validation, conservation-checked discard and tests for decline, partial prevention, lethal loss and serialized continuation; it must not silently enable combat or every damage source.
+The planned Bandages follow-up is implemented below.
+
+## Bandages: ordinary encounter damage prevention (3 October 2026)
+
+The generated English front was visually verified: value 1, Item, optional discard to prevent up to two Health loss for an investigator on the holder's space. `discard_prevent_health_loss` and `health_prevention` applicability bring the current ordinary encounter roster to twelve Assets; 28 others remain guarded. No text parsing or new client command is added.
+
+The interpreter groups adjacent Health/Sanity losses into a server-only `damage_reaction` queue node before damage or defeat. This node is created internally and cannot be imported as printed content. An eligible living same-space holder receives a private `encounter_choice`, even if the injured investigator owns the encounter. The holder may decline, prevent one Health, or prevent two when available; accepting always discards the whole physical card. Sanity loss remains simultaneous and unmodified, and prevention cannot heal. Declining affects this loss only; a later distinct loss offers a new choice. Existing card/deck state stays paused until the reaction resolves.
+
+Offering and accepting require a unique physical Asset identity across holdings, Reserve, deck, discard and defeated sheets. Acceptance rechecks holding, same space, live owner, card, encounter checkpoint and legal option. Discard uses the existing encounter-reason event and never refills the Reserve. The original investigator receives remaining damage and later instructions; lethal loss stops the queue and cycles the card once. A spent Bandages cannot also satisfy a later Item discard. The room retains the queue privately and uses the existing owner-only message and generic Encounter choice panel; no new public damage state or client-owned outcome is introduced.
+
+Twenty-nine engine cases cover amount bounds, simultaneous Sanity, lethal prevention/decline/remaining damage, Doom-one awakening guard, colleague/privacy/restoration, exclusion of remote/defeated/eliminated holders, duplicate identities, vanished/moved sources, repeat losses, forged/replayed choices, Item-discard ordering and internal-node parsing. A two-client regression uses Azathoth Research 1 Wilderness's failed test to check private colleague authorization, pre-defeat restoration, physical discard, exact Clue retention, deck cycling and seat handoff.
+
+Paid Health-cost sections with an eligible Bandages and nested ambushes with a same-space holder reject before rolling; costs and combat need different timing semantics. Combat/ambush, Mythos/Condition/other damage handlers and Other World integration are not enabled by this slice. Existing unsupported awakening still rejects atomically if remaining damage would trigger it.
+
+Next: Whiskey's analogous optional same-space Sanity-loss prevention in ordinary encounters, using its existing scan, with simultaneous-loss/defeat, source conservation and multiplayer restoration tests. Broader damage-source integration remains separate.
 
 The scanned **Rally the People** Mythos Event now grants the Lead the first Ally in the private shuffled Asset deck, falling back to the discard pile if necessary and reshuffling the deck after a gain. The granted physical card leaves its source pile and becomes the Lead's possession; if no Ally remains in either pile, no card is gained. The remaining deck order is never synchronized to clients.
 

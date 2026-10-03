@@ -60,6 +60,10 @@ Last updated: 2026-10-03
 
 ### Current verification evidence
 
+- Latest Bandages verification: lint/typecheck/test/build passed with 405 engine, 52 server, 77 content and 18 protocol cases. Three existing browser journeys passed three repetitions each (nine executions), not dedicated Bandages browser coverage. Hardened the initial post-start browser command against stale schema versions and corrected the Bank Loan test to preserve Mystery-granted starting Conditions. No production validation or random setup behavior was weakened.
+
+- Bandages update (2026-10-03): verified Item/optional same-space up-to-two Health prevention. Added typed applicability and a private internal damage checkpoint before simultaneous damage/defeat, colleague-owned choices, amount selection and conservation-checked discard. Twelve Assets now have ordinary encounter applicability. Twenty-nine engine cases and a two-client Azathoth Research regression cover restoration, privacy, loss/defeat boundaries and Item-discard ordering. Paid Health costs and same-space ambush reactions remain guarded; other damage contexts and full Task 1 are incomplete. Next: Whiskey's analogous Sanity prevention using its existing scan.
+
 - Latest Hired Muscle verification: root lint/typecheck/test/build passed with 376 engine, 51 server, 77 content and 18 protocol cases. All three existing browser journeys passed separately after the build; they cover the shared dialog, not a dedicated Hired Muscle click path. Unrelated Expedition source sheets remain untouched.
 
 - Hired Muscle update (2026-10-03): scan-verified Ally Strength bonus and optional Strength reroll reuse typed handlers; eleven Assets now have non-combat applicability. Twelve engine cases and a real two-client General 10 Sea regression cover bonus stacking, exclusions, Condition Reckoning, source limits/restoration, authorization and guarded ambushes. No new network input, state field or UI rule logic. Combat/Other World and full Task 1 remain incomplete. Next: Bandages' optional same-space Health-loss prevention in ordinary encounters, with pending-damage-before-defeat and physical-discard tests; existing scan available.
