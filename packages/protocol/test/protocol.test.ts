@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import { gameCommandMessageSchema, gameCommandSchema, pendingDecisionSchema, skillIds } from "../src/index.js";
 
 describe("gameCommandSchema", () => {
+  it("accepts only an opaque Gate intent for Other World encounters", () => {
+    expect(gameCommandSchema.parse({ type: "RESOLVE_OTHER_WORLD_ENCOUNTER", gateId: "gate_arkham" })).toEqual({ type: "RESOLVE_OTHER_WORLD_ENCOUNTER", gateId: "gate_arkham" });
+    for (const payload of [{ gateId: "" }, { gateId: "x".repeat(129) }, { gateId: "gate", playerId: "guest" }, { gateId: "gate", cardId: "chosen" }, { gateId: "gate", dice: [6] }, { gateId: "gate", closed: true }]) expect(gameCommandSchema.safeParse({ type: "RESOLVE_OTHER_WORLD_ENCOUNTER", ...payload }).success).toBe(false);
+  });
   it("accepts only an opaque Research marker intent, not authored outcomes or identity", () => {
     expect(gameCommandSchema.parse({ type: "RESOLVE_RESEARCH_ENCOUNTER", clueId: "marker-1" })).toEqual({ type: "RESOLVE_RESEARCH_ENCOUNTER", clueId: "marker-1" });
     for (const payload of [{ clueId: "" }, { clueId: "x".repeat(129) }, { clueId: "marker", playerId: "guest" }, { clueId: "marker", outcome: "pass" }, { clueId: "marker", cardId: "chosen-card" }]) {

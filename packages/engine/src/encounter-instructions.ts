@@ -1,6 +1,7 @@
 import { skillIds, type SkillId } from "@eldritch/protocol";
 
 export type LocationEncounterEffect =
+  | { kind: "close_encountered_gate" }
   | { kind: "ambush_horror"; damage: number }
   | { kind: "relocate_encountered_clue"; markerId: string; destination: "nearest_sea"; locationId?: string }
   | { kind: "doom_retreat"; amount: 1 }
@@ -43,6 +44,7 @@ export function parseLocationEncounterInstruction(value: unknown, depth = 0): Lo
     const effects: LocationEncounterEffect[] = [];
     for (const raw of value.effects as unknown[]) {
       if (!raw || typeof raw !== "object" || !("kind" in raw)) return undefined;
+      if (raw.kind === "close_encountered_gate") { effects.push({ kind: "close_encountered_gate" }); continue; }
       if (raw.kind === "relocate_encountered_clue" && "markerId" in raw && typeof raw.markerId === "string" && "destination" in raw && raw.destination === "nearest_sea") { effects.push({ kind: raw.kind, markerId: raw.markerId, destination: raw.destination }); continue; }
       if (raw.kind === "doom_retreat" && "amount" in raw && raw.amount === 1) { effects.push({ kind: raw.kind, amount: 1 }); continue; }
       if (raw.kind === "discard_item_assets" && "amount" in raw && (raw.amount === 1 || raw.amount === 2)) { effects.push({ kind: raw.kind, amount: raw.amount }); continue; }
@@ -102,6 +104,7 @@ export function encounterInstructionLabel(instruction: LocationEncounterInstruct
   if (instruction.kind === "sequence") return instruction.steps.map(encounterInstructionLabel).join("; then ");
   if (instruction.kind !== "effects") return "Resolve the printed encounter choice";
   return instruction.effects.map(effect => {
+    if (effect.kind === "close_encountered_gate") return "Close this Gate";
     if (effect.kind === "ambush_horror") return "Resolve ambush Horror loss";
     if (effect.kind === "relocate_encountered_clue") return "Move this Clue to the nearest Sea space";
     if (effect.kind === "doom_retreat") return "Retreat Doom by 1";

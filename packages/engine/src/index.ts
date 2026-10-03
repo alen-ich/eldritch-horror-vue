@@ -147,7 +147,7 @@ export interface MonsterCombatDefinition {
 export interface GameState {
   /** Private continuation: every Rest trigger resolves at most once before one action is charged. */
   pendingRest?: { playerId: string; remainingAssetIds: string[]; testingAssetId?: string };
-  pendingLocationEncounter?: { playerId: string; cardId: string; deck: EncounterDeckId; queue: LocationEncounterInstruction[]; dice: number[]; successes: number };
+  pendingLocationEncounter?: { playerId: string; cardId: string; deck: EncounterDeckId; queue: LocationEncounterInstruction[]; dice: number[]; successes: number; gateId?: string; gateLocationId?: LocationId; gateClosed?: boolean };
   defeatedInvestigators?: { investigatorId: InvestigatorId; locationId: LocationId; cause: "health" | "sanity"; assetIds: string[]; artifactIds?: string[]; clues: number; travelTickets: TravelTicketType[] }[];
   pendingDefeat?: { playerId: string; cityIds: LocationId[]; causes: ("health" | "sanity")[] };
   pendingMythosDamage?: { cardId: string; remainingPlayerIds: string[]; healthLoss: number };
@@ -243,6 +243,8 @@ export type ConditionBackEffect =
 export interface GameContent {
   artifacts?: readonly { id: string; engineEffects?: readonly ({ type: "action_lore_spend_sanity_gain_clues"; amount: 2 } | { type: "action_lore_spend_sanity_improve_skill" })[] }[];
   researchEncounters?: readonly { id: string; deck: ResearchEncounterDeckId; sections: Readonly<Record<string, unknown>> }[];
+  otherWorldEncounters?: readonly { id: string; deck: "other_world"; sections: Readonly<Record<string, unknown>> }[];
+  otherWorldEncounterIds?: readonly string[];
   locationEncounters?: readonly { id: string; deck: LocationEncounterDeckId; sections?: Readonly<Record<string, unknown>> }[];
   gates?: readonly { id: string; omenSymbol: "comet" | "constellation" | "eclipse"; locationId: LocationId }[];
   clues?: readonly { id: string; locationId: LocationId }[];
@@ -1706,6 +1708,19 @@ function applyLocationEncounterEffects(
   if (!player) return failure("PLAYER_NOT_FOUND", "The encounter investigator is missing.");
   for (let index = 0; index < effects.length; index++) {
     const effect = effects[index]!;
+    if (effect.kind === "close_encountered_gate") {
+      const pending = next.pendingLocationEncounter;
+      if (pending?.deck !== "other_world" || pending.playerId !== playerId || !pending.gateId || pending.gateClosed || !otherWorldBindingIsValid(next, content)) return failure("ENCOUNTER_CONTENT_MISSING", "Gate closure requires the original bound Other World encounter.");
+      next.activeGateIds = next.activeGateIds!.filter(id => id !== pending.gateId);
+      next.discardedGateIds = [...(next.discardedGateIds ?? []), pending.gateId];
+      if (next.privateState.deckOrderById.gates?.length === 0) {
+        next.privateState.deckOrderById.gates = context.shuffle(next.discardedGateIds);
+        next.discardedGateIds = [];
+      }
+      pending.gateClosed = true;
+      events.push({ type: "GATE_CLOSED", playerId, gateId: pending.gateId });
+      continue;
+    }
     if ("amount" in effect && effect.amount === 0) continue;
     if (effect.kind === "ambush_horror") {
       const loss = Math.max(0, effect.damage - (next.pendingLocationEncounter?.successes ?? 0));
@@ -1886,6 +1901,7 @@ function nearestSeaSpaces(state: GameState, markerId: string, content: GameConte
 
 /** Resume the printed instruction queue from server-only canonical state. */
 function continueLocationEncounter(state: GameState, content: GameContent, context: EngineContext, events: GameEvent[] = []): CommandResult {
+  if (state.pendingLocationEncounter?.deck === "other_world" && !otherWorldBindingIsValid(state, content)) return failure("ENCOUNTER_CONTENT_MISSING", "The bound Gate or Other World deck changed.");
   let next = structuredClone(state);
   while (next.pendingLocationEncounter?.queue.length) {
     const pending = next.pendingLocationEncounter;
@@ -2058,7 +2074,9 @@ function continueLocationEncounter(state: GameState, content: GameContent, conte
   next.lastLocationEncounterCardId = pending.cardId;
   next.currentLocationEncounterCardId = undefined;
   next.pendingLocationEncounter = undefined;
-  const resolved: GameEvent = pending.deck.startsWith("research_")
+  const resolved: GameEvent = pending.deck === "other_world"
+    ? { type: "OTHER_WORLD_ENCOUNTER_RESOLVED", playerId: pending.playerId, cardId: pending.cardId, gateId: pending.gateId!, dice: pending.dice, successes: pending.successes }
+    : pending.deck.startsWith("research_")
     ? { type: "RESEARCH_ENCOUNTER_RESOLVED", playerId: pending.playerId, cardId: pending.cardId, deck: pending.deck as ResearchEncounterDeckId, dice: pending.dice, successes: pending.successes }
     : { type: "LOCATION_ENCOUNTER_RESOLVED", playerId: pending.playerId, cardId: pending.cardId, deck: pending.deck as LocationEncounterDeckId, dice: pending.dice, successes: pending.successes };
   if (!next.pendingDefeat && !next.gameResult) {
@@ -2071,7 +2089,6 @@ function continueLocationEncounter(state: GameState, content: GameContent, conte
   return success(next, [resolved, ...events]);
 }
 
-/** Authoritative Research draw; marker identity and outcomes remain server-owned. */
 function encounterAmbushes(instruction: LocationEncounterInstruction): Extract<LocationEncounterInstruction, { kind: "ambush" }>[] {
   if (instruction.kind === "ambush") return [instruction, ...encounterAmbushes(instruction.defeated), ...encounterAmbushes(instruction.notDefeated)];
   if (instruction.kind === "sequence") return instruction.steps.flatMap(encounterAmbushes);
@@ -2081,6 +2098,41 @@ function encounterAmbushes(instruction: LocationEncounterInstruction): Extract<L
   return [];
 }
 
+function otherWorldBindingIsValid(state: GameState, content: GameContent): boolean {
+  const pending = state.pendingLocationEncounter;
+  if (!pending || pending.deck !== "other_world" || !pending.gateId || !pending.gateLocationId) return false;
+  const player = state.players.find(player => player.id === pending.playerId);
+  const gate = content.gates?.find(gate => gate.id === pending.gateId);
+  const catalog = content.otherWorldEncounterIds;
+  const order = state.privateState.deckOrderById["encounter:other_world"];
+  const physicalGates = [...(state.activeGateIds ?? []), ...(state.discardedGateIds ?? []), ...(state.privateState.deckOrderById.gates ?? [])];
+  return state.phase === "encounter" && state.activePlayerId === pending.playerId && state.currentLocationEncounterCardId === pending.cardId && player?.locationId === pending.gateLocationId && gate?.locationId === pending.gateLocationId
+    && player.investigatorId !== "akachi_onyele" && state.ancientOneId !== "yog_sothoth"
+    && !state.players.some(holder => holder.locationId === player.locationId && !holder.defeated && !holder.eliminated && (holder.assetIds.length || holder.artifactIds?.length))
+    && Boolean(catalog?.length && new Set(catalog).size === catalog.length && order?.length && order[0] === pending.cardId && order.length === catalog.length && new Set(order).size === order.length && order.every(id => catalog.includes(id)))
+    && Boolean(state.privateState.deckOrderById.gates && content.gates?.length && new Set(content.gates.map(gate => gate.id)).size === content.gates.length && physicalGates.length === content.gates.length && new Set(physicalGates).size === physicalGates.length && physicalGates.every(id => content.gates!.some(gate => gate.id === id)))
+    && (pending.gateClosed === true ? !state.activeGateIds?.includes(pending.gateId) : Boolean(state.activeGateIds?.includes(pending.gateId)));
+}
+
+/** Draw the actual private top card, binding every continuation to a physical Gate. */
+export function resolveOtherWorldEncounter(state: GameState, playerId: string, gateId: string, content: GameContent, context: EngineContext): CommandResult {
+  if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
+  if (!legalLocationEncounterDecks(state, playerId, content).length || state.pendingLocationEncounter) return failure("WRONG_PHASE", "This investigator cannot resolve an Other World encounter now.");
+  const player = state.players.find(player => player.id === playerId)!;
+  if (state.monsterLocationIds.includes(player.locationId!) || state.monsters?.some(monster => monster.locationId === player.locationId)) return failure("ENCOUNTER_UNSUPPORTED", "Monsters must be encountered before Other Worlds.");
+  if (!state.activeGateIds?.includes(gateId) || !content.gates?.some(gate => gate.id === gateId && gate.locationId === player.locationId)) return failure("GATE_UNAVAILABLE", "No such Gate is on this investigator's space.");
+  if (player.investigatorId === "akachi_onyele" || state.ancientOneId === "yog_sothoth" || state.players.some(holder => holder.locationId === player.locationId && !holder.defeated && !holder.eliminated && (holder.assetIds.length || holder.artifactIds?.length))) return failure("ENCOUNTER_UNSUPPORTED", "Other World possession effects, Akachi's closure ability, and Yog-Sothoth closure interactions are not executable yet.");
+  const cardId = state.privateState.deckOrderById["encounter:other_world"]?.[0];
+  const card = content.otherWorldEncounters?.find(card => card.id === cardId);
+  const instruction = parseLocationEncounterInstruction(card?.sections.initial);
+  if (!cardId || !instruction) return failure("ENCOUNTER_UNSUPPORTED", "The actual top Other World card has unsupported or untranscribed effects.");
+  const next = structuredClone(state);
+  next.currentLocationEncounterCardId = cardId;
+  next.pendingLocationEncounter = { playerId, cardId, deck: "other_world", gateId, gateLocationId: player.locationId!, gateClosed: false, queue: [instruction], dice: [], successes: 0 };
+  return continueLocationEncounter(next, content, context);
+}
+
+/** Authoritative Research draw; marker identity and outcomes remain server-owned. */
 export function resolveResearchEncounter(state: GameState, playerId: string, markerId: string, content: GameContent, context: EngineContext): CommandResult {
   if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
   if (!legalLocationEncounterDecks(state, playerId, content).length || state.pendingLocationEncounter) return failure("WRONG_PHASE", "This investigator cannot resolve Research now.");
@@ -2618,6 +2670,11 @@ export function executeCommand(
     if (!context) return failure("RANDOM_INPUT_REQUIRED", "Research encounters require server randomness.");
     return resolveResearchEncounter(state, actorPlayerId, command.clueId, content, context);
   }
+  if (command.type === "RESOLVE_OTHER_WORLD_ENCOUNTER") {
+    if (!context) return failure("RANDOM_INPUT_REQUIRED", "Other World encounters require server randomness.");
+    return resolveOtherWorldEncounter(state, actorPlayerId, command.gateId, content, context);
+  }
+  if (command.type === "RESOLVE_DECISION" && state.pendingLocationEncounter?.deck === "other_world" && !otherWorldBindingIsValid(state, content)) return failure("ENCOUNTER_CONTENT_MISSING", "The bound Gate or Other World deck changed.");
   if (command.type === "ADVANCE_MYTHOS") {
     if (state.phase !== "mythos" || actorPlayerId !== state.leadInvestigatorId) return failure("WRONG_PHASE", "Only the Lead Investigator can advance the Mythos phase.");
     if (!context) return failure("RANDOM_INPUT_REQUIRED", "Mythos resolution requires server randomness.");
@@ -3580,6 +3637,11 @@ export function executeCommand(
       const ids = content.researchEncounters.filter(card => card.deck === deck).map(card => card.id);
       if (new Set(ids).size !== ids.length) return failure("ENCOUNTER_CONTENT_MISSING", "Research card IDs must be unique.");
       if (ids.length) next.privateState.deckOrderById[`encounter:${deck}`] = context.shuffle(ids);
+    }
+    if (content.otherWorldEncounterIds?.length) {
+      const ids = content.otherWorldEncounterIds;
+      if (new Set(ids).size !== ids.length) return failure("ENCOUNTER_CONTENT_MISSING", "Other World card IDs must be unique.");
+      next.privateState.deckOrderById["encounter:other_world"] = context.shuffle(ids);
     }
     if (content.monsters?.some(monster => monster.count !== undefined)) {
       if (!ancient) return failure("ANCIENT_ONE_REQUIRED", "Ancient One setup is required for the Monster cup.");

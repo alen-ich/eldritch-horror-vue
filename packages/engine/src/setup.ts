@@ -2,7 +2,7 @@ export type MythosColor = "green" | "yellow" | "blue";
 export const locationEncounterDeckIds = ["general", "america", "europe", "asia_australia"] as const;
 export type LocationEncounterDeckId = typeof locationEncounterDeckIds[number];
 export type ResearchEncounterDeckId = "research_azathoth" | "research_cthulhu" | "research_shub_niggurath" | "research_yog_sothoth";
-export type EncounterDeckId = LocationEncounterDeckId | ResearchEncounterDeckId;
+export type EncounterDeckId = LocationEncounterDeckId | ResearchEncounterDeckId | "other_world";
 
 /** One physical copy of each Artifact; undrawn order stays server-private. */
 export function buildArtifactDeck(ids: readonly string[], shuffle: <T>(items: readonly T[]) => T[]): string[] {

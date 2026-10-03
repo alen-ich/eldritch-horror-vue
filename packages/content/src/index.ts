@@ -16,3 +16,4 @@ export * from "./reference-cards.js";
 export * from "./spells.js";
 export * from "./token-encounters.js";
 export * from "./research-encounter-rules.js";
+export * from "./other-world-encounter-rules.js";

@@ -567,6 +567,16 @@ describe("executeCommand", () => {
     ] };
     const context = createDeterministicEngineContext({ shuffleIndexes: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0], tokenIndexes: [0, 0], ids: ["setup_monster", "setup_clue"] });
     const started = executeCommand(selectedAncientOne.state, "host", { type: "START_GAME" }, clueContent, context);
+    const otherWorldIds = Array.from({ length: 24 }, (_, i) => `encounter_other_world_${String(i + 1).padStart(2, "0")}`);
+    const otherWorldContext = () => ({ ...createDeterministicEngineContext({ tokenIndexes: [0, 0], ids: ["monster", "clue"] }), shuffle: <T>(items: readonly T[]) => [...items].reverse() });
+    const otherWorldStart = executeCommand(selectedAncientOne.state, "host", { type: "START_GAME" }, { ...clueContent, otherWorldEncounterIds: otherWorldIds }, otherWorldContext());
+    expect(otherWorldStart.ok).toBe(true);
+    if (otherWorldStart.ok) {
+      expect(otherWorldStart.state.privateState.deckOrderById["encounter:other_world"]).toEqual([...otherWorldIds].reverse());
+      expect(JSON.stringify(projectPublicState(otherWorldStart.state))).not.toContain("encounter_other_world_");
+    }
+    expect(executeCommand(selectedAncientOne.state, "host", { type: "START_GAME" }, { ...clueContent, otherWorldEncounterIds: [otherWorldIds[0]!, otherWorldIds[0]!] }, otherWorldContext()))
+      .toMatchObject({ ok: false, error: { code: "ENCOUNTER_CONTENT_MISSING" } });
     const badClueContent: GameContent = { ...clueContent, clues: [clueContent.clues![0]!, clueContent.clues![0]!] };
     const beforeBadStart = structuredClone(selectedAncientOne.state);
     expect(executeCommand(selectedAncientOne.state, "host", { type: "START_GAME" }, badClueContent,
