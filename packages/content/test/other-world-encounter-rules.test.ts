@@ -2,10 +2,15 @@ import { expect, it } from "vitest";
 import { baseGameOtherWorldEncounterRules, validateOtherWorldEncounterContent } from "../src/other-world-encounter-rules.js";
 import { baseGameScannedTokenEncounters } from "../src/token-encounters.js";
 
-it("links seventeen mechanical transcriptions to the existing base-only scans", () => {
-  expect(baseGameOtherWorldEncounterRules.map(card => card.number)).toEqual([1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]);
+it("links eighteen mechanical transcriptions to the existing base-only scans", () => {
+  expect(baseGameOtherWorldEncounterRules.map(card => card.number)).toEqual([1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]);
   for (const card of baseGameOtherWorldEncounterRules) expect(baseGameScannedTokenEncounters.find(scan => scan.id === card.id)).toMatchObject({ sourceScan: card.sourceScan, sourceCellIndex: card.sourceCellIndex, deck: "other_world" });
   expect(baseGameScannedTokenEncounters.filter(card => card.deck === "other_world")).toHaveLength(24);
+});
+it("preserves card 19's Clues before Lore and Delay instead of both Paranoia and Sanity loss", () => {
+  expect(baseGameOtherWorldEncounterRules[17]!.sections.initial).toEqual({ kind: "test", skill: "influence", modifier: 0,
+    pass: { kind: "sequence", steps: [{ kind: "effects", effects: [{ kind: "clues", amount: 2 }] }, { kind: "test", skill: "lore", modifier: -1, pass: { kind: "effects", effects: [{ kind: "close_encountered_gate" }] }, fail: { kind: "effects", effects: [{ kind: "sanity", amount: -1 }] } }] },
+    fail: { kind: "optional", cost: [{ kind: "delay" }], reward: { kind: "effects", effects: [] }, decline: { kind: "effects", effects: [{ kind: "condition", condition: "paranoia" }, { kind: "sanity", amount: -1 }] } } });
 });
 it("preserves card 18's Influence/Will and optional Item payment or ordered Health/Injury", () => {
   expect(baseGameOtherWorldEncounterRules[16]!.sections.initial).toEqual({ kind: "test", skill: "influence", modifier: 0,
