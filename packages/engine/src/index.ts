@@ -241,7 +241,7 @@ export type ConditionBackEffect =
   | { type: "discard_all_clues_then_discard" };
 
 export interface GameContent {
-  artifacts?: readonly { id: string; engineEffects?: readonly { type: "action_lore_spend_sanity_gain_clues"; amount: 2 }[] }[];
+  artifacts?: readonly { id: string; engineEffects?: readonly ({ type: "action_lore_spend_sanity_gain_clues"; amount: 2 } | { type: "action_lore_spend_sanity_improve_skill" })[] }[];
   researchEncounters?: readonly { id: string; deck: ResearchEncounterDeckId; sections: Readonly<Record<string, unknown>> }[];
   locationEncounters?: readonly { id: string; deck: LocationEncounterDeckId; sections?: Readonly<Record<string, unknown>> }[];
   gates?: readonly { id: string; omenSymbol: "comet" | "constellation" | "eclipse"; locationId: LocationId }[];
@@ -2405,19 +2405,28 @@ function artifactTargets(state: GameState, player: EnginePlayer, content: GameCo
 }
 
 function supportedArtifact(id: string, content: GameContent): boolean {
-  return id === "artifact_ttka_halot" || id === "artifact_cultes_des_goules" && !!content.artifacts?.find(card => card.id === id)?.engineEffects?.some(effect => effect.type === "action_lore_spend_sanity_gain_clues" && effect.amount === 2);
+  const effects = content.artifacts?.find(card => card.id === id)?.engineEffects;
+  return id === "artifact_ttka_halot"
+    || id === "artifact_cultes_des_goules" && !!effects?.some(effect => effect.type === "action_lore_spend_sanity_gain_clues" && effect.amount === 2)
+    || id === "artifact_de_vermis_mysteriis" && !!effects?.some(effect => effect.type === "action_lore_spend_sanity_improve_skill");
 }
 
 /** Revalidate the original physical source on every restored/resumed command. */
-function validateClueArtifactAction(state: GameState, player: EnginePlayer, content: GameContent): CommandResult | undefined {
-  const source = "artifact_cultes_des_goules";
+function validateTomeAction(state: GameState, player: EnginePlayer, content: GameContent, source: string): CommandResult | undefined {
   const physical = [...(state.privateState.deckOrderById.artifacts ?? []), ...state.players.flatMap(holder => holder.artifactIds ?? []), ...(state.defeatedInvestigators ?? []).flatMap(holder => holder.artifactIds ?? [])];
   if (!supportedArtifact(source, content) || !player.artifactIds?.includes(source) || physical.filter(id => id === source).length !== 1
     || state.phase !== "action" || state.activePlayerId !== player.id || state.actionsRemaining < 1 || player.defeated || player.eliminated || player.delayed
     || player.conditionIds?.some(id => content.conditions?.find(card => card.id === id)?.kind === "detained")
-    || state.usedArtifactActionIds?.includes(source)) return failure("ARTIFACT_UNAVAILABLE", "The Cultes des Goules action is no longer available.");
+    || state.usedArtifactActionIds?.includes(source)) return failure("ARTIFACT_UNAVAILABLE", "The original Tome action is no longer available.");
   if (player.assetIds.length || player.artifactIds.some(id => !supportedArtifact(id, content))) return failure("ARTIFACT_EFFECT_UNSUPPORTED", "Possession bonuses for this Lore test are not executable yet.");
   return undefined;
+}
+
+/** One owner choice combines the optional payment and its reward, including Lily's option. */
+function vermisImprovementOptions(player: EnginePlayer): [string, string][] {
+  return ["lore", "influence", "observation", "strength", "will"].flatMap(skill =>
+    (player.investigatorId === "lily_chen" ? [1, 2] : [1]).map(amount =>
+      [`vermis:${skill}:${amount}`, `Spend 1 Sanity: improve ${skill}${amount === 2 ? " twice (Lily)" : " once"}`] as [string, string]));
 }
 
 function validateArtifactClues(state: GameState, content: GameContent): CommandResult | undefined {
@@ -2465,6 +2474,13 @@ function finishSkillTest(state: GameState, test: ActiveTest, content: GameConten
     state.activeTest = undefined;
     const player = state.players.find(candidate => candidate.id === test.playerId)!;
     const events: GameEvent[] = [{ type: "TEST_RESOLVED", testId: test.id, playerId: player.id, successes: test.successes, continuation: test.continuation }];
+    if (test.sourceArtifactId === "artifact_de_vermis_mysteriis") {
+      if (test.successes > 0 && (player.sanity ?? 0) > 1) {
+        const options = [...vermisImprovementOptions(player), ["vermis:skip", "Decline"] as [string, string]];
+        state.pendingDecision = { id: context.createId(), kind: "artifact_payment", playerId: player.id, visibility: "owner", prompt: "De Vermis Mysteriis: spend 1 Sanity to improve a skill of your choice, or decline.", optionIds: options.map(([id]) => id), optionLabels: Object.fromEntries(options), minSelections: 1, maxSelections: 1 };
+      } else completeArtifactAction(state, player.id, events, test.sourceArtifactId);
+      return events;
+    }
     if (test.sourceArtifactId === "artifact_cultes_des_goules") {
       if (test.successes > 0 && (player.sanity ?? 0) > 1) {
         state.pendingDecision = { id: context.createId(), kind: "artifact_payment", playerId: player.id, visibility: "owner", prompt: "Cultes des Goules: spend 1 Sanity to gain 2 Clues, or decline.", optionIds: ["cultes:accept", "cultes:skip"], optionLabels: { "cultes:accept": "Spend 1 Sanity: gain 2 Clues", "cultes:skip": "Decline" }, minSelections: 1, maxSelections: 1 };
@@ -3077,9 +3093,26 @@ export function executeCommand(
       return { ...continued, events: [...events, ...continued.events] };
     }
     if (decision.kind === "artifact_payment") {
-      const invalid = validateClueArtifactAction(next, actor, content);
-      if (invalid) return invalid;
       const selected = selections[0]!;
+      const isVermis = decision.optionIds.every(id => id.startsWith("vermis:"));
+      const source = isVermis ? "artifact_de_vermis_mysteriis" : "artifact_cultes_des_goules";
+      const invalid = validateTomeAction(next, actor, content, source);
+      if (invalid) return invalid;
+      if (isVermis) {
+        const events: GameEvent[] = [{ type: "DECISION_RESOLVED", decisionId: decision.id, playerId: actorPlayerId, selectedOptionIds: [...selections] }];
+        if (selected !== "vermis:skip") {
+          if (!vermisImprovementOptions(actor).some(([id]) => id === selected) || (actor.sanity ?? 0) <= 1) return failure("INVALID_DECISION_SELECTION", "That skill improvement or Sanity payment is no longer available.");
+          const [, skill, amount] = selected.split(":");
+          const skillId = skill as SkillId;
+          const improvement = Math.min(2, (actor.skillImprovements[skillId] ?? 0) + Number(amount));
+          actor.skillImprovements[skillId] = improvement;
+          actor.sanity = actor.sanity! - 1;
+          events.push({ type: "SKILL_IMPROVED", playerId: actor.id, skill: skillId, improvement });
+        }
+        next.pendingDecision = undefined;
+        completeArtifactAction(next, actor.id, events, source);
+        return success(next, events);
+      }
       if (selected !== "cultes:accept" && selected !== "cultes:skip") return failure("INVALID_DECISION_SELECTION", "Unknown Artifact payment.");
       const events: GameEvent[] = [{ type: "DECISION_RESOLVED", decisionId: decision.id, playerId: actorPlayerId, selectedOptionIds: [...selections] }];
       if (selected === "cultes:accept") {
@@ -3213,8 +3246,8 @@ export function executeCommand(
         return failure("ACTIVE_TEST_MISSING", "The skill test for this reroll is no longer active.");
       }
       if (!context) return failure("RANDOM_INPUT_REQUIRED", "Resolving a test reroll requires deterministic dice and ID input.");
-      if (test.continuation === "artifact_action" && test.sourceArtifactId === "artifact_cultes_des_goules") {
-        const invalid = validateClueArtifactAction(next, actor, content);
+      if (test.continuation === "artifact_action" && (test.sourceArtifactId === "artifact_cultes_des_goules" || test.sourceArtifactId === "artifact_de_vermis_mysteriis")) {
+        const invalid = validateTomeAction(next, actor, content, test.sourceArtifactId);
         if (invalid) return invalid;
       }
       if (test.continuation === "rest_asset") {
@@ -3643,8 +3676,8 @@ export function executeCommand(
   }
 
   if (command.type === "USE_ARTIFACT_ACTION") {
-    if (command.artifactId === "artifact_cultes_des_goules") {
-      const invalid = validateClueArtifactAction(next, actor, content);
+    if (command.artifactId === "artifact_cultes_des_goules" || command.artifactId === "artifact_de_vermis_mysteriis") {
+      const invalid = validateTomeAction(next, actor, content, command.artifactId);
       if (invalid) return invalid;
     }
     if (actor.assetIds.length || actor.artifactIds?.some(id => !supportedArtifact(id, content))) return failure("ARTIFACT_EFFECT_UNSUPPORTED", "Possession bonuses for this Lore test are not executable yet.");

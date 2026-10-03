@@ -135,7 +135,7 @@ export const gameCommandSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("PREPARE_TRAVEL"), ticketType: z.enum(["train", "ship"]) }).strict(),
   z.object({ type: z.literal("ACQUIRE_ASSETS") }).strict(),
   z.object({ type: z.literal("USE_CONDITION_ACTION"), targetPlayerId: z.string().min(1), conditionKind: z.enum(conditionKindIds) }).strict(),
-  z.object({ type: z.literal("USE_ARTIFACT_ACTION"), artifactId: z.enum(["artifact_ttka_halot", "artifact_cultes_des_goules"]) }).strict(),
+  z.object({ type: z.literal("USE_ARTIFACT_ACTION"), artifactId: z.enum(["artifact_ttka_halot", "artifact_cultes_des_goules", "artifact_de_vermis_mysteriis"]) }).strict(),
   z.object({ type: z.literal("USE_INVESTIGATOR_ACTION") }).strict(),
   z.object({ type: z.literal("END_ACTIONS") }).strict(),
   z.object({ type: z.literal("ADVANCE_MYTHOS") }).strict(),

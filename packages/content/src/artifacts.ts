@@ -24,7 +24,10 @@ const artifactSchema = z.object({
   imageUrl: z.string().startsWith("/cards/artifacts/"), backImageUrl: z.literal("/cards/artifacts/back.webp"),
   sourceScan: z.string().startsWith("source-assets/artifacts/"), sourceCellIndex: z.number().int().nonnegative(),
   verification: z.literal("artwork_verified_from_scan"), rulesStatus: z.literal("transcribed_pending_execution"),
-  engineEffects: z.array(z.object({ type: z.literal("action_lore_spend_sanity_gain_clues"), amount: z.literal(2) }).strict()).optional(),
+  engineEffects: z.array(z.union([
+    z.object({ type: z.literal("action_lore_spend_sanity_gain_clues"), amount: z.literal(2) }).strict(),
+    z.object({ type: z.literal("action_lore_spend_sanity_improve_skill") }).strict(),
+  ])).optional(),
 }).strict();
 export type ArtifactCardData = z.infer<typeof artifactSchema>;
 export const baseGameArtifacts: readonly ArtifactCardData[] = definitions.map(([slug, name, traits, effectText]) => {
@@ -32,7 +35,8 @@ export const baseGameArtifacts: readonly ArtifactCardData[] = definitions.map(([
   if (!sheet?.ids) throw new Error(`Artifact scan missing: ${slug}`);
   return artifactSchema.parse({ id: `artifact_${slug}`, name, traits, effectText, imageUrl: `/cards/artifacts/${slug}.webp`, backImageUrl: "/cards/artifacts/back.webp",
     sourceScan: `source-assets/${sheet.file}`, sourceCellIndex: sheet.ids.indexOf(slug), verification: "artwork_verified_from_scan", rulesStatus: "transcribed_pending_execution",
-    ...(slug === "cultes_des_goules" ? { engineEffects: [{ type: "action_lore_spend_sanity_gain_clues", amount: 2 }] } : {}) });
+    ...(slug === "cultes_des_goules" ? { engineEffects: [{ type: "action_lore_spend_sanity_gain_clues", amount: 2 }] } : {}),
+    ...(slug === "de_vermis_mysteriis" ? { engineEffects: [{ type: "action_lore_spend_sanity_improve_skill" }] } : {}) });
 });
 
 export function validateArtifactContent(cards: readonly ArtifactCardData[]): void {

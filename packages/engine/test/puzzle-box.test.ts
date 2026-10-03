@@ -33,6 +33,14 @@ function withClue(state = fixture()) {
 }
 
 describe("Puzzle Box Rest test", () => {
+  it("transfers the true De Vermis Mysteriis top card without searching", () => {
+    const state = fixture(); const vermis = "artifact_de_vermis_mysteriis";
+    state.privateState.deckOrderById.artifacts = [vermis, ...baseGameArtifacts.filter(card => card.id !== vermis).map(card => card.id)];
+    const after = unwrap(attempt(rest(state)));
+    expect(after.players[0]?.artifactIds).toEqual([vermis]);
+    expect(after.privateState.deckOrderById.artifacts).toEqual(state.privateState.deckOrderById.artifacts!.slice(1));
+    expect(after.assetDiscardIds).toEqual([box]);
+  });
   it("draws Cultes des Goules only when it is the true supported top card", () => {
     const state = fixture(); const cultes = "artifact_cultes_des_goules";
     state.privateState.deckOrderById.artifacts = [cultes, ...baseGameArtifacts.filter(card => card.id !== cultes).map(card => card.id)];

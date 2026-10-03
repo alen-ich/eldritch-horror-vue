@@ -52,6 +52,8 @@ describe("gameCommandSchema", () => {
     })).toThrow();
   });
   it("validates supported Artifact intents without accepting forged identity or damage", () => {
+    expect(gameCommandSchema.safeParse({ type: "USE_ARTIFACT_ACTION", artifactId: "artifact_de_vermis_mysteriis" }).success).toBe(true);
+    expect(gameCommandSchema.safeParse({ type: "USE_ARTIFACT_ACTION", artifactId: "artifact_de_vermis_mysteriis", improvement: 99 }).success).toBe(false);
     expect(gameCommandSchema.safeParse({ type: "USE_ARTIFACT_ACTION", artifactId: "artifact_cultes_des_goules" }).success).toBe(true);
     expect(gameCommandSchema.safeParse({ type: "USE_ARTIFACT_ACTION", artifactId: "artifact_cultes_des_goules", clues: 99 }).success).toBe(false);
     expect(gameCommandSchema.safeParse({ type: "USE_ARTIFACT_ACTION", artifactId: "artifact_cultes_des_goules", sanityCost: 0 }).success).toBe(false);
