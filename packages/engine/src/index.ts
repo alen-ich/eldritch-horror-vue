@@ -226,6 +226,7 @@ export type AssetEngineEffect =
   | { type: "skill_bonus"; skill: "influence" | "strength"; amount: 1 }
   | { type: "acquire_six_counts_as_two" }
   | { type: "rest_recover_additional_sanity"; amount: 1 }
+  | { type: "rest_health_or_discard_cursed"; amount: 1 }
   | { type: "on_gain_recover_all_and_discard" };
 
 /** Only verified, atomic reverse effects; supplied by the server, never public content. */
@@ -2154,6 +2155,47 @@ function completeAction(state: GameState, actorIndex: number, action: ActionType
   if (state.actionsRemaining === 0) advanceActionInvestigator(state, actorIndex, events);
 }
 
+function restAssetSources(state: GameState, actor: EnginePlayer, content: GameContent): string[] {
+  return state.players.filter(player => !player.defeated && !player.eliminated && !!actor.locationId && player.locationId === actor.locationId)
+    .flatMap(player => player.assetIds)
+    .filter(id => content.assets.find(card => card.id === id)?.engineEffects?.some(effect => effect.type === "rest_health_or_discard_cursed"));
+}
+
+function restCursedId(actor: EnginePlayer, content: GameContent): string | undefined {
+  return actor.conditionIds?.find(id => content.conditions?.find(card => card.id === id)?.kind === "cursed");
+}
+
+function validateRestAssets(state: GameState, actor: EnginePlayer, content: GameContent): CommandResult | undefined {
+  const sources = restAssetSources(state, actor, content);
+  if (sources.some(id => !physicalAssetIsUnique(state, id))) return failure("ASSET_CONTENT_MISSING", "The Rest Ally identity is inconsistent.");
+  if (sources.length) {
+    const cursed = restCursedId(actor, content);
+    if (cursed && [...state.players.flatMap(player => player.conditionIds ?? []), ...Object.values(state.privateState.tokenPoolById).flat()].filter(id => id === cursed).length !== 1) {
+      return failure("CONDITION_CONTENT_MISSING", "The Cursed identity is inconsistent.");
+    }
+  }
+  return undefined;
+}
+
+function finishRest(state: GameState, actorIndex: number, content: GameContent, context: EngineContext | undefined, events: GameEvent[]): CommandResult {
+  const actor = state.players[actorIndex]!;
+  const invalid = validateRestAssets(state, actor, content);
+  if (invalid) return invalid;
+  const source = restAssetSources(state, actor, content)[0];
+  if (source) {
+    if (!context) return failure("RANDOM_INPUT_REQUIRED", "The Rest bonus requires a decision ID.");
+    const health = `${source}:health`, cursed = `${source}:discard-cursed`, skip = `${source}:skip`;
+    state.pendingDecision = {
+      id: context.createId(), kind: "rest_asset_choice", continuation: "witch_doctor_rest",
+      playerId: actor.id, visibility: "owner", prompt: "Witch Doctor: choose an optional bonus for your Rest action.",
+      optionIds: [health, ...(restCursedId(actor, content) ? [cursed] : []), skip],
+      optionLabels: { [health]: "Recover 1 additional Health", ...(restCursedId(actor, content) ? { [cursed]: "Discard Cursed" } : {}), [skip]: "Skip bonus" },
+      minSelections: 1, maxSelections: 1,
+    };
+  } else completeAction(state, actorIndex, "rest", events);
+  return success(state, events);
+}
+
 function remainingTickets(player: EnginePlayer, bundle: TradeBundle): TravelTicketType[] | undefined {
   const tickets = [...(player.travelTickets ?? [])];
   for (const ticket of bundle.tickets) {
@@ -3098,6 +3140,8 @@ export function executeCommand(
       return success(next, events);
     }
     if (decision.continuation === "condition_rest_recovery") {
+      const invalid = validateRestAssets(next, actor, content);
+      if (invalid) return invalid;
       if (!context && selections.length) return failure("RANDOM_INPUT_REQUIRED", "Condition recovery requires deterministic dice input.");
       next.pendingDecision = undefined;
       const events: GameEvent[] = [{ type: "DECISION_RESOLVED", decisionId: decision.id, playerId: actorPlayerId, selectedOptionIds: [...selections] }];
@@ -3110,6 +3154,32 @@ export function executeCommand(
         events.push({ type: "CONDITION_RECOVERY_ROLLED", playerId: actorPlayerId, conditionId, die, discarded });
         if (discarded) events.push({ type: "CONDITION_DISCARDED", playerId: actorPlayerId, conditionId });
       }
+      return finishRest(next, actorIndex, content, context, events);
+    }
+    if (decision.continuation === "witch_doctor_rest") {
+      if (decision.kind !== "rest_asset_choice" || next.phase !== "action" || next.activePlayerId !== actorPlayerId
+        || actor.defeated || actor.eliminated || next.actionsRemaining < 1 || next.performedActions.includes("rest")
+        || (actor.locationId && next.monsterLocationIds.includes(actor.locationId))) {
+        return failure("INVALID_DECISION_SELECTION", "This Rest bonus is no longer available.");
+      }
+      const invalid = validateRestAssets(next, actor, content);
+      if (invalid) return invalid;
+      const choice = selections[0]!;
+      const [source, effect] = choice.split(":");
+      if (!source || !restAssetSources(next, actor, content).includes(source) || !["health", "discard-cursed", "skip"].includes(effect ?? "")) {
+        return failure("INVALID_DECISION_SELECTION", "The offered Rest Ally is no longer available.");
+      }
+      const events: GameEvent[] = [{ type: "DECISION_RESOLVED", decisionId: decision.id, playerId: actorPlayerId, selectedOptionIds: [...selections] }];
+      if (effect === "health") {
+        const recovery = recoverResource(actor.health ?? 0, actor.maxHealth ?? actor.health ?? 0, 1);
+        actor.health = recovery.value;
+        events.push({ type: "INVESTIGATOR_RECOVERED", playerId: actorPlayerId, healthRecovered: recovery.value - (state.players[actorIndex]!.health ?? 0), sanityRecovered: 0 });
+      } else if (effect === "discard-cursed") {
+        const cursed = restCursedId(actor, content);
+        if (!cursed || !returnConditionToPool(next, actor, cursed, content)) return failure("CONDITION_NOT_HELD", "Cursed is no longer held.");
+        events.push({ type: "CONDITION_DISCARDED", playerId: actorPlayerId, conditionId: publicConditionId(cursed) });
+      }
+      next.pendingDecision = undefined;
       completeAction(next, actorIndex, "rest", events);
       return success(next, events);
     }
@@ -3466,6 +3536,8 @@ export function executeCommand(
   if (command.type === "REST") {
     if (state.performedActions.includes("rest")) return failure("ACTION_ALREADY_PERFORMED", "Rest can be performed only once per round.");
     if (actor.locationId && state.monsterLocationIds.includes(actor.locationId)) return failure("REST_BLOCKED_BY_MONSTER", "An investigator cannot rest on a space containing a Monster.");
+    const invalid = validateRestAssets(next, actor, content);
+    if (invalid) return invalid;
     const additionalSanity = assetEffectsForPlayer(actor, content).reduce((total, effect) =>
       total + (effect.type === "rest_recover_additional_sanity" ? effect.amount : 0), 0);
     actor.health = recoverResource(actor.health ?? 0, actor.maxHealth ?? actor.health ?? 0, 1).value;
@@ -3482,8 +3554,7 @@ export function executeCommand(
       };
       return success(next, events);
     }
-    completeAction(next, actorIndex, "rest", events);
-    return success(next, events);
+    return finishRest(next, actorIndex, content, context, events);
   }
 
   if (command.type === "PREPARE_TRAVEL") {

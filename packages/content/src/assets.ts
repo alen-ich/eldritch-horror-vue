@@ -20,6 +20,7 @@ export type AssetEngineEffect =
   | { type: "skill_bonus"; skill: "influence" | "strength"; amount: 1 }
   | { type: "acquire_six_counts_as_two" }
   | { type: "rest_recover_additional_sanity"; amount: 1 }
+  | { type: "rest_health_or_discard_cursed"; amount: 1 }
   | { type: "on_gain_recover_all_and_discard" };
 
 export const assetIds = baseGameAssetDefinitions.map(({ id }) => id);
@@ -46,6 +47,7 @@ const engineEffectsByAssetId: Readonly<Partial<Record<AssetId, readonly AssetEng
   asset_personal_assistant: [{ type: "skill_bonus", skill: "influence", amount: 1 }, { type: "test_reroll", skill: "influence" }],
   asset_fine_clothes: [{ type: "acquire_six_counts_as_two" }],
   asset_king_james_bible: [{ type: "rest_recover_additional_sanity", amount: 1 }],
+  asset_witch_doctor: [{ type: "rest_health_or_discard_cursed", amount: 1 }],
   asset_private_care: [{ type: "on_gain_recover_all_and_discard" }],
   asset_urban_guide: [{ type: "city_test_aura", amount: 1 }],
   asset_lucky_rabbits_foot: [{ type: "round_test_reroll" }],
@@ -59,6 +61,7 @@ const engineEffectsByAssetId: Readonly<Partial<Record<AssetId, readonly AssetEng
 const nonCombatIrrelevantAssetIds: readonly string[] = [
   "asset_arcane_manuscripts", "asset_fine_clothes", "asset_king_james_bible",
   "asset_protective_amulet", "asset_38_revolver", "asset_45_automatic", "asset_holy_cross",
+  "asset_witch_doctor",
 ];
 
 export const baseGameAssets: readonly AssetCardData[] = baseGameAssetDefinitions.map((definition) => ({
@@ -88,6 +91,7 @@ const assetSchema = z.object({
     z.object({ type: z.literal("skill_bonus"), skill: z.enum(["influence", "strength"]), amount: z.literal(1) }).strict(),
     z.object({ type: z.literal("acquire_six_counts_as_two") }).strict(),
     z.object({ type: z.literal("rest_recover_additional_sanity"), amount: z.literal(1) }).strict(),
+    z.object({ type: z.literal("rest_health_or_discard_cursed"), amount: z.literal(1) }).strict(),
     z.object({ type: z.literal("on_gain_recover_all_and_discard") }).strict(),
   ])),
   nonCombatEncounterSupport: z.enum(["unsupported", "irrelevant", "city_test_aura", "skill_test", "health_prevention", "sanity_prevention"]),

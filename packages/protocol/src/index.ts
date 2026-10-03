@@ -32,6 +32,7 @@ export const pendingDecisionKinds = [
   "select_acquired_cards",
   "discard_reserve_card",
   "recover_conditions",
+  "rest_asset_choice",
   "choose_omen_space",
   "choose_world_fights_back",
   "trade_debt_for_condition",
@@ -57,7 +58,7 @@ export const pendingDecisionSchema = z.object({
   minSelections: z.number().int().nonnegative(),
   maxSelections: z.number().int().positive(),
   selectionBudget: z.number().int().nonnegative().optional(),
-  continuation: z.enum(["test_reroll", "acquire_assets_purchase", "acquire_assets_discard", "condition_rest_recovery", "mythos_omen_choice", "mythos_world_fights_back", "mythos_debt_trade", "mythos_desperate_times", "mythos_that_which_consumes", "mythos_heat_wave", "mythos_blood_flows", "mythos_tide_of_despair", "mythos_unexpected_betrayal", "location_encounter_choice"]).optional(),
+  continuation: z.enum(["test_reroll", "acquire_assets_purchase", "acquire_assets_discard", "condition_rest_recovery", "witch_doctor_rest", "mythos_omen_choice", "mythos_world_fights_back", "mythos_debt_trade", "mythos_desperate_times", "mythos_that_which_consumes", "mythos_heat_wave", "mythos_blood_flows", "mythos_tide_of_despair", "mythos_unexpected_betrayal", "location_encounter_choice"]).optional(),
 }).strict().superRefine((decision, context) => {
   if (new Set(decision.optionIds).size !== decision.optionIds.length) {
     context.addIssue({ code: "custom", message: "Decision option IDs must be unique.", path: ["optionIds"] });
