@@ -1,8 +1,9 @@
+import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { baseGameSpells, spellKinds, validateSpellContent } from "../src/spells.js";
 
-const root = new URL("../../../", import.meta.url).pathname;
+const root = fileURLToPath(new URL("../../../", import.meta.url));
 
 describe("base-game Spells", () => {
   it("contains 20 physical cards, two copies of each of the ten printed names", () => {
@@ -21,7 +22,8 @@ describe("base-game Spells", () => {
       expect(existsSync(`${root}apps/server/private-card-assets/spells/${card.id}.webp`)).toBe(true);
       expect(existsSync(`${root}apps/web/public/cards/spells/${card.id}-back.webp`)).toBe(false);
       expect(card.backVisibility).toBe("server_only");
-      expect(card.effectStatus).toBe("not_executable");
+      expect(card.backTextStatus).toBe("verified");
+      expect(card.effectStatus).toBe(card.kind === "feed_the_mind" ? "scoped_executable" : "not_executable");
     }
     expect(baseGameSpells.find(card => card.id === "spell_blessing_of_isis_02")?.sheetSlot).toBe(3);
   });

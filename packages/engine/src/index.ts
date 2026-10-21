@@ -1,3 +1,9 @@
+import { beginSpellCast, finishSpellCastTest, resolveSpellCastDecision, validateSpellCastingState, withSpellRandomTransaction } from "./spell-casting.js";
+import { validateSpellTestApplicability } from "./spell-test-assets.js";
+import { grantStartingSpells, validateStartingSpells, withStartingSpellRandomTransaction } from "./starting-spells.js";
+import { canUseNormanSpellReroll, spendNormanSpellReroll, validateInvestigatorAbilityUsage } from "./norman-clue-substitution.js";
+export * from "./norman-clue-substitution.js";
+export * from "./spell-casting.js";
 import type {
   GameCommand,
   GameEvent,
@@ -12,6 +18,7 @@ import type {
   TravelTicketType,
   TradeOffer,
   TradeBundle,
+  SpellFrontId,
 } from "@eldritch/protocol";
 import { calculateDicePool, countTestSuccesses } from "./skill-tests.js";
 import { loseResource, recoverResource } from "./resources.js";
@@ -20,6 +27,7 @@ import { bindResearchInstruction } from "./research-instructions.js";
 import { encounterItemAssetIds, encounterItemsAreConserved, encounterDamagePreventions, physicalAssetIsUnique, nonCombatEncounterAuraBonus, supportsEncounterAssets } from "./encounter-assets.js";
 import { resolveStandardCombat, type CombatCheck } from "./combat.js";
 import { conditionSuccessThreshold, publicConditionId, resolveBoonBaneGain } from "./conditions.js";
+import { createSpellInventory, publicSpellId, spellEffectIsUnsupported, validateSpellInventory } from "./spells.js";
 import { advanceOmenTrack, omenTrack } from "./omen.js";
 import { parseLocationEncounterInstruction, encounterInstructionLabel, type LocationEncounterInstruction, type LocationEncounterEffect } from "./encounter-instructions.js";
 export * from "./setup.js";
@@ -27,6 +35,8 @@ export * from "./skill-tests.js";
 export * from "./resources.js";
 export * from "./combat.js";
 export * from "./conditions.js";
+export * from "./spells.js";
+export * from "./starting-spells.js";
 export * from "./omen.js";
 
 export type ActionType = "travel" | "rest" | "prepare_travel" | "trade" | "acquire_assets" | "component" | "investigator";
@@ -39,6 +49,7 @@ export interface EngineInputSequences {
 }
 
 export interface EngineContext {
+  checkpoint?(): { commit(): void; rollback(): void };
   rollDie(): number;
   shuffle<T>(items: readonly T[]): T[];
   drawToken<T>(pool: readonly T[]): { token: T; remaining: T[] };
@@ -58,6 +69,13 @@ export function createDeterministicEngineContext(inputs: EngineInputSequences): 
   }
 
   return {
+    checkpoint() {
+      const saved = [dice.slice(), shuffleIndexes.slice(), tokenIndexes.slice(), ids.slice()] as const;
+      return { commit() {}, rollback() {
+        dice.splice(0,dice.length,...saved[0]); shuffleIndexes.splice(0,shuffleIndexes.length,...saved[1]);
+        tokenIndexes.splice(0,tokenIndexes.length,...saved[2]); ids.splice(0,ids.length,...saved[3]);
+      } };
+    },
     rollDie(): number {
       const result = take(dice, "die");
       if (!Number.isInteger(result) || result < 1 || result > 6) {
@@ -115,6 +133,11 @@ export interface EnginePlayer {
 }
 
 export interface PrivateGameState {
+  /** Snapshot capability marker is independent of the removable usage ledger. */
+  investigatorAbilityUsageVersion?: 1;
+  investigatorAbilityUsage?: import("./norman-clue-substitution.js").PrivateInvestigatorAbilityUsage;
+  spellCasting?: import("./spell-casting.js").PrivateSpellCastingState;
+  spells?: import("./spells.js").PrivateSpellInventory;
   deckOrderById: Record<string, string[]>;
   tokenPoolById: Record<string, string[]>;
 }
@@ -199,7 +222,10 @@ export interface GameState {
   privateState: PrivateGameState;
 }
 
-export type PublicEngineGameState = Omit<GameState, "privateState" | "pendingDecision" | "pendingLocationEncounter" | "pendingRest"> & {
+export type PublicEngineGameState = Omit<GameState, "privateState" | "pendingDecision" | "pendingLocationEncounter" | "pendingRest" | "players" | "defeatedInvestigators"> & {
+  players: (EnginePlayer & { spellIds: SpellFrontId[] })[];
+  defeatedInvestigators?: (NonNullable<GameState["defeatedInvestigators"]>[number] & { spellIds: SpellFrontId[] })[];
+  spellSupplyTopId?: SpellFrontId;
   pendingDecision?: PendingDecision | PendingDecisionSummary;
 };
 
@@ -215,10 +241,12 @@ export interface InvestigatorSetup {
   sanity: number;
   skills: Readonly<Record<SkillId, number>>;
   startingAssetIds: readonly string[];
+  startingSpellIds?: readonly SpellFrontId[];
   startingClues: number;
 }
 
 export type AssetEngineEffect =
+  | { type: "spell_lore_bonus"; amount: 1 }
   | { type: "round_test_die_increment"; amount: 1 }
   | { type: "discard_prevent_sanity_loss"; amount: 2 }
   | { type: "discard_prevent_health_loss"; amount: 2 }
@@ -241,6 +269,8 @@ export type ConditionBackEffect =
   | { type: "discard_all_clues_then_discard" };
 
 export interface GameContent {
+  privateSpellCastingRules?: import("./spell-casting.js").PrivateSpellCastingRules;
+  spells?: readonly import("./spells.js").SpellDefinition[];
   artifacts?: readonly { id: string; engineEffects?: readonly ({ type: "action_lore_spend_sanity_gain_clues"; amount: 2 } | { type: "action_lore_spend_sanity_improve_skill" })[] }[];
   researchEncounters?: readonly { id: string; deck: ResearchEncounterDeckId; sections: Readonly<Record<string, unknown>> }[];
   otherWorldEncounters?: readonly { id: string; deck: "other_world"; sections: Readonly<Record<string, unknown>> }[];
@@ -261,6 +291,7 @@ export interface GameContent {
 }
 
 export type RuleErrorCode =
+  | "SPELL_CAST_INVALID" | "SPELL_CONTENT_MISSING" | "SPELL_INVENTORY_INVALID" | "SPELL_NOT_HELD" | "SPELL_EFFECT_UNSUPPORTED" | "SPELL_RANDOM_INPUT_INVALID"
   | "ARTIFACT_CONTENT_MISSING" | "ARTIFACT_UNAVAILABLE" | "ARTIFACT_EFFECT_UNSUPPORTED"
   | "ENCOUNTER_UNSUPPORTED" | "ENCOUNTER_CONTENT_MISSING" | "ENCOUNTER_DECK_MISSING" | "ENCOUNTER_DECK_ILLEGAL"
   | "MYTHOS_CARD_ACTIVE" | "MYTHOS_DECK_MISSING" | "MYTHOS_CONTENT_MISSING"
@@ -363,8 +394,11 @@ export function projectStateForPlayer(state: GameState, viewerPlayerId?: string)
   const { privateState: _privateState, pendingLocationEncounter: _pendingLocationEncounter, pendingRest: _pendingRest, pendingDecision, ...publicState } = state;
   return {
     ...publicState,
+    spellSupplyTopId: state.privateState.spells?.deck[0] ? publicSpellId(state.privateState.spells.deck[0]) : undefined,
+    defeatedInvestigators: publicState.defeatedInvestigators?.map(sheet => ({ ...structuredClone(sheet), spellIds: (state.privateState.spells?.heldByDefeatedInvestigator[sheet.investigatorId] ?? []).map(publicSpellId) })),
     players: publicState.players.map((player) => ({
       ...player,
+      spellIds: (state.privateState.spells?.heldByPlayer[player.id] ?? []).map(publicSpellId),
       travelTickets: player.travelTickets ? [...player.travelTickets] : undefined,
       assetIds: [...player.assetIds],
       ...(player.artifactIds ? { artifactIds: [...player.artifactIds] } : {}),
@@ -638,6 +672,7 @@ export function nearestCities(map: GameMap, origin: LocationId): LocationId[] {
 
 /** Internal effect transition; clients cannot assign damage. */
 export function damageInvestigator(state: GameState, playerId: string, health: number, sanity: number, content: GameContent): CommandResult {
+  if (health > 0 && spellEffectIsUnsupported(state, playerId, "health_loss", content) || sanity > 0 && spellEffectIsUnsupported(state, playerId, "sanity_loss", content)) return failure("SPELL_EFFECT_UNSUPPORTED", "Spell damage reactions are not implemented.");
   if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
   if (state.pendingDefeat) return failure("INVALID_DEFEAT", "Resolve the current defeat first.");
   if (![health, sanity].every(value => Number.isInteger(value) && value >= 0)) return failure("INVALID_DAMAGE", "Damage must be nonnegative integers.");
@@ -1033,6 +1068,7 @@ function resolveCounterclockwiseOmenCard(state: GameState, content: GameContent)
 }
 
 export function resolveCombatEncounter(state: GameState, playerId: string, monsterInstanceId: string, content: GameContent, context: EngineContext): CommandResult {
+  if (spellEffectIsUnsupported(state, playerId, "combat", content)) return failure("SPELL_EFFECT_UNSUPPORTED", "Spell combat effects are not implemented.");
   if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
   if (state.phase !== "encounter" || state.activePlayerId !== playerId || state.pendingDecision || state.pendingDefeat || state.activeTest) {
     return failure("WRONG_PHASE", "Combat is unavailable during this resolution.");
@@ -1110,6 +1146,7 @@ export function openReplacementWindow(state: GameState, content?: GameContent): 
 
 /** Draws the top private card and resolves its first printed icon atomically. */
 export function drawMythosCard(state: GameState, content: GameContent, context?: EngineContext): CommandResult {
+  if (state.players.some(player => spellEffectIsUnsupported(state, player.id, "health_loss", content) || spellEffectIsUnsupported(state, player.id, "sanity_loss", content))) return failure("SPELL_EFFECT_UNSUPPORTED", "Spell Mythos reactions are not implemented.");
   if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
   if (state.phase !== "mythos" || state.pendingDecision || state.activeTest || state.pendingDefeat || state.replacementWindow) {
     return failure("WRONG_PHASE", "Finish the current resolution before drawing Mythos.");
@@ -1146,6 +1183,7 @@ export function drawMythosCard(state: GameState, content: GameContent, context?:
 
 /** Resolve exactly one verified printed icon; card text is never skipped. */
 export function advanceMythosIcon(state: GameState, content: GameContent, context: EngineContext): CommandResult {
+  if (state.players.some(player => spellEffectIsUnsupported(state, player.id, "health_loss", content) || spellEffectIsUnsupported(state, player.id, "sanity_loss", content))) return failure("SPELL_EFFECT_UNSUPPORTED", "Spell Mythos reactions are not implemented.");
   if (state.phase !== "mythos") return failure("WRONG_PHASE", "Mythos icons resolve only during Mythos.");
   if (!state.currentMythosCardId) return drawMythosCard(state, content, context);
   const card = content.mythosCards?.find(candidate => candidate.id === state.currentMythosCardId);
@@ -2224,6 +2262,7 @@ function otherWorldBindingIsValid(state: GameState, content: GameContent): boole
 
 /** Draw the actual private top card, binding every continuation to a physical Gate. */
 export function resolveOtherWorldEncounter(state: GameState, playerId: string, gateId: string, content: GameContent, context: EngineContext): CommandResult {
+  if (spellEffectIsUnsupported(state, playerId, "encounter", content)) return failure("SPELL_EFFECT_UNSUPPORTED", "Spell encounter effects are not implemented.");
   if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
   if (!legalLocationEncounterDecks(state, playerId, content).length || state.pendingLocationEncounter) return failure("WRONG_PHASE", "This investigator cannot resolve an Other World encounter now.");
   const player = state.players.find(player => player.id === playerId)!;
@@ -2242,6 +2281,7 @@ export function resolveOtherWorldEncounter(state: GameState, playerId: string, g
 
 /** Authoritative Research draw; marker identity and outcomes remain server-owned. */
 export function resolveResearchEncounter(state: GameState, playerId: string, markerId: string, content: GameContent, context: EngineContext): CommandResult {
+  if (spellEffectIsUnsupported(state, playerId, "encounter", content) || spellEffectIsUnsupported(state, playerId, "combat", content)) return failure("SPELL_EFFECT_UNSUPPORTED", "Spell encounter effects are not implemented.");
   if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
   if (!legalLocationEncounterDecks(state, playerId, content).length || state.pendingLocationEncounter) return failure("WRONG_PHASE", "This investigator cannot resolve Research now.");
   const player = state.players.find(candidate => candidate.id === playerId)!;
@@ -2273,6 +2313,7 @@ export function resolveResearchEncounter(state: GameState, playerId: string, mar
 
 /** Draws a modeled location encounter and resolves until a choice, test, or defeat. */
 export function resolveLocationEncounter(state: GameState, playerId: string, deck: LocationEncounterDeckId, content: GameContent, context: EngineContext): CommandResult {
+  if (spellEffectIsUnsupported(state, playerId, "encounter", content) || spellEffectIsUnsupported(state, playerId, "combat", content)) return failure("SPELL_EFFECT_UNSUPPORTED", "Spell encounter effects are not implemented.");
   if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
   if (state.phase !== "encounter" || state.activePlayerId !== playerId || state.pendingDecision || state.pendingDefeat || state.activeTest) {
     return failure("WRONG_PHASE", "This investigator cannot resolve a location encounter now.");
@@ -2493,11 +2534,17 @@ function canUseAssetDieIncrement(state: GameState, player: EnginePlayer, assetId
     && (content.assets.find(asset => asset.id === assetId)?.engineEffects.some(effect => effect.type === "round_test_die_increment") ?? false);
 }
 
-function createTestRerollDecision(state: GameState, test: ActiveTest, content: GameContent, context: EngineContext): boolean {
+function createTestRerollDecision(state: GameState, test: ActiveTest, content: GameContent, context: Pick<EngineContext, "createId">): boolean {
   const player = state.players.find(player => player.id === test.playerId);
   if (!player) return false;
   const optionIds = player.clues > 0 ? test.dice.map((_, index) => `die-${index}`) : [];
   const optionLabels: Record<string, string> = Object.fromEntries(optionIds.map((id, index) => [id, `Spend 1 Clue: reroll die ${index + 1}`]));
+  if (canUseNormanSpellReroll(state, player.id)) {
+    test.dice.forEach((_, index) => {
+      const id = `norman-sanity:${index}`;
+      optionIds.push(id); optionLabels[id] = `Spend 1 Sanity (Norman): reroll die ${index + 1}`;
+    });
+  }
   for (const assetId of player.assetIds) {
     if (canUseAssetDieIncrement(state, player, assetId, content)) {
       const assetName = content.assets.find(asset => asset.id === assetId)?.name ?? assetId;
@@ -2528,6 +2575,17 @@ function createTestRerollDecision(state: GameState, test: ActiveTest, content: G
     continuation: "test_reroll",
   };
   return true;
+}
+
+/** Rebuild from canonical sources rather than trusting restored option strings. */
+export function testRerollDecisionIsValid(state: GameState, content: GameContent): boolean {
+  const decision = state.pendingDecision;
+  if (!decision || !state.activeTest || decision.visibility !== "owner" || decision.minSelections !== 0 || decision.maxSelections !== 1
+    || !Array.isArray(decision.optionIds) || new Set(decision.optionIds).size !== decision.optionIds.length) return false;
+  const clone = structuredClone(state);
+  if (!createTestRerollDecision(clone, clone.activeTest!, content, { createId: () => decision.id })) return false;
+  const expected = clone.pendingDecision!;
+  return decision.optionIds.length === expected.optionIds.length && decision.optionIds.every(id => expected.optionIds.includes(id));
 }
 
 function createAcquireAssetsDecision(state: GameState, test: ActiveTest, content: GameContent, context: EngineContext): GameEvent[] {
@@ -2735,11 +2793,44 @@ function beginSkillTest(
     dice: [...test.dice],
     successes: test.successes,
   }];
-  if (!createTestRerollDecision(state, test, content, context)) events.push(...finishSkillTest(state, test, content, context));
+  if (!createTestRerollDecision(state, test, content, context) && test.continuation !== "spell_cast") events.push(...finishSkillTest(state, test, content, context));
   return events;
 }
 
-export function executeCommand(
+const spellAdapters = { beginTest: beginSkillTest, damage: damageInvestigator, completeAction };
+export function executeCommand(state: GameState, actorPlayerId: string, command: GameCommand, content: GameContent, context?: EngineContext): CommandResult {
+  const usageInvalid = validateInvestigatorAbilityUsage(state);
+  if (usageInvalid) return failure("SPELL_CAST_INVALID", usageInvalid);
+  const invalid = validateSpellCastingState(state,content);
+  if(invalid) return failure("SPELL_CAST_INVALID",invalid);
+  const pending = state.privateState.spellCasting?.pending;
+  if(command.type === "CAST_SPELL" || pending) {
+    if(!state.players.some(p=>p.id===actorPlayerId)) return failure("PLAYER_NOT_FOUND","Unknown player.");
+    if(pending && command.type!=="RESOLVE_DECISION") return failure("SPELL_CAST_INVALID","Resolve the Spell before another command.");
+    if(!context) return failure("RANDOM_INPUT_REQUIRED","Spell casting requires deterministic input.");
+    return withSpellRandomTransaction(context,()=>{
+      const applicability = validateSpellTestApplicability(state,pending?.casterPlayerId??actorPlayerId,content);
+      if(applicability) return applicability;
+      const result = command.type === "CAST_SPELL" ? beginSpellCast(state,actorPlayerId,content,context,spellAdapters)
+        : state.activeTest?.continuation === "spell_cast" ? executeCommandImpl(state,actorPlayerId,command,content,context)
+        : resolveSpellCastDecision(state,actorPlayerId,command as Extract<GameCommand,{type:"RESOLVE_DECISION"}>,content,context,spellAdapters);
+      if(result.ok) result.state.stateVersion=state.stateVersion+1;
+      return result;
+    });
+  }
+  if (command.type === "START_GAME" || command.type === "REPLACE_INVESTIGATOR") {
+    const invalidStarting = validateStartingSpells(content);
+    if (invalidStarting) return failure("SPELL_CONTENT_MISSING", invalidStarting);
+    const hasStartingGrant = command.type === "START_GAME"
+      ? state.players.some(player => player.investigatorId && content.investigators[player.investigatorId]?.startingSpellIds?.length)
+      : !!content.investigators[command.investigatorId]?.startingSpellIds?.length;
+    if (hasStartingGrant && context) {
+      return withStartingSpellRandomTransaction(context, () => executeCommandImpl(state, actorPlayerId, command, content, context));
+    }
+  }
+  return executeCommandImpl(state,actorPlayerId,command,content,context);
+}
+function executeCommandImpl(
   state: GameState,
   actorPlayerId: string,
   command: GameCommand,
@@ -2749,6 +2840,14 @@ export function executeCommand(
   const actorIndex = state.players.findIndex((player) => player.id === actorPlayerId);
   if (actorIndex < 0) return failure("PLAYER_NOT_FOUND", "The acting player is not in this game.");
   if (state.gameResult) return failure("GAME_ENDED", "The game has already ended.");
+  if (state.privateState.spells || state.phase !== "lobby" && content.spells) {
+    const invalid = validateSpellInventory(state, content.spells ?? []);
+    if (invalid) return failure("SPELL_INVENTORY_INVALID", invalid);
+  }
+  if (command.type === "RESOLVE_DECISION"
+    && (state.pendingLocationEncounter || state.phase === "mythos")
+    && (spellEffectIsUnsupported(state, state.pendingLocationEncounter?.playerId ?? actorPlayerId, state.pendingLocationEncounter ? "combat" : "health_loss", content)
+      || spellEffectIsUnsupported(state, state.pendingLocationEncounter?.playerId ?? actorPlayerId, "sanity_loss", content))) return failure("SPELL_EFFECT_UNSUPPORTED", "Spell continuation effects are not implemented.");
   if (command.type === "FIGHT_MONSTER") {
     if (state.phase !== "encounter" || state.activePlayerId !== actorPlayerId || state.encounteredMonsterInstanceIds?.includes(command.monsterInstanceId)) {
       return failure("INVALID_COMBAT", "This Monster cannot be encountered again by this investigator.");
@@ -2806,10 +2905,12 @@ export function executeCommand(
     nextRound.phase = "action";
     nextRound.activePlayerId = first.id;
     nextRound.turnNumber += 1;
+    if (nextRound.privateState.investigatorAbilityUsage) nextRound.privateState.investigatorAbilityUsage.normanClueSubstitutions = [];
     nextRound.actionsRemaining = 2;
     nextRound.performedActions = [];
     nextRound.usedConditionActionIds = [];
     nextRound.usedArtifactActionIds = [];
+    if(nextRound.privateState.spellCasting) nextRound.privateState.spellCasting.usedPhysicalIds=[];
     nextRound.usedAssetRerollIds = [];
     nextRound.usedAssetDieModifierIds = [];
     nextRound.replacementWindow = false;
@@ -2845,6 +2946,10 @@ export function executeCommand(
     pendingLocationEncounter: state.pendingLocationEncounter ? structuredClone(state.pendingLocationEncounter) : undefined,
     pendingRest: state.pendingRest ? structuredClone(state.pendingRest) : undefined,
     privateState: {
+      ...(state.privateState.investigatorAbilityUsageVersion === 1 ? { investigatorAbilityUsageVersion: 1 as const } : {}),
+      ...(state.privateState.investigatorAbilityUsage ? { investigatorAbilityUsage: structuredClone(state.privateState.investigatorAbilityUsage) } : {}),
+      ...(state.privateState.spells ? { spells: structuredClone(state.privateState.spells) } : {}),
+      ...(state.privateState.spellCasting ? { spellCasting: structuredClone(state.privateState.spellCasting) } : {}),
       deckOrderById: Object.fromEntries(
         Object.entries(state.privateState.deckOrderById).map(([id, cards]) => [id, [...cards]]),
       ),
@@ -2866,6 +2971,10 @@ export function executeCommand(
       next.privateState.tokenPoolById[`defeated_clues:${actor.investigatorId}`] = held.splice(0);
     }
     next.defeatedInvestigators = [...(state.defeatedInvestigators ?? []), { investigatorId: actor.investigatorId!, locationId: command.cityId, cause: command.cause, assetIds: [...actor.assetIds], artifactIds: [...(actor.artifactIds ?? [])], clues: actor.clues, travelTickets: [...(actor.travelTickets ?? [])] }];
+    if (next.privateState.spells) {
+      next.privateState.spells.heldByDefeatedInvestigator[actor.investigatorId!] = [...(next.privateState.spells.heldByPlayer[actorPlayerId] ?? [])];
+      next.privateState.spells.heldByPlayer[actorPlayerId] = [];
+    }
     actor.assetIds = [];
     actor.artifactIds = [];
     for (const id of [...(actor.conditionIds ?? [])]) returnConditionToPool(next, actor, id, content);
@@ -2964,6 +3073,12 @@ export function executeCommand(
       if (pile) { pile.splice(pile.indexOf(id), 1); actor.assetIds.push(id); }
     }
     refillReserve(next);
+    if (setup.startingSpellIds?.length) {
+      if (!context) return failure("RANDOM_INPUT_REQUIRED", "Starting Spells require server randomness.");
+      const granted = grantStartingSpells(next, actorPlayerId, content, context);
+      if (!granted.ok) return granted;
+      return success(granted.state, [{ type: "INVESTIGATOR_REPLACED", playerId: actorPlayerId, investigatorId: command.investigatorId }, ...granted.events]);
+    }
     return success(next, [{ type: "INVESTIGATOR_REPLACED", playerId: actorPlayerId, investigatorId: command.investigatorId }]);
   }
   if (actor.defeated || actor.eliminated) return failure("INVESTIGATOR_DEFEATED", "This investigator cannot act.");
@@ -3465,11 +3580,15 @@ export function executeCommand(
       const activeTest = next.activeTest!;
       const selectedDie = selections[0];
       if (selectedDie) {
+        const normanPayment = selectedDie.startsWith("norman-sanity:");
         const increment = selectedDie.startsWith("asset-increment:");
         const assetChoice = increment || selectedDie.startsWith("asset-reroll:") ? selectedDie.split(":") : undefined;
-        const dieIndex = Number(assetChoice ? assetChoice[2] : selectedDie.slice("die-".length));
+        const dieIndex = Number(assetChoice ? assetChoice[2] : selectedDie.slice(normanPayment ? "norman-sanity:".length : "die-".length));
         if (!Number.isInteger(dieIndex) || dieIndex < 0 || dieIndex >= activeTest.dice.length) return failure("INVALID_DECISION_SELECTION", "That test die is unavailable.");
-        if (increment && assetChoice) {
+        if (normanPayment) {
+          if (!spendNormanSpellReroll(next, actorPlayerId)) return failure("INVALID_DECISION_SELECTION", "Norman's Sanity payment is unavailable.");
+          events.push({ type: "SANITY_SPENT_FOR_REROLL", testId: activeTest.id, playerId: actorPlayerId, dieIndex, amount: 1 });
+        } else if (increment && assetChoice) {
           const assetId = assetChoice[1]!;
           const die = activeTest.dice[dieIndex]!;
           if (!canUseAssetDieIncrement(next, actor, assetId, content) || die < 1 || die >= 6) return failure("INVALID_DECISION_SELECTION", "That die-result modifier is unavailable.");
@@ -3506,6 +3625,9 @@ export function executeCommand(
         pending.queue.splice(0, 1, activeTest.successes ? instruction.pass : instruction.fail);
         next.activeTest = undefined;
         return continueLocationEncounter(next, content, context, [...events, { type: "TEST_RESOLVED", testId: activeTest.id, playerId: actorPlayerId, successes: activeTest.successes, continuation: "location_encounter" }]);
+      } else if(activeTest.continuation === "spell_cast") {
+        const result=finishSpellCastTest(next,activeTest,content,context,spellAdapters);
+        return result.ok ? { ...result, events:[...events,...result.events] } : result;
       } else events.push(...finishSkillTest(next, activeTest, content, context));
       return success(next, events);
     }
@@ -3710,10 +3832,13 @@ export function executeCommand(
     next.activePlayerId = actorPlayerId;
     next.leadInvestigatorId = actorPlayerId;
     next.turnNumber = 1;
+    next.privateState.investigatorAbilityUsageVersion = 1;
+    next.privateState.investigatorAbilityUsage = { schemaVersion: 1, normanClueSubstitutions: [] };
     next.actionsRemaining = 2;
     next.performedActions = [];
     next.usedConditionActionIds = [];
     next.usedArtifactActionIds = [];
+    if(next.privateState.spellCasting) next.privateState.spellCasting.usedPhysicalIds=[];
     next.usedAssetRerollIds = [];
     next.usedAssetDieModifierIds = [];
     next.activeMysteryId = activeMysteryId;
@@ -3822,6 +3947,16 @@ export function executeCommand(
       events.push(...spawned.events);
     }
     events.push({ type: "MYSTERY_REVEALED", mysteryId: activeMysteryId });
+    if (content.spells) {
+      try { setupState.privateState.spells = createSpellInventory(content.spells, setupState.players.map(player => player.id), context); setupState.privateState.spellCasting = {usedPhysicalIds:[]}; }
+      catch { return failure("SPELL_RANDOM_INPUT_INVALID", "Spell setup content or random input is invalid."); }
+    }
+    for (const player of setupState.players) {
+      const granted = grantStartingSpells(setupState, player.id, content, context);
+      if (!granted.ok) return granted;
+      setupState = granted.state;
+      events.push(...granted.events);
+    }
     return success(setupState, events);
   }
 

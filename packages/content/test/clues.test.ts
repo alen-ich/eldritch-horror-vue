@@ -1,9 +1,10 @@
+import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { locationIds } from "@eldritch/protocol";
 import { baseGameClues, validateClueContent } from "../src/clues.js";
 
-const publicDirectory = new URL("../../../apps/web/public", import.meta.url).pathname;
+const publicDirectory = fileURLToPath(new URL("../../../apps/web/public", import.meta.url));
 
 describe("base-game Clue tokens", () => {
   it("has one scan-verified physical token for each of the 36 board spaces", () => {

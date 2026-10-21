@@ -11,6 +11,7 @@ export const assetAbilityTypes = [
 export type AssetAbilityType = (typeof assetAbilityTypes)[number];
 
 export type AssetEngineEffect =
+  | { type: "spell_lore_bonus"; amount: 1 }
   | { type: "round_test_die_increment"; amount: 1 }
   | { type: "discard_prevent_sanity_loss"; amount: 2 }
   | { type: "discard_prevent_health_loss"; amount: 2 }
@@ -45,6 +46,7 @@ export interface AssetCardData {
 }
 
 const engineEffectsByAssetId: Readonly<Partial<Record<AssetId, readonly AssetEngineEffect[]>>> = {
+  asset_arcane_manuscripts: [{ type: "spell_lore_bonus", amount: 1 }],
   asset_personal_assistant: [{ type: "skill_bonus", skill: "influence", amount: 1 }, { type: "test_reroll", skill: "influence" }],
   asset_fine_clothes: [{ type: "acquire_six_counts_as_two" }],
   asset_king_james_bible: [{ type: "rest_recover_additional_sanity", amount: 1 }],
@@ -85,6 +87,7 @@ const assetSchema = z.object({
   abilityType: z.enum(assetAbilityTypes),
   effectText: z.string().min(1),
   engineEffects: z.array(z.discriminatedUnion("type", [
+    z.object({ type: z.literal("spell_lore_bonus"), amount: z.literal(1) }).strict(),
     z.object({ type: z.literal("round_test_die_increment"), amount: z.literal(1) }).strict(),
     z.object({ type: z.literal("discard_prevent_sanity_loss"), amount: z.literal(2) }).strict(),
     z.object({ type: z.literal("discard_prevent_health_loss"), amount: z.literal(2) }).strict(),

@@ -15,6 +15,9 @@ describe("base-game content readiness", () => {
   });
 
   it("reports all unverified and absent content", () => {
+    const spells = baseGameContentReadiness.find(entry => entry.id === "spells")!;
+    expect(spells.status).toBe("needs_review");
+    expect(spells.notes).toContain("server-private mechanical transcriptions");
     const incomplete = incompleteContentFamilies(baseGameContentReadiness);
     expect(incomplete.map((entry) => entry.id)).not.toContain("ancient_ones");
     expect(incomplete.map((entry) => entry.id)).not.toContain("mysteries");

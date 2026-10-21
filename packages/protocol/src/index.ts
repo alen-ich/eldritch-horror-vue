@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+/** Public front identity; never identifies a paired physical reverse. */
+export type SpellFrontId = `spell_${string}`;
+
 export const locationIds = [
   "san_francisco", "arkham", "buenos_aires", "london", "rome", "istanbul",
   "shanghai", "sydney", "tokyo", "the_amazon", "the_pyramids",
@@ -43,6 +46,9 @@ export const pendingDecisionKinds = [
   "choose_unexpected_betrayal_ally",
   "choose_heat_wave",
   "encounter_choice",
+  "spell_target",
+  "spell_improvement",
+  "spell_reverse_choice",
   "artifact_target",
   "artifact_payment",
 ] as const;
@@ -59,7 +65,7 @@ export const pendingDecisionSchema = z.object({
   minSelections: z.number().int().nonnegative(),
   maxSelections: z.number().int().positive(),
   selectionBudget: z.number().int().nonnegative().optional(),
-  continuation: z.enum(["test_reroll", "acquire_assets_purchase", "acquire_assets_discard", "condition_rest_recovery", "witch_doctor_rest", "rest_asset_effect", "mythos_omen_choice", "mythos_world_fights_back", "mythos_debt_trade", "mythos_desperate_times", "mythos_that_which_consumes", "mythos_heat_wave", "mythos_blood_flows", "mythos_tide_of_despair", "mythos_unexpected_betrayal", "location_encounter_choice"]).optional(),
+  continuation: z.enum(["spell_cast_choice", "test_reroll", "acquire_assets_purchase", "acquire_assets_discard", "condition_rest_recovery", "witch_doctor_rest", "rest_asset_effect", "mythos_omen_choice", "mythos_world_fights_back", "mythos_debt_trade", "mythos_desperate_times", "mythos_that_which_consumes", "mythos_heat_wave", "mythos_blood_flows", "mythos_tide_of_despair", "mythos_unexpected_betrayal", "location_encounter_choice"]).optional(),
 }).strict().superRefine((decision, context) => {
   if (new Set(decision.optionIds).size !== decision.optionIds.length) {
     context.addIssue({ code: "custom", message: "Decision option IDs must be unique.", path: ["optionIds"] });
@@ -102,7 +108,7 @@ export interface ActiveTest {
   successThreshold: number;
   /** Physical Asset reroll sources already consumed for this test. */
   usedRerollAssetIds?: string[];
-  continuation: "acquire_assets" | "condition_action" | "condition_reckoning" | "location_encounter" | "artifact_action" | "rest_asset";
+  continuation: "spell_cast" | "acquire_assets" | "condition_action" | "condition_reckoning" | "location_encounter" | "artifact_action" | "rest_asset";
   sourceArtifactId?: string;
   sourceConditionId?: string;
   sourceEncounterCardId?: string;
@@ -123,6 +129,7 @@ export interface PendingDecisionSummary {
 }
 
 export const gameCommandSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("CAST_SPELL"), spellId: z.literal("spell_feed_the_mind") }).strict(),
   z.object({ type: z.literal("RESOLVE_DEFEAT"), cityId: z.enum(locationIds), cause: z.enum(["health", "sanity"]), leadPlayerId: z.string().optional() }).strict(),
   z.object({ type: z.literal("REPLACE_INVESTIGATOR"), investigatorId: z.enum(investigatorIds) }).strict(),
   z.object({ type: z.literal("OFFER_TRADE"), targetPlayerId: z.string().min(1), give: tradeBundleSchema, receive: tradeBundleSchema }).strict(),
@@ -161,6 +168,7 @@ export const gameCommandMessageSchema = z.object({
 export type GameCommandMessage = z.infer<typeof gameCommandMessageSchema>;
 
 export type GameEvent =
+  | { type: "SPELL_GAINED" | "SPELL_DISCARDED"; playerId: string; spellId: SpellFrontId }
   | { type: "LOCATION_ENCOUNTER_RESOLVED"; playerId: string; cardId: string; deck: "general" | "america" | "europe" | "asia_australia"; dice: number[]; successes: number }
   | { type: "RESEARCH_ENCOUNTER_RESOLVED"; playerId: string; cardId: string; deck: "research_azathoth" | "research_cthulhu" | "research_shub_niggurath" | "research_yog_sothoth"; dice: number[]; successes: number }
   | { type: "OTHER_WORLD_ENCOUNTER_RESOLVED"; playerId: string; cardId: string; gateId: string; dice: number[]; successes: number }
@@ -203,6 +211,7 @@ export type GameEvent =
   | { type: "ASSET_DISCARDED"; playerId: string; assetId: string; reason: "rest" | "on_gain_effect" | "mythos" | "encounter" }
   | { type: "TEST_ROLLED"; testId: string; playerId: string; skill: SkillId; modifier: number; dice: number[]; successes: number }
   | { type: "CLUE_SPENT_FOR_REROLL"; testId: string; playerId: string; dieIndex: number }
+  | { type: "SANITY_SPENT_FOR_REROLL"; testId: string; playerId: string; dieIndex: number; amount: 1 }
   | { type: "TEST_DIE_REROLLED"; testId: string; playerId: string; dieIndex: number; result: number; successes: number }
   | { type: "TEST_DIE_MODIFIED"; testId: string; playerId: string; assetId: string; dieIndex: number; result: number; successes: number }
   | { type: "TEST_RESOLVED"; testId: string; playerId: string; successes: number; continuation: ActiveTest["continuation"] }
@@ -222,6 +231,7 @@ export type GameEvent =
   | { type: "PHASE_ADVANCED"; phase: GamePhase; activePlayerId?: string };
 
 export interface PublicPlayerState {
+  spellIds?: SpellFrontId[];
   id: string;
   displayName: string;
   connected: boolean;
@@ -237,6 +247,7 @@ export interface PublicPlayerState {
 }
 
 export interface PublicGameState {
+  spellSupplyTopId?: SpellFrontId;
   stateVersion: number;
   phase: GamePhase;
   activePlayerId?: string;

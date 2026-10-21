@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { SpellFrontId } from "@eldritch/protocol";
 
 export const spellKinds = ["instill_bravery", "blessing_of_isis", "shriveling", "clairvoyance", "feed_the_mind", "flesh_ward", "plumb_the_void", "wither", "conjuration", "mists_of_releh"] as const;
 export type SpellKind = (typeof spellKinds)[number];
@@ -19,8 +20,8 @@ export interface SpellCard {
   sourceBackSheet: "source-assets/spells/back.jpg";
   sheetSlot: number;
   backVisibility: "server_only";
-  backTextStatus: "not_transcribed";
-  effectStatus: "not_executable";
+  backTextStatus: "verified";
+  effectStatus: "not_executable" | "scoped_executable";
 }
 
 const definitions = [
@@ -48,8 +49,8 @@ export const baseGameSpells: readonly SpellCard[] = definitions.flatMap((definit
       sourceBackSheet: "source-assets/spells/back.jpg" as const,
       sheetSlot: index * 2 + copy - 1,
       backVisibility: "server_only" as const,
-      backTextStatus: "not_transcribed" as const,
-      effectStatus: "not_executable" as const,
+      backTextStatus: "verified" as const,
+      effectStatus: definition.kind === "feed_the_mind" ? "scoped_executable" as const : "not_executable" as const,
     };
   }),
 );
@@ -68,8 +69,8 @@ const spellSchema = z.object({
   sourceBackSheet: z.literal("source-assets/spells/back.jpg"),
   sheetSlot: z.number().int().min(0).max(19),
   backVisibility: z.literal("server_only"),
-  backTextStatus: z.literal("not_transcribed"),
-  effectStatus: z.literal("not_executable"),
+  backTextStatus: z.literal("verified"),
+  effectStatus: z.enum(["not_executable", "scoped_executable"]),
 }).strict();
 
 export function validateSpellContent(cards: readonly SpellCard[]): void {
@@ -78,7 +79,7 @@ export function validateSpellContent(cards: readonly SpellCard[]): void {
   for (const [index, card] of cards.entries()) {
     const definition = definitions[Math.floor(index / 2)]!;
     const copy = index % 2 + 1;
-    if (card.kind !== definition.kind || card.name !== definition.name || card.trait !== definition.trait
+    if (card.effectStatus !== (definition.kind === "feed_the_mind" ? "scoped_executable" : "not_executable") || card.kind !== definition.kind || card.name !== definition.name || card.trait !== definition.trait
       || card.timing !== definition.timing || card.loreModifier !== definition.loreModifier || card.frontText !== definition.frontText
       || card.copy !== copy || card.id !== `spell_${definition.kind}_${String(copy).padStart(2, "0")}`
       || card.frontImageUrl !== `/cards/spells/${card.id}.webp` || card.sheetSlot !== index) {
@@ -88,3 +89,15 @@ export function validateSpellContent(cards: readonly SpellCard[]): void {
 }
 
 validateSpellContent(baseGameSpells);
+
+/** Always use the same front artwork, independently of the held physical copy. */
+export const baseGameSpellFronts: readonly { id: SpellFrontId; name: string; trait: SpellTrait; frontImageUrl: string }[] = definitions.map(card => ({
+  id: `spell_${card.kind}`,
+  name: card.name,
+  trait: card.trait,
+  frontImageUrl: `/cards/spells/spell_${card.kind}_01.webp`,
+}));
+
+export function spellExecutionSupport(frontId: SpellFrontId): "feed_the_mind" | "unsupported" {
+  return frontId === "spell_feed_the_mind" ? "feed_the_mind" : "unsupported";
+}

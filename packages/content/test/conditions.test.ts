@@ -1,8 +1,9 @@
+import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { baseGameConditions, conditionKinds, validateConditionContent } from "../src/conditions.js";
 
-const root = new URL("../../../", import.meta.url).pathname;
+const root = fileURLToPath(new URL("../../../", import.meta.url));
 
 describe("base-game Conditions", () => {
   it("contains all 36 physical cards with the printed copy counts", () => {

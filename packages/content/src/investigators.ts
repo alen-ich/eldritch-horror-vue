@@ -1,4 +1,4 @@
-import { investigatorIds, locationIds, type InvestigatorId, type LocationId } from "@eldritch/protocol";
+import { investigatorIds, locationIds, type InvestigatorId, type LocationId, type SpellFrontId } from "@eldritch/protocol";
 import { z } from "zod";
 import type { AssetId } from "./assets.js";
 
@@ -15,6 +15,7 @@ export interface InvestigatorData {
   startingLocationId: LocationId;
   startingEquipment: readonly string[];
   startingAssetIds: readonly AssetId[];
+  startingSpellIds?: readonly SpellFrontId[];
   startingClues: number;
   role: string;
   actionAbility: string;
@@ -31,7 +32,7 @@ export const baseGameInvestigators: readonly InvestigatorData[] = [
   { id: "lily_chen", name: "Lily Chen", occupation: "Martial Artist", health: 6, sanity: 6, skills: { lore: 2, influence: 2, observation: 2, strength: 4, will: 3 }, startingLocationId: "shanghai", startingEquipment: ["Protective Amulet Asset", "Lucky Rabbit's Foot Asset"], startingAssetIds: ["asset_protective_amulet", "asset_lucky_rabbits_foot"], startingClues: 0, role: "Combat / development", actionAbility: "Convert Health to Sanity, or Sanity to Health, on a one-for-one basis.", passiveAbility: "When improving a skill, she may improve it twice instead of once." },
   { id: "lola_hayes", name: "Lola Hayes", occupation: "Actress", health: 5, sanity: 7, skills: { lore: 2, influence: 4, observation: 2, strength: 2, will: 3 }, startingLocationId: "tokyo", startingEquipment: [".18 Derringer Asset", "Improve 1 skill of choice"], startingAssetIds: ["asset_18_derringer"], startingClues: 0, role: "Flexible support", actionAbility: "Spend improvement tokens and redistribute them, improving one chosen skill for each token spent.", passiveAbility: "Once per round, an investigator on her space may roll 1 additional die for a test." },
   { id: "mark_harrigan", name: "Mark Harrigan", occupation: "Soldier", health: 8, sanity: 4, skills: { lore: 1, influence: 2, observation: 2, strength: 4, will: 4 }, startingLocationId: "space_14", startingEquipment: [".38 Revolver Asset", "Kerosene Asset"], startingAssetIds: ["asset_38_revolver", "asset_kerosene"], startingClues: 0, role: "Combat", actionAbility: "He and one Monster on his space each lose 1 Health.", passiveAbility: "Cannot become Delayed or Detained unless he chooses to." },
-  { id: "norman_withers", name: "Norman Withers", occupation: "Astronomer", health: 5, sanity: 7, skills: { lore: 3, influence: 1, observation: 3, strength: 2, will: 4 }, startingLocationId: "arkham", startingEquipment: ["Feed the Mind Spell"], startingAssetIds: [], startingClues: 0, role: "Gate closer / magic", actionAbility: "Spend 2 Clues to discard a Monster on a space that contains a Gate.", passiveAbility: "Once per round, may spend 1 Sanity instead of spending 1 Clue." },
+  { id: "norman_withers", name: "Norman Withers", occupation: "Astronomer", health: 5, sanity: 7, skills: { lore: 3, influence: 1, observation: 3, strength: 2, will: 4 }, startingLocationId: "arkham", startingEquipment: ["Feed the Mind Spell"], startingAssetIds: [], startingSpellIds: ["spell_feed_the_mind"], startingClues: 0, role: "Gate closer / magic", actionAbility: "Spend 2 Clues to discard a Monster on a space that contains a Gate.", passiveAbility: "Once per round, may spend 1 Sanity instead of spending 1 Clue." },
   { id: "silas_marsh", name: "Silas Marsh", occupation: "Sailor", health: 8, sanity: 4, skills: { lore: 1, influence: 3, observation: 3, strength: 3, will: 3 }, startingLocationId: "sydney", startingEquipment: ["Fishing Net Asset"], startingAssetIds: ["asset_fishing_net"], startingClues: 0, role: "Sea mobility / combat", actionAbility: "Move 1 space along a Ship path, then perform 1 additional action.", passiveAbility: "Investigators on Sea spaces roll 1 additional die on tests." },
   { id: "trish_scarborough", name: "Trish Scarborough", occupation: "Spy", health: 7, sanity: 5, skills: { lore: 1, influence: 3, observation: 4, strength: 3, will: 2 }, startingLocationId: "space_16", startingEquipment: [".45 Automatic Asset"], startingAssetIds: ["asset_45_automatic"], startingClues: 0, role: "Research / clue efficiency", actionAbility: "If she has no Clues, gain 1 Clue.", passiveAbility: "When an investigator on her space spends a Clue to reroll, that investigator may reroll up to 2 dice." },
 ] as const;
@@ -42,12 +43,16 @@ const investigatorSchema = z.object({
   skills: z.object(Object.fromEntries(skillNames.map((skill) => [skill, z.number().int().min(1).max(4)])) as Record<SkillName, z.ZodNumber>),
   startingLocationId: z.enum(locationIds), startingEquipment: z.array(z.string().min(1)),
   startingAssetIds: z.array(z.string().regex(/^asset_[a-z0-9_]+$/)),
+  startingSpellIds: z.array(z.literal("spell_feed_the_mind")).max(1).optional(),
   startingClues: z.number().int().nonnegative(),
   role: z.string().min(1), actionAbility: z.string().min(1), passiveAbility: z.string().min(1),
 });
 
 export function validateInvestigatorContent(investigators: readonly InvestigatorData[]): void {
   const parsed = z.array(investigatorSchema).parse(investigators);
+  if (parsed.some(card => card.id !== "norman_withers" && card.startingSpellIds?.length)) {
+    throw new Error("Only Norman's starting Feed the Mind is executable.");
+  }
   const ids = new Set(parsed.map((investigator) => investigator.id));
   if (ids.size !== parsed.length) throw new Error("Investigator content contains duplicate IDs.");
   if (ids.size !== investigatorIds.length || investigatorIds.some((id) => !ids.has(id))) {

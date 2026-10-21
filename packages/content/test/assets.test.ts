@@ -1,9 +1,10 @@
+import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { assetIds, baseGameAssets, validateAssetContent } from "../src/assets.js";
 import { baseGameInvestigators } from "../src/investigators.js";
 
-const publicDirectory = new URL("../../../apps/web/public", import.meta.url).pathname;
+const publicDirectory = fileURLToPath(new URL("../../../apps/web/public", import.meta.url));
 
 describe("base-game Asset cards", () => {
   it("contains the complete forty-card front roster", () => {
@@ -78,7 +79,7 @@ describe("base-game Asset cards", () => {
     expect(baseGameAssets.find(({ id }) => id === "asset_witch_doctor")?.engineEffects).toEqual([{ type: "rest_health_or_discard_cursed", amount: 1 }]);
     expect(baseGameAssets.find(({ id }) => id === "asset_puzzle_box")?.engineEffects).toEqual([{ type: "rest_test_gain_artifact", skill: "observation", modifier: -2 }]);
     expect(baseGameAssets.find(({ id }) => id === "asset_puzzle_box")).toMatchObject({ traits: ["trinket"], value: 3 });
-    expect(baseGameAssets.filter(({ engineEffects }) => engineEffects.length > 0)).toHaveLength(12);
+    expect(baseGameAssets.filter(({ engineEffects }) => engineEffects.length > 0)).toHaveLength(13);
   });
 
   it("explicitly scopes sixteen scan-verified Assets to non-combat encounters", () => {

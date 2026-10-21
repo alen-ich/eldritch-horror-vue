@@ -27,4 +27,21 @@ describe("base game investigator content", () => {
   it("rejects duplicate investigator IDs", () => {
     expect(() => validateInvestigatorContent([...baseGameInvestigators, baseGameInvestigators[0]!])).toThrow(/duplicate IDs/);
   });
+
+  it("declares only Norman's executable starting front", () => {
+    expect(baseGameInvestigators.find(card => card.id === "norman_withers")).toHaveProperty("startingSpellIds", ["spell_feed_the_mind"]);
+    expect(baseGameInvestigators.filter(card => card.id !== "norman_withers").every(card => !(card as { startingSpellIds?: string[] }).startingSpellIds?.length)).toBe(true);
+  });
+
+  for (const [id, startingSpellIds] of [
+    ["norman_withers", ["spell_unknown"]],
+    ["norman_withers", ["spell_feed_the_mind", "spell_feed_the_mind"]],
+    ["norman_withers", ["spell_wither"]],
+    ["lily_chen", ["spell_feed_the_mind"]],
+  ] as const) {
+    it(`rejects unsupported starting Spell configuration ${id}: ${startingSpellIds.join()}`, () => {
+      const changed = baseGameInvestigators.map(card => card.id === id ? { ...card, startingSpellIds } : card);
+      expect(() => validateInvestigatorContent(changed)).toThrow();
+    });
+  }
 });

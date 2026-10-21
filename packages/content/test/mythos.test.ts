@@ -1,8 +1,9 @@
+import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { baseGameMythosCards, validateMythosContent } from "../src/mythos.js";
 
-const publicDirectory = new URL("../../../apps/web/public", import.meta.url).pathname;
+const publicDirectory = fileURLToPath(new URL("../../../apps/web/public", import.meta.url));
 
 describe("base-game Mythos cards", () => {
   it("contains the complete color composition", () => {

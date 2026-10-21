@@ -1,9 +1,10 @@
+import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { baseGameLocations } from "../src/map.js";
 import { baseGameGates, gateIds, validateGateContent } from "../src/gates.js";
 
-const publicDirectory = new URL("../../../apps/web/public", import.meta.url).pathname;
+const publicDirectory = fileURLToPath(new URL("../../../apps/web/public", import.meta.url));
 
 describe("base-game Gate tokens", () => {
   it("contains the complete nine-token roster", () => {

@@ -124,3 +124,12 @@ describe("gameCommandMessageSchema", () => {
     })).toThrow();
   });
 });
+
+
+describe("Spell cast intent", () => {
+  it("accepts only a public supported front with no forged fields", () => {
+    expect(gameCommandSchema.safeParse({type: "CAST_SPELL", spellId: "spell_feed_the_mind"}).success).toBe(true);
+    for (const spellId of ["spell_wither", "spell_feed_the_mind_01"]) expect(gameCommandSchema.safeParse({type: "CAST_SPELL", spellId}).success).toBe(false);
+    expect(gameCommandSchema.safeParse({type: "CAST_SPELL", spellId: "spell_feed_the_mind", dice: [6]}).success).toBe(false);
+  });
+});

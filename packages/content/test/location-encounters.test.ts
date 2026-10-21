@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
@@ -6,7 +7,7 @@ import {
   validateLocationEncounterContent,
 } from "../src/location-encounters.js";
 
-const root = new URL("../../../", import.meta.url).pathname;
+const root = fileURLToPath(new URL("../../../", import.meta.url));
 
 describe("base-game scanned location encounters", () => {
   it("has all four complete base-game location decks with stable card numbers", () => {

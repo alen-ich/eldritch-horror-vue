@@ -1,10 +1,11 @@
+import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import { baseGameArtifacts, validateArtifactContent } from "../src/artifacts.js";
 import { baseGameScannedTokenEncounters, missingBaseGameTokenEncounterIds, tokenEncounterDeckIds, baseGameTokenEncounterCounts, validateTokenEncounterContent } from "../src/token-encounters.js";
 
-const root = new URL("../../../", import.meta.url).pathname;
+const root = fileURLToPath(new URL("../../../", import.meta.url));
 
 describe("remaining base-game scan import", () => {
   it("contains exactly 32 Research, 24 Other World, 18 Expedition, 12 Special, and 14 Artifacts", () => {
