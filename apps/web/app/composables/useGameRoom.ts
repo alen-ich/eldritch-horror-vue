@@ -30,6 +30,8 @@ interface ClientPlayerState {
   shipTickets: number
   assetIds: string
   artifactIds: string
+  castableSpellIds: string
+  spellIds: string
   conditionIds: string
   clues: number
   loreImprovement: number
@@ -41,6 +43,7 @@ interface ClientPlayerState {
 }
 
 interface ClientGameState {
+  spellSupplyTopId?: string
   activeGateIds?: string
   monsters?: string
   encounteredMonsterInstanceIds?: string
@@ -101,6 +104,7 @@ const players = ref<ClientPlayerState[]>([])
 const stateVersion = ref(0)
 const phase = ref('lobby')
 const activeGateIds = ref<string[]>([])
+const spellSupplyTopId = ref('')
 const ancientOneId = ref('')
 const currentMythosCardId = ref('')
 const currentMythosIconIndex = ref(0)
@@ -139,6 +143,7 @@ export function useGameRoom() {
 
   function syncState(state: ClientGameState) {
     if (!state.players) return
+    spellSupplyTopId.value = state.spellSupplyTopId ?? ''
     investigatorLifecycle.value = JSON.parse(state.investigatorLifecycle ?? '{}')
     tradeOffer.value = state.tradeOffer ? JSON.parse(state.tradeOffer) as TradeOffer : undefined
     stateVersion.value = state.stateVersion ?? 0
@@ -201,6 +206,8 @@ export function useGameRoom() {
       shipTickets: player.shipTickets,
       assetIds: player.assetIds,
       artifactIds: player.artifactIds,
+      castableSpellIds: player.castableSpellIds ?? '',
+      spellIds: player.spellIds ?? '',
       conditionIds: player.conditionIds,
       clues: player.clues,
       loreImprovement: player.loreImprovement,
@@ -282,6 +289,7 @@ export function useGameRoom() {
   }
 
   return {
+    spellSupplyTopId: readonly(spellSupplyTopId),
     activeGateIds: readonly(activeGateIds),
     investigatorLifecycle: readonly(investigatorLifecycle),
     usedArtifactActionIds: readonly(usedArtifactActionIds),

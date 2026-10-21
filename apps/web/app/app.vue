@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { baseGameSpellFronts } from '@eldritch/content'
 import { baseGameAncientOnes, baseGameAssets, baseGameBoardDimensions, baseGameConditions, baseGameGates, baseGameInvestigators, baseGameLocations, baseGameMap, baseGameMonsters, baseGameMythosCards, baseGameMysteries, baseGameRoutes, baseGameScannedLocationEncounters, baseGameScannedTokenEncounters, skillNames } from '@eldritch/content'
 import type { AssetCardData, ConditionCard } from '@eldritch/content'
 import { baseGameArtifacts } from '@eldritch/content'
@@ -35,6 +36,11 @@ const conditionById = Object.fromEntries(baseGameConditions.flatMap((card) => [[
 const monsterById = Object.fromEntries(baseGameMonsters.map(monster => [monster.id, monster]))
 const gateById = Object.fromEntries(baseGameGates.map(gate => [gate.id, gate]))
 const me = computed(() => game.players.value.find((player) => player.id === game.playerId.value))
+const ownedSpellIds = computed(() => (me.value?.spellIds?.split(',') ?? []).flatMap(id => {
+  const front = baseGameSpellFronts.find(card => card.id === id)
+  return front ? [front.id] : []
+}))
+const visibleSpellSupplyTop = computed(() => baseGameSpellFronts.find(card => card.id === game.spellSupplyTopId.value)?.id)
 const displayedPlayer = computed(() => game.players.value.find((player) => player.id === selectedPlayerId.value) ?? me.value ?? game.players.value[0])
 const displayedInvestigator = computed(() => displayedPlayer.value?.investigatorId ? investigatorById[displayedPlayer.value.investigatorId] : undefined)
 const activeMystery = computed(() => baseGameMysteries.find((mystery) => mystery.id === game.activeMysteryId.value))
@@ -670,11 +676,12 @@ async function copyInvite() {
         </div>
         <footer class="player-tray" :class="`tray-${trayState}`">
           <nav class="tray-tabs" aria-label="Player cards and game information">
-            <button v-for="tab in trayTabs" :key="tab.id" :class="{ active: activeTrayTab === tab.id && trayState !== 'collapsed' }" :aria-expanded="activeTrayTab === tab.id && trayState !== 'collapsed'" @click="selectTrayTab(tab.id)"><span>{{ tab.icon }}</span>{{ tab.label }}<small>{{ tab.id === 'assets' ? ownedAssets.length : tab.id === 'artifacts' ? ownedArtifacts.length : tab.id === 'conditions' ? ownedConditions.length : 0 }}</small></button>
+            <button v-for="tab in trayTabs" :key="tab.id" :class="{ active: activeTrayTab === tab.id && trayState !== 'collapsed' }" :aria-expanded="activeTrayTab === tab.id && trayState !== 'collapsed'" @click="selectTrayTab(tab.id)"><span>{{ tab.icon }}</span>{{ tab.label }}<small>{{ tab.id === 'assets' ? ownedAssets.length : tab.id === 'artifacts' ? ownedArtifacts.length : tab.id === 'conditions' ? ownedConditions.length : tab.id === 'spells' ? ownedSpellIds.length : 0 }}</small></button>
             <button class="tray-resize" :aria-label="trayState === 'expanded' ? 'Collapse tray' : 'Expand tray'" @click="cycleTrayState">{{ trayState === 'collapsed' ? '⌃' : trayState === 'peek' ? '⌃' : '⌄' }}</button>
           </nav>
           <div v-if="trayState !== 'collapsed'" class="tray-content">
-            <div v-if="activeTrayTab === 'assets' && ownedAssets.length" class="owned-assets"><article v-for="asset in ownedAssets" :key="asset.id"><img :src="asset.imageUrl" :alt="asset.name"><div><p class="chapter">Value {{ asset.value }} · {{ asset.traits.join(', ') }}</p><h3>{{ asset.name }}</h3><p>{{ asset.effectText }}</p></div></article></div>
+            <SpellInventory v-if="activeTrayTab === 'spells'" :spell-ids="ownedSpellIds" :supply-top-id="visibleSpellSupplyTop" :can-cast-feed-the-mind="Boolean(me?.castableSpellIds.split(',').includes('spell_feed_the_mind'))" @cast="game.send({ type: 'CAST_SPELL', spellId: $event })" />
+            <div v-else-if="activeTrayTab === 'assets' && ownedAssets.length" class="owned-assets"><article v-for="asset in ownedAssets" :key="asset.id"><img :src="asset.imageUrl" :alt="asset.name"><div><p class="chapter">Value {{ asset.value }} · {{ asset.traits.join(', ') }}</p><h3>{{ asset.name }}</h3><p>{{ asset.effectText }}</p></div></article></div>
             <div v-else-if="activeTrayTab === 'artifacts' && ownedArtifacts.length" class="owned-assets">
               <article v-for="artifact in ownedArtifacts" :key="artifact.id">
                 <img :src="artifact.imageUrl" :alt="artifact.name">
