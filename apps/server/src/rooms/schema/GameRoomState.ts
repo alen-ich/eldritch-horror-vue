@@ -19,6 +19,8 @@ export const PlayerState = schema({
   shipTickets: t.uint8().default(0),
   assetIds: t.string().default(""),
   artifactIds: t.string().default(""),
+  spellIds: t.string().default(""),
+  castableSpellIds: t.string().default(""),
   conditionIds: t.string().default(""),
   clues: t.uint8().default(0),
   loreImprovement: t.uint8().default(0),
@@ -58,6 +60,7 @@ export const ActiveTestState = schema({
 export type ActiveTestState = SchemaType<typeof ActiveTestState>;
 
 export const GameRoomState = schema({
+  spellSupplyTopId: t.string().default(""),
   investigatorLifecycle: t.string().default("{}"),
   doom: t.uint8().default(0),
   omen: t.uint8().default(0),

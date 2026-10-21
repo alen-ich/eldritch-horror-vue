@@ -1,3 +1,6 @@
+import { privateFeedTheMindRules } from "../private-feed-the-mind.js";
+import { canCastFeedTheMind, validateSpellCastingState, validateInvestigatorAbilityUsage } from "@eldritch/engine";
+import type { GameCommand } from "@eldritch/protocol";
 import { randomInt, randomUUID } from "node:crypto";
 import { Client, CloseCode, Room } from "colyseus";
 import { baseGameAncientOnes, baseGameMythosCards, baseGameAssets, baseGameClues, baseGameConditions, baseGameGates, baseGameInvestigators, baseGameMap, baseGameMysteries, baseGameMonsters, baseGameReferenceCards, baseGameScannedLocationEncounters, baseGameLocationEncounterRules, baseGameResearchEncounterRules, baseGameOtherWorldEncounterRules, baseGameScannedTokenEncounters } from "@eldritch/content";
@@ -16,7 +19,8 @@ import {
 } from "@eldritch/protocol";
 import { ActiveTestState, GameRoomState, PendingDecisionState, PlayerState } from "./schema/GameRoomState.js";
 import { privateConditionBackEffectById } from "../private-condition-backs.js";
-import { baseGameArtifacts } from "@eldritch/content";
+import { baseGameArtifacts, baseGameSpells } from "@eldritch/content";
+import { projectPublicState, validateSpellInventory } from "@eldritch/engine";
 import { typedMonsterSpawnEffect } from "../private-monster-spawn-effects.js";
 
 const RECONNECTION_SECONDS = 30;
@@ -46,6 +50,8 @@ function serverMythosContext(): EngineContext {
   };
 }
 const baseGameContent: GameContent = {
+  privateSpellCastingRules: privateFeedTheMindRules,
+  spells: baseGameSpells.map(({ id, kind, trait, timing }) => ({ id, kind, trait, timing })),
   artifacts: baseGameArtifacts.map(({ id, engineEffects }) => ({ id, engineEffects })),
   researchEncounters: baseGameResearchEncounterRules,
   otherWorldEncounters: baseGameOtherWorldEncounterRules,
@@ -74,6 +80,7 @@ const baseGameContent: GameContent = {
     sanity: investigator.sanity,
     skills: investigator.skills,
     startingAssetIds: investigator.startingAssetIds,
+    startingSpellIds: investigator.startingSpellIds,
     startingClues: investigator.startingClues,
   }])),
   assets: baseGameAssets.map(({ id, name, value, traits, engineEffects, nonCombatEncounterSupport }) => ({ id, name, value, traits, engineEffects, nonCombatEncounterSupport })),
@@ -183,30 +190,37 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       });
       return;
     }
-    const context = parsed.data.command.type === "USE_ARTIFACT_ACTION" || this.activeTest?.continuation === "artifact_action" || this.pendingDecision?.kind === "artifact_target" || this.pendingDecision?.kind === "artifact_payment" || parsed.data.command.type === "ADVANCE_MYTHOS" || parsed.data.command.type === "RESOLVE_LOCATION_ENCOUNTER" || parsed.data.command.type === "RESOLVE_RESEARCH_ENCOUNTER" || parsed.data.command.type === "RESOLVE_OTHER_WORLD_ENCOUNTER" || parsed.data.command.type === "FIGHT_MONSTER" || parsed.data.command.type === "USE_INVESTIGATOR_ACTION"
-      || (parsed.data.command.type === "RESOLVE_DECISION" && (this.activeTest?.continuation === "location_encounter" || this.pendingDecision?.continuation === "location_encounter_choice" || this.pendingDecision?.continuation === "mythos_world_fights_back" || this.pendingDecision?.continuation === "mythos_debt_trade" || this.pendingDecision?.continuation === "mythos_desperate_times" || this.pendingDecision?.continuation === "mythos_that_which_consumes" || this.pendingDecision?.continuation === "mythos_heat_wave" || this.pendingDecision?.continuation === "mythos_blood_flows" || this.pendingDecision?.continuation === "mythos_tide_of_despair" || this.pendingDecision?.continuation === "mythos_unexpected_betrayal"))
-      || (parsed.data.command.type === "RESOLVE_DEFEAT" && Boolean(this.toEngineState().pendingHeatWave || this.toEngineState().pendingTideOfDespair || this.toEngineState().pendingUnexpectedBetrayal))
-      ? serverMythosContext()
-      : parsed.data.command.type === "START_GAME"
-      ? serverMythosContext()
-        : parsed.data.command.type === "ACQUIRE_ASSETS" || parsed.data.command.type === "USE_CONDITION_ACTION"
-        ? createDeterministicEngineContext({
-            dice: Array.from({ length: 12 }, () => randomInt(1, 7)),
-            ids: [randomUUID(), randomUUID()],
-          })
-        : parsed.data.command.type === "RESOLVE_DECISION" || parsed.data.command.type === "OFFER_TRADE"
-          ? createDeterministicEngineContext({ dice: Array.from({ length: 12 }, () => randomInt(1, 7)), ids: [randomUUID(), randomUUID()], tokenIndexes: [randomInt(Math.max(1, this.privateState.tokenPoolById["condition:debt"]?.length ?? 0))] })
-          : parsed.data.command.type === "REPLACE_INVESTIGATOR"
-            ? createDeterministicEngineContext({ shuffleIndexes: randomShuffleIndexes(this.privateState.tokenPoolById.clue_discard?.length ?? 0) })
-          : parsed.data.command.type === "REST"
-            ? createDeterministicEngineContext({ ids: [randomUUID()] })
-          : undefined;
+    const context = this.createEngineContext(parsed.data.command);
     const result = executeCommand(this.toEngineState(), playerId, parsed.data.command, baseGameContent, context);
     if (result.ok === false) {
       client.send(commandErrorMessageType, result.error);
       return;
     }
     this.applyEngineState(result.state);
+  }
+
+  protected createEngineContext(command: GameCommand): EngineContext | undefined {
+    if(command.type === "CAST_SPELL" || this.privateState.spellCasting?.pending) {
+      return createDeterministicEngineContext({dice:Array.from({length:128},()=>randomInt(1,7)), ids:Array.from({length:32},()=>randomUUID()), shuffleIndexes:randomShuffleIndexes(20)});
+    }
+    return command.type === "USE_ARTIFACT_ACTION" || this.activeTest?.continuation === "artifact_action" || this.pendingDecision?.kind === "artifact_target" || this.pendingDecision?.kind === "artifact_payment" || command.type === "ADVANCE_MYTHOS" || command.type === "RESOLVE_LOCATION_ENCOUNTER" || command.type === "RESOLVE_RESEARCH_ENCOUNTER" || command.type === "RESOLVE_OTHER_WORLD_ENCOUNTER" || command.type === "FIGHT_MONSTER" || command.type === "USE_INVESTIGATOR_ACTION"
+      || (command.type === "RESOLVE_DECISION" && (this.activeTest?.continuation === "location_encounter" || this.pendingDecision?.continuation === "location_encounter_choice" || this.pendingDecision?.continuation === "mythos_world_fights_back" || this.pendingDecision?.continuation === "mythos_debt_trade" || this.pendingDecision?.continuation === "mythos_desperate_times" || this.pendingDecision?.continuation === "mythos_that_which_consumes" || this.pendingDecision?.continuation === "mythos_heat_wave" || this.pendingDecision?.continuation === "mythos_blood_flows" || this.pendingDecision?.continuation === "mythos_tide_of_despair" || this.pendingDecision?.continuation === "mythos_unexpected_betrayal"))
+      || (command.type === "RESOLVE_DEFEAT" && Boolean(this.toEngineState().pendingHeatWave || this.toEngineState().pendingTideOfDespair || this.toEngineState().pendingUnexpectedBetrayal))
+      ? serverMythosContext()
+      : command.type === "START_GAME"
+      ? serverMythosContext()
+        : command.type === "ACQUIRE_ASSETS" || command.type === "USE_CONDITION_ACTION"
+        ? createDeterministicEngineContext({
+            dice: Array.from({ length: 12 }, () => randomInt(1, 7)),
+            ids: [randomUUID(), randomUUID()],
+          })
+        : command.type === "RESOLVE_DECISION" || command.type === "OFFER_TRADE"
+          ? createDeterministicEngineContext({ dice: Array.from({ length: 12 }, () => randomInt(1, 7)), ids: [randomUUID(), randomUUID()], tokenIndexes: [randomInt(Math.max(1, this.privateState.tokenPoolById["condition:debt"]?.length ?? 0))] })
+          : command.type === "REPLACE_INVESTIGATOR"
+            ? serverMythosContext()
+          : command.type === "REST"
+            ? createDeterministicEngineContext({ ids: [randomUUID()] })
+          : undefined;
   }
 
   private toEngineState(): GameState {
@@ -247,11 +261,11 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       boardClues: JSON.parse(this.state.boardClues) as GameState["boardClues"],
       reserveAssetIds: this.state.reserveAssetIds ? this.state.reserveAssetIds.split(",") : [],
       assetDiscardIds: this.state.assetDiscardIds ? this.state.assetDiscardIds.split(",") : [],
-      pendingDecision: this.pendingDecision,
-      pendingLocationEncounter: this.pendingLocationEncounter,
-      pendingRest: this.pendingRest,
-      activeTest: this.activeTest,
-      privateState: this.privateState,
+      pendingDecision: structuredClone(this.pendingDecision),
+      pendingLocationEncounter: structuredClone(this.pendingLocationEncounter),
+      pendingRest: structuredClone(this.pendingRest),
+      activeTest: structuredClone(this.activeTest),
+      privateState: structuredClone(this.privateState),
       players: [...this.state.players.values()].map((player) => ({
         id: player.id,
         delayed: player.delayed,
@@ -283,17 +297,30 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
   }
 
   private applyEngineState(engineState: GameState): void {
+    if (this.privateState.investigatorAbilityUsage && !engineState.privateState.investigatorAbilityUsage) throw new Error("Investigator ability usage restoration rejected: missing ledger.");
+    const usageInvalid = validateInvestigatorAbilityUsage(engineState);
+    if (usageInvalid) throw new Error(`Investigator ability restoration rejected: ${usageInvalid}`);
+    // Validate before touching any synchronized/private room field. A restored
+    // snapshot may not silently regenerate inventory that the room already had.
+    if (engineState.phase !== "lobby" || engineState.privateState.spells || this.privateState.spells) {
+      const invalid = validateSpellInventory(engineState, baseGameContent.spells!);
+      if (invalid) throw new Error(`Spell inventory restoration rejected: ${invalid}`);
+    }
+    const castingInvalid = validateSpellCastingState(engineState,baseGameContent);
+    if(castingInvalid) throw new Error(`Spell casting restoration rejected: ${castingInvalid}`);
+    const publicState = projectPublicState(engineState);
     if (engineState.phase !== "lobby") this.autoDispose = false;
-    this.state.investigatorLifecycle = JSON.stringify({ pendingDefeat: engineState.pendingDefeat, pendingMythosDamage: engineState.pendingMythosDamage, pendingFromBadToWorse: engineState.pendingFromBadToWorse, pendingHeatWave: engineState.pendingHeatWave, pendingTideOfDespair: engineState.pendingTideOfDespair, pendingUnexpectedBetrayal: engineState.pendingUnexpectedBetrayal, defeatedInvestigators: engineState.defeatedInvestigators, replacementWindow: engineState.replacementWindow, awakened: engineState.awakened });
+    this.state.investigatorLifecycle = JSON.stringify({ pendingDefeat: engineState.pendingDefeat, pendingMythosDamage: engineState.pendingMythosDamage, pendingFromBadToWorse: engineState.pendingFromBadToWorse, pendingHeatWave: engineState.pendingHeatWave, pendingTideOfDespair: engineState.pendingTideOfDespair, pendingUnexpectedBetrayal: engineState.pendingUnexpectedBetrayal, defeatedInvestigators: publicState.defeatedInvestigators, replacementWindow: engineState.replacementWindow, awakened: engineState.awakened });
     this.state.doom = engineState.doom ?? 0;
     this.state.omen = engineState.omen ?? 0;
     this.state.greenOmenTokens = engineState.greenOmenTokens ?? 0;
     this.state.tradeOffer = engineState.tradeOffer ? JSON.stringify(engineState.tradeOffer) : "";
-    this.privateState = engineState.privateState;
-    this.pendingDecision = engineState.pendingDecision;
-    this.activeTest = engineState.activeTest;
-    this.pendingLocationEncounter = engineState.pendingLocationEncounter;
-    this.pendingRest = engineState.pendingRest;
+    this.privateState = structuredClone(engineState.privateState);
+    this.state.spellSupplyTopId = publicState.spellSupplyTopId ?? "";
+    this.pendingDecision = structuredClone(engineState.pendingDecision);
+    this.activeTest = structuredClone(engineState.activeTest);
+    this.pendingLocationEncounter = structuredClone(engineState.pendingLocationEncounter);
+    this.pendingRest = structuredClone(engineState.pendingRest);
     this.syncPendingDecisionSummary();
     this.syncActiveTest();
     this.state.stateVersion = engineState.stateVersion;
@@ -328,6 +355,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     for (const enginePlayer of engineState.players) {
       const player = this.state.players.get(enginePlayer.id);
       if (!player) continue;
+      player.castableSpellIds = canCastFeedTheMind(engineState,enginePlayer.id,baseGameContent) ? "spell_feed_the_mind" : "";
       player.investigatorId = enginePlayer.investigatorId ?? "";
       player.locationId = enginePlayer.locationId ?? "";
       player.health = enginePlayer.health ?? 0;
@@ -338,6 +366,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       player.shipTickets = enginePlayer.travelTickets?.filter((ticket) => ticket === "ship").length ?? 0;
       player.assetIds = enginePlayer.assetIds.join(",");
       player.artifactIds = (enginePlayer.artifactIds ?? []).join(",");
+      player.spellIds = (publicState.players.find(candidate => candidate.id === enginePlayer.id)?.spellIds ?? []).join(",");
       this.conditionIdsByPlayer.set(enginePlayer.id, [...(enginePlayer.conditionIds ?? [])]);
       player.conditionIds = (enginePlayer.conditionIds ?? []).map(publicConditionId).join(",");
       player.clues = enginePlayer.clues;

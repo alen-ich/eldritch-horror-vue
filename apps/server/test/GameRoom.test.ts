@@ -1,6 +1,9 @@
+import { registerSpellCastingRoomTests } from "./SpellCasting.test.js";
+import { registerNormanSpellCastingRoomTests } from "./NormanSpellCasting.test.js";
 import assert from "node:assert/strict";
 import { ColyseusTestServer, boot } from "@colyseus/testing";
-import { gainNamedArtifact, type GameState, type GameContent } from "@eldritch/engine";
+import { gainNamedArtifact, createSpellInventory, createDeterministicEngineContext, type GameState, type GameContent } from "@eldritch/engine";
+import { baseGameSpells } from "@eldritch/content";
 import { baseGameArtifacts, baseGameAssets, baseGameClues, baseGameConditions, baseGameGates, baseGameScannedTokenEncounters } from "@eldritch/content";
 import {
   commandErrorMessageType,
@@ -12,6 +15,25 @@ import {
 import appConfig from "../src/app.config.js";
 import { GameRoom } from "../src/rooms/GameRoom.js";
 import { GameRoomState, PendingDecisionState } from "../src/rooms/schema/GameRoomState.js";
+import { registerSpellRoomTests } from "./SpellInventory.test.js";
+
+/** Synthetic rule fixtures skip START_GAME; supply its Spell inventory explicitly.
+ * Never repair active snapshots: restoration tests must see missing inventory. */
+function fixtureInternals(room: unknown): { toEngineState(): GameState; applyEngineState(state: GameState): void } {
+  const internal = room as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+  return {
+    toEngineState() {
+      const state = internal.toEngineState();
+      if (state.phase === "lobby" && state.players.length > 0 && !state.privateState.spells) {
+        state.privateState.spells = createSpellInventory(baseGameSpells, state.players.map(player => player.id), createDeterministicEngineContext({ shuffleIndexes: Array<number>(19).fill(0) }));
+      }
+      return state;
+    },
+    applyEngineState: state => internal.applyEngineState(state),
+  };
+}
+
+import { registerStartingSpellRoomTests } from "./StartingSpells.test.js";
 
 describe("authoritative game room", () => {
   let colyseus: ColyseusTestServer<typeof appConfig>;
@@ -19,13 +41,17 @@ describe("authoritative game room", () => {
   before(async () => { colyseus = await boot(appConfig); });
   after(async () => colyseus.shutdown());
   beforeEach(async () => colyseus.cleanup());
+  registerSpellRoomTests(() => colyseus);
+  registerSpellCastingRoomTests(() => colyseus);
+  registerNormanSpellCastingRoomTests(() => colyseus);
+  registerStartingSpellRoomTests(() => colyseus);
 
   for (const branch of ["strength-close", "back-injury", "will-pass", "will-loss", "health-defeat", "sanity-defeat", "lily-once", "lily-twice"]) {
     it(`restores The Abyss card 23's ${branch} branch with ordered improvement and private Injuries`, async () => {
       const room = await colyseus.createRoom<GameRoom>("game", {});
       const host = await colyseus.connectTo(room, { displayName: "Host" });
       const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-      const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+      const internal = fixtureInternals(room);
       const state = internal.toEngineState(); const lily = branch.startsWith("lily"); const initialPass = lily || branch === "strength-close" || branch === "back-injury";
       const close = lily || branch === "strength-close"; const defeat = branch.endsWith("defeat");
       state.phase = "encounter"; state.ancientOneId = "azathoth"; state.doom = 15;
@@ -93,7 +119,7 @@ describe("authoritative game room", () => {
       const room = await colyseus.createRoom<GameRoom>("game", {});
       const host = await colyseus.connectTo(room, { displayName: "Host" });
       const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-      const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+      const internal = fixtureInternals(room);
       const state = internal.toEngineState(); const pass = ["pay", "decline", "last-health", "mark-refuse"].includes(branch);
       const defeat = branch === "defeat"; const lowHealth = defeat || branch === "last-health";
       const items = ["discard", "observation-pass", "defeat"].includes(branch) ? ["asset_38_revolver", "asset_45_automatic"] : [];
@@ -165,7 +191,7 @@ describe("authoritative game room", () => {
       const room = await colyseus.createRoom<GameRoom>("game", {});
       const host = await colyseus.connectTo(room, { displayName: "Host" });
       const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-      const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+      const internal = fixtureInternals(room);
       const state = internal.toEngineState(); const lore = branch.startsWith("lore") || branch === "new-clue-reroll"; const defeat = branch === "defeat";
       state.phase = "encounter"; state.ancientOneId = "azathoth"; state.doom = 15;
       state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -236,7 +262,7 @@ describe("authoritative game room", () => {
       const room = await colyseus.createRoom<GameRoom>("game", {});
       const host = await colyseus.connectTo(room, { displayName: "Host" });
       const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-      const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+      const internal = fixtureInternals(room);
       const state = internal.toEngineState(); const will = branch.startsWith("will"); const defeat = branch === "defeat";
       state.phase = "encounter"; state.ancientOneId = "azathoth"; state.doom = 15;
       state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -308,7 +334,7 @@ describe("authoritative game room", () => {
       const room = await colyseus.createRoom<GameRoom>("game", {});
       const host = await colyseus.connectTo(room, { displayName: "Host" });
       const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-      const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+      const internal = fixtureInternals(room);
       const state = internal.toEngineState();
       state.phase = "encounter"; state.ancientOneId = "azathoth"; state.doom = 15;
       state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -360,7 +386,7 @@ describe("authoritative game room", () => {
       const room = await colyseus.createRoom<GameRoom>("game", {});
       const host = await colyseus.connectTo(room, { displayName: "Host" });
       const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-      const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+      const internal = fixtureInternals(room);
       const state = internal.toEngineState();
       state.phase = "encounter"; state.ancientOneId = "azathoth"; state.doom = 15;
       state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -423,7 +449,7 @@ describe("authoritative game room", () => {
       const room = await colyseus.createRoom<GameRoom>("game", {});
       const host = await colyseus.connectTo(room, { displayName: "Host" });
       const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-      const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+      const internal = fixtureInternals(room);
       const state = internal.toEngineState();
       state.phase = "encounter"; state.ancientOneId = "azathoth"; state.doom = 15;
       state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -497,7 +523,7 @@ describe("authoritative game room", () => {
       const room = await colyseus.createRoom<GameRoom>("game", {});
       const host = await colyseus.connectTo(room, { displayName: "Host" });
       const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-      const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+      const internal = fixtureInternals(room);
       const state = internal.toEngineState();
       state.phase = "encounter"; state.ancientOneId = "azathoth"; state.doom = 15;
       state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -566,7 +592,7 @@ describe("authoritative game room", () => {
       const room = await colyseus.createRoom<GameRoom>("game", {});
       const host = await colyseus.connectTo(room, { displayName: "Host" });
       const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-      const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+      const internal = fixtureInternals(room);
       const state = internal.toEngineState();
       state.phase = "encounter"; state.ancientOneId = "azathoth"; state.doom = 15;
       state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -630,7 +656,7 @@ describe("authoritative game room", () => {
       const room = await colyseus.createRoom<GameRoom>("game", {});
       const host = await colyseus.connectTo(room, { displayName: "Host" });
       const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-      const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+      const internal = fixtureInternals(room);
       const state = internal.toEngineState();
       state.phase = "encounter"; state.ancientOneId = "azathoth"; state.doom = 15;
       state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -691,7 +717,7 @@ describe("authoritative game room", () => {
       const room = await colyseus.createRoom<GameRoom>("game", {});
       const host = await colyseus.connectTo(room, { displayName: "Host" });
       const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-      const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+      const internal = fixtureInternals(room);
       const state = internal.toEngineState();
       state.phase = "encounter"; state.ancientOneId = "azathoth"; state.doom = 15;
       state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -758,7 +784,7 @@ describe("authoritative game room", () => {
       const room = await colyseus.createRoom<GameRoom>("game", {});
       const host = await colyseus.connectTo(room, { displayName: "Host" });
       const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-      const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+      const internal = fixtureInternals(room);
       const state = internal.toEngineState();
       state.phase = "encounter"; state.ancientOneId = "azathoth"; state.doom = 15;
       state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -812,7 +838,7 @@ describe("authoritative game room", () => {
       const room = await colyseus.createRoom<GameRoom>("game", {});
       const host = await colyseus.connectTo(room, { displayName: "Host" });
       const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-      const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+      const internal = fixtureInternals(room);
       const state = internal.toEngineState();
       state.phase = "encounter"; state.ancientOneId = "azathoth"; state.doom = 15;
       state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -867,7 +893,7 @@ describe("authoritative game room", () => {
       const room = await colyseus.createRoom<GameRoom>("game", {});
       const host = await colyseus.connectTo(room, { displayName: "Host" });
       const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-      const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+      const internal = fixtureInternals(room);
       const state = internal.toEngineState();
       state.phase = "encounter"; state.ancientOneId = "azathoth"; state.doom = 15;
       state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -922,7 +948,7 @@ describe("authoritative game room", () => {
       const room = await colyseus.createRoom<GameRoom>("game", {});
       const host = await colyseus.connectTo(room, { displayName: "Host" });
       const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-      const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+      const internal = fixtureInternals(room);
       const state = internal.toEngineState();
       state.phase = "encounter"; state.ancientOneId = "azathoth"; state.doom = 15;
       state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -981,7 +1007,7 @@ describe("authoritative game room", () => {
       const room = await colyseus.createRoom<GameRoom>("game", {});
       const host = await colyseus.connectTo(room, { displayName: "Host" });
       const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-      const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+      const internal = fixtureInternals(room);
       const state = internal.toEngineState();
       state.phase = "encounter"; state.ancientOneId = "azathoth"; state.doom = 15;
       state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -1037,7 +1063,7 @@ describe("authoritative game room", () => {
       const room = await colyseus.createRoom<GameRoom>("game", {});
       const host = await colyseus.connectTo(room, { displayName: "Host" });
       const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-      const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+      const internal = fixtureInternals(room);
       const state = internal.toEngineState();
       state.phase = "encounter"; state.ancientOneId = "azathoth"; state.doom = branch === "doom" ? 1 : 15;
       state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -1097,7 +1123,7 @@ describe("authoritative game room", () => {
       const room = await colyseus.createRoom<GameRoom>("game", {});
       const host = await colyseus.connectTo(room, { displayName: "Host" });
       const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-      const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+      const internal = fixtureInternals(room);
       const state = internal.toEngineState();
       state.phase = "encounter"; state.ancientOneId = "azathoth"; state.doom = 15;
       state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -1156,7 +1182,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "encounter"; state.ancientOneId = "azathoth"; state.doom = 15;
     state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -1205,7 +1231,7 @@ describe("authoritative game room", () => {
   it("rejects an unsupported Other World top card without revealing it or changing components", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "encounter"; state.ancientOneId = "azathoth";
     state.activePlayerId = state.players[0]!.id;
@@ -1226,7 +1252,7 @@ describe("authoritative game room", () => {
       const room = await colyseus.createRoom<GameRoom>("game", {});
       const host = await colyseus.connectTo(room, { displayName: "Host" });
       const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-      const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+      const internal = fixtureInternals(room);
       const state = internal.toEngineState();
       state.phase = "action"; state.ancientOneId = "cthulhu"; state.doom = 12; state.actionsRemaining = 2;
       state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -1281,7 +1307,7 @@ describe("authoritative game room", () => {
       const room = await colyseus.createRoom<GameRoom>("game", {});
       const host = await colyseus.connectTo(room, { displayName: "Host" });
       const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-      const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+      const internal = fixtureInternals(room);
       const state = internal.toEngineState(), source = "artifact_de_vermis_mysteriis";
       state.phase = "action"; state.ancientOneId = "cthulhu"; state.doom = 12; state.actionsRemaining = 2;
       state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -1326,7 +1352,7 @@ describe("authoritative game room", () => {
       const room = await colyseus.createRoom<GameRoom>("game", {});
       const host = await colyseus.connectTo(room, { displayName: "Host" });
       const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-      const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+      const internal = fixtureInternals(room);
       const state = internal.toEngineState(), source = "artifact_cultes_des_goules";
       state.phase = "action"; state.ancientOneId = "cthulhu"; state.doom = 12; state.actionsRemaining = 2;
       state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -1372,7 +1398,7 @@ describe("authoritative game room", () => {
       const room = await colyseus.createRoom<GameRoom>("game", {});
       const host = await colyseus.connectTo(room, { displayName: "Host" });
       const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-      const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+      const internal = fixtureInternals(room);
       const state = internal.toEngineState();
       state.phase = "action"; state.ancientOneId = "cthulhu"; state.doom = 12; state.actionsRemaining = 2;
       state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -1422,7 +1448,7 @@ describe("authoritative game room", () => {
       const room = await colyseus.createRoom<GameRoom>("game", {});
       const host = await colyseus.connectTo(room, { displayName: "Host" });
       const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-      const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+      const internal = fixtureInternals(room);
       const state = internal.toEngineState();
       state.phase = "action"; state.ancientOneId = "cthulhu"; state.doom = 12; state.actionsRemaining = 2;
       state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -1461,7 +1487,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState(); state.phase = "action"; state.ancientOneId = "cthulhu"; state.doom = 12; state.actionsRemaining = 2;
     state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
     Object.assign(state.players[0]!, { investigatorId: "akachi_onyele", locationId: "arkham", health: 5, sanity: 7, clues: 0,
@@ -1503,7 +1529,7 @@ describe("authoritative game room", () => {
       const host = await colyseus.connectTo(room, { displayName: "Host" });
       const guest = await colyseus.connectTo(room, { displayName: "Guest" });
       const hostErrors: unknown[] = []; host.onMessage(commandErrorMessageType, error => hostErrors.push(error));
-      const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+      const internal = fixtureInternals(room);
       const state = internal.toEngineState(); state.phase = "encounter"; state.ancientOneId = "azathoth"; state.doom = 15;
       state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
       Object.assign(state.players[0]!, { investigatorId: "akachi_onyele", locationId, health: resource === "health" ? 1 : 5, sanity: resource === "sanity" ? 1 : 7, clues: 1, assetIds: [] });
@@ -1544,7 +1570,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "encounter"; state.ancientOneId = "cthulhu"; state.doom = 12;
     state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -1586,7 +1612,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "action"; state.ancientOneId = "cthulhu"; state.actionsRemaining = 2;
     state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -1629,7 +1655,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "encounter"; state.ancientOneId = "cthulhu"; state.doom = 12;
     state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -1682,7 +1708,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "action"; state.ancientOneId = "cthulhu"; state.actionsRemaining = 2;
     state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -1719,7 +1745,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "encounter"; state.ancientOneId = "cthulhu"; state.doom = 12;
     state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -1757,7 +1783,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "encounter"; state.ancientOneId = "cthulhu"; state.doom = 12;
     state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -1800,7 +1826,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "encounter"; state.ancientOneId = "cthulhu"; state.doom = 12;
     state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -1849,7 +1875,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "encounter"; state.ancientOneId = "cthulhu"; state.doom = 12;
     state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -1882,7 +1908,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "encounter"; state.ancientOneId = "azathoth"; state.doom = 15;
     state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -1926,7 +1952,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "action"; state.actionsRemaining = 2;
     state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -1967,7 +1993,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "encounter";
     state.privateState.deckOrderById.artifacts = baseGameArtifacts.map(card => card.id);
@@ -1989,7 +2015,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "encounter"; state.ancientOneId = "azathoth"; state.doom = 15; state.omen = 0;
     state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -2028,7 +2054,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "encounter"; state.ancientOneId = "azathoth"; state.doom = 1; state.omen = 3; state.greenOmenTokens = 4;
     state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -2071,7 +2097,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "encounter";
     state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -2138,7 +2164,7 @@ describe("authoritative game room", () => {
 
   it("round-trips public Monster instances through room state while keeping the cup private", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.monsters = [{ id: "on-board-1", monsterId: "monster_ghoul", locationId: "arkham", damage: 1 }];
     state.activeGateIds = ["gate_arkham"];
@@ -2161,7 +2187,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "encounter";
     state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -2188,7 +2214,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "mythos";
     state.leadInvestigatorId = [...room.state.players.values()][0]!.id;
@@ -2208,7 +2234,7 @@ describe("authoritative game room", () => {
   it("resolves a typed Mythos blessing and opens replacement timing", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     const hostId = state.players[0]!.id;
     state.phase = "mythos";
@@ -2235,7 +2261,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     const hostId = state.players[0]!.id;
     state.phase = "mythos";
@@ -2259,7 +2285,7 @@ describe("authoritative game room", () => {
   it("resolves Perplexing Stars from the public Gate symbols without exposing deck order", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "mythos";
     state.leadInvestigatorId = state.activePlayerId = state.players[0]!.id;
@@ -2284,7 +2310,7 @@ describe("authoritative game room", () => {
   it("discards Dimensional Instability Gates into a public pile while keeping the remaining stack private", async () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "mythos";
     state.leadInvestigatorId = state.activePlayerId = state.players[0]!.id;
@@ -2311,7 +2337,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "mythos";
     state.leadInvestigatorId = state.activePlayerId = state.players[0]!.id;
@@ -2340,7 +2366,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "mythos";
     state.leadInvestigatorId = state.activePlayerId = state.players[0]!.id;
@@ -2368,7 +2394,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "mythos";
     state.leadInvestigatorId = state.activePlayerId = state.players[0]!.id;
@@ -2405,7 +2431,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "mythos";
     state.leadInvestigatorId = state.activePlayerId = state.players[0]!.id;
@@ -2443,7 +2469,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "mythos";
     state.leadInvestigatorId = state.activePlayerId = state.players[0]!.id;
@@ -2494,7 +2520,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "mythos";
     state.leadInvestigatorId = state.activePlayerId = state.players[0]!.id;
@@ -2530,7 +2556,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "mythos";
     state.leadInvestigatorId = state.activePlayerId = state.players[0]!.id;
@@ -2572,7 +2598,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "mythos";
     state.leadInvestigatorId = state.activePlayerId = state.players[0]!.id;
@@ -2616,7 +2642,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "mythos";
     state.leadInvestigatorId = state.activePlayerId = state.players[0]!.id;
@@ -2651,7 +2677,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "mythos";
     state.leadInvestigatorId = state.activePlayerId = state.players[0]!.id;
@@ -2693,7 +2719,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "mythos";
     state.leadInvestigatorId = state.activePlayerId = state.players[0]!.id;
@@ -2732,7 +2758,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "mythos";
     state.leadInvestigatorId = state.activePlayerId = state.players[0]!.id;
@@ -2783,7 +2809,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "mythos";
     state.leadInvestigatorId = state.activePlayerId = state.players[0]!.id;
@@ -2816,7 +2842,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "encounter";
     state.leadInvestigatorId = state.activePlayerId = state.players[0]!.id;
@@ -2851,7 +2877,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "action";
     state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -2877,7 +2903,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "encounter";
     state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
@@ -2913,7 +2939,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "encounter";
     state.ancientOneId = "cthulhu";
@@ -2942,7 +2968,7 @@ describe("authoritative game room", () => {
     const room = await colyseus.createRoom<GameRoom>("game", {});
     const host = await colyseus.connectTo(room, { displayName: "Host" });
     const guest = await colyseus.connectTo(room, { displayName: "Guest" });
-    const internal = room as unknown as { toEngineState(): GameState; applyEngineState(state: GameState): void };
+    const internal = fixtureInternals(room);
     const state = internal.toEngineState();
     state.phase = "encounter";
     const hostId = state.players[0]!.id;
