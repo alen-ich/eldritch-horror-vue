@@ -16,6 +16,8 @@ export interface StandardCombatInput {
   monsterToughness: number;
   horrorCheck: CombatCheck | null;
   damageCheck: CombatCheck | null;
+  /** Raw loss immediately before an existing Strength check; callers handle prevention. */
+  beforeStrengthSanityLoss?: number;
   willItemBonuses?: readonly number[];
   strengthItemBonuses?: readonly number[];
   successThreshold?: number;
@@ -36,7 +38,7 @@ export interface StandardCombatResult {
   monsterDefeated: boolean;
 }
 
-/** Generic printed-stat combat only. Callers must resolve Monster-specific text first. */
+/** Raw combat calculation. Callers handle prevention and other Monster-specific text. */
 export function resolveStandardCombat(input: StandardCombatInput, rollDie: () => number): StandardCombatResult {
   for (const [label, value] of Object.entries({
     will: input.will,
@@ -51,6 +53,10 @@ export function resolveStandardCombat(input: StandardCombatInput, rollDie: () =>
     }
   }
   if (input.currentHealth === 0 || input.currentSanity === 0) throw new Error("A defeated investigator cannot fight.");
+  if (input.beforeStrengthSanityLoss !== undefined &&
+    (!Number.isInteger(input.beforeStrengthSanityLoss) || input.beforeStrengthSanityLoss < 0)) {
+    throw new Error("beforeStrengthSanityLoss must be a nonnegative integer.");
+  }
   if (input.successThreshold !== undefined && (!Number.isInteger(input.successThreshold) || input.successThreshold < 1 || input.successThreshold > 6)) {
     throw new Error("The success threshold must be an integer from 1 to 6.");
   }
@@ -79,6 +85,13 @@ export function resolveStandardCombat(input: StandardCombatInput, rollDie: () =>
   // Defeat during the Will test ends the encounter before a Strength test.
   if (sanityLost === input.currentSanity) {
     return { horrorTest, sanityLost, healthLost: 0, monsterHealthLost: 0, investigatorDefeated: true, monsterDefeated: false };
+  }
+
+  if (input.damageCheck) {
+    sanityLost += Math.min(input.currentSanity - sanityLost, input.beforeStrengthSanityLoss ?? 0);
+    if (sanityLost === input.currentSanity) {
+      return { horrorTest, sanityLost, healthLost: 0, monsterHealthLost: 0, investigatorDefeated: true, monsterDefeated: false };
+    }
   }
 
   let strengthTest: CombatTestResult | undefined;
