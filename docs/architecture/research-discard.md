@@ -1,5 +1,7 @@
 # Physical Research lifecycle
 
+Current status: new Research draws now retain explicit original marker/token provenance; see [Research marker binding](research-marker-binding.md). Earlier pending statements below are historical.
+
 2026-10-22: Research no longer cycles resolved cards to the deck bottom. The selected Ancient One's cards occupy private undrawn order, at most one private removed-card continuation, and public faceup researchDiscardIds. Drawing the last undrawn card immediately shuffles previous discards; the active card is excluded. Completion, including lethal interruption or game end, discards exactly once and clears the reveal/binding. A singleton legacy fixture replenishes on completion.
 
 Production setup validates the complete32-card catalog and initializes one eight-card selected deck plus empty discard. Configured inventories must conserve exactly those eight identities across all zones. Partial rule fixtures without the physical setup catalog retain a unique canonical subset. Legacy full decks with no discard and saved top-bound continuations remain supported; migration removes an active legacy top once on a cloned transition. Disjoint prior discards are allowed with a top-bound continuation because this is also the pre-removal state of a new draw. Corrupt input is rejected, never repaired.

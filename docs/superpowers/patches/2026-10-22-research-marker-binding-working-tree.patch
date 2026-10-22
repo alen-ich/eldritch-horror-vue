@@ -1,0 +1,23 @@
+--- a/packages/engine/src/index.ts
++++ b/packages/engine/src/index.ts
+@@ -198 +198 @@
+-  pendingLocationEncounter?: { playerId: string; cardId: string; deck: EncounterDeckId; queue: LocationEncounterInstruction[]; dice: number[]; successes: number; gateId?: string; gateLocationId?: LocationId; gateClosed?: boolean; cardRemovedFromDeck?: true };
++  pendingLocationEncounter?: { playerId: string; cardId: string; deck: EncounterDeckId; queue: LocationEncounterInstruction[]; dice: number[]; successes: number; gateId?: string; gateLocationId?: LocationId; gateClosed?: boolean; researchMarkerBinding?: { markerId: string; clueId: string }; cardRemovedFromDeck?: true };
+@@ -2374 +2374 @@
+-  next.pendingLocationEncounter = { playerId, cardId, deck, queue: [instruction], dice: [], successes: 0 };
++  next.pendingLocationEncounter = { playerId, cardId, deck, queue: [instruction], dice: [], successes: 0, researchMarkerBinding: { markerId, clueId: physical[0]! } };
+--- a/apps/server/src/rooms/GameRoom.ts
++++ b/apps/server/src/rooms/GameRoom.ts
+@@ -317,0 +318,6 @@
++    const priorResearch = this.pendingLocationEncounter, incomingResearch = engineState.pendingLocationEncounter;
++    if (priorResearch?.researchMarkerBinding && incomingResearch?.cardId === priorResearch.cardId
++      && (incomingResearch.researchMarkerBinding?.markerId !== priorResearch.researchMarkerBinding.markerId
++        || incomingResearch.researchMarkerBinding?.clueId !== priorResearch.researchMarkerBinding.clueId)) {
++      throw new Error("Research restoration rejected: original marker binding changed.");
++    }
+--- a/apps/server/test/GameRoom.test.ts
++++ b/apps/server/test/GameRoom.test.ts
+@@ -0,0 +1 @@
++import { registerResearchMarkerBindingTests } from "./ResearchMarkerBinding.test.js";
+@@ -70,0 +72 @@
++  registerResearchMarkerBindingTests(() => colyseus);

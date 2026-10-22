@@ -1,5 +1,7 @@
 # Research authored binding boundary
 
+Current status: new Research draws now retain explicit original marker/token provenance; see [Research marker binding](research-marker-binding.md). Earlier pending statements below are historical.
+
 2026-10-22: bindResearchInstruction now rejects runtime-only collect_encountered_clue/relocate_encountered_clue effects in authored card sections. Authored encountered_clue gain/relocate syntax still compiles using the server-selected marker, regardless of any extra source markerId. Nested tests, sequences, optional rewards and ambush branches enforce the same boundary. Optional costs already rejected these runtime effects through the existing generic parser and retain that behavior.
 
 Sequence compilation now visits every array slot, rejecting sparse input like its JSON null equivalent. Invalid sections fail as ENCOUNTER_UNSUPPORTED before physical draw, random input or state mutation. No new public field, client command, package, card effect or runtime continuation format changed. Saved bound continuations bypass this authored compiler and remain supported. Explicit persisted origin-marker provenance remains a separate dependency.

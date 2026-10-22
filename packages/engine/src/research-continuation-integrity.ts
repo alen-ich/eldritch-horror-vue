@@ -1,8 +1,11 @@
+import { validateResearchMarkerBinding } from "./research-marker-binding.js";
 import type { GameContent, GameState } from "./index.js";
 import { validateResearchDrawInventory } from "./research-draw-integrity.js";
 
 /** Validate physical/owner binding before executing any restored Research work. */
 export function validateResearchContinuationState(state: GameState, content: GameContent): string | undefined {
+  const markerInvalid = validateResearchMarkerBinding(state, content);
+  if (markerInvalid) return markerInvalid;
   const pending = state.pendingLocationEncounter;
   if (!pending?.deck.startsWith("research_")) {
     return state.currentLocationEncounterCardId?.startsWith("encounter_research_")
