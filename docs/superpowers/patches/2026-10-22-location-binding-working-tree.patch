@@ -1,0 +1,24 @@
+--- a/packages/engine/src/index.ts
++++ b/packages/engine/src/index.ts
+@@ -0,0 +1,2 @@
++import { validateLocationContinuationState } from "./location-continuation-integrity.js";
++export { validateLocationContinuationState } from "./location-continuation-integrity.js";
+@@ -2373,0 +2376,2 @@
++  const invalid = validateLocationContinuationState(state, content);
++  if (invalid) return failure("ENCOUNTER_CONTENT_MISSING", invalid);
+@@ -2859,0 +2864,2 @@
++  const locationInvalid = validateLocationContinuationState(state, content);
++  if (locationInvalid) return failure("ENCOUNTER_CONTENT_MISSING", locationInvalid);
+--- a/apps/server/src/rooms/GameRoom.ts
++++ b/apps/server/src/rooms/GameRoom.ts
+@@ -0,0 +1 @@
++import { validateLocationContinuationState } from "@eldritch/engine";
+@@ -319,0 +321,2 @@
++    const locationInvalid = validateLocationContinuationState(engineState, baseGameContent);
++    if (locationInvalid) throw new Error(`Location restoration rejected: ${locationInvalid}`);
+--- a/apps/server/test/GameRoom.test.ts
++++ b/apps/server/test/GameRoom.test.ts
+@@ -0,0 +1 @@
++import { registerLocationBindingRoomTests } from "./LocationBinding.test.js";
+@@ -57,0 +59 @@
++  registerLocationBindingRoomTests(() => colyseus);

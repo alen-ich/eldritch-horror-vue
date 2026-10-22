@@ -26,7 +26,10 @@ it("ritual inventory permits unrelated commands and does not prevent costs", () 
 it("restored encounter decisions recheck newly held Spells", () => {
   const before = spellState(); before.phase = "encounter"; holdSpell(before, "spell_mists_of_releh_01");
   before.pendingLocationEncounter = { playerId: "host", cardId: "card", deck: "general", queue: [], dice: [], successes: 0 };
-  expect(executeCommand(before, "host", { type: "RESOLVE_DECISION", decisionId: "old", selectedOptionIds: [] }, spellContent, spellContext)).toMatchObject({ ok: false, error: { code: "SPELL_EFFECT_UNSUPPORTED" } });
+  before.currentLocationEncounterCardId = "card";
+  before.privateState.deckOrderById["encounter:general"] = ["card"];
+  const rules = { ...spellContent, locationEncounters: [{ id: "card", deck: "general" as const }] };
+  expect(executeCommand(before, "host", { type: "RESOLVE_DECISION", decisionId: "old", selectedOptionIds: [] }, rules, spellContext)).toMatchObject({ ok: false, error: { code: "SPELL_EFFECT_UNSUPPORTED" } });
 });
 it("a colleague's Wither does not strand the acting investigator's noncombat choice", () => {
   const before = spellState(); before.phase = "encounter"; holdSpell(before, "spell_wither_01", "guest");
