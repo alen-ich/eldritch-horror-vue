@@ -1,0 +1,11 @@
+# Research/Expedition setup ownership
+
+Iteration started 2026-10-22; verified after local midnight 2026-10-23. Both physical setup initializers copy validated provider output before returning it. START_GAME without a starting Spell grant no longer retains externally mutable deck arrays; frozen provider output becomes normal independent engine storage. Research's four selected decks and Expedition's top/site order remain unchanged. Server/private projection boundaries, validation, exception mapping, transactions and readiness are unchanged; no package added.
+
+Real command regression: RED 7 failures/7 controls passing. Five no-grant aliases and two frozen-provider storage failures reproduced. All five starting-Spell grant cases already passed because later cloning detached their arrays. GREEN new suite 14/14, combined setup/discard suites 76/76. Original state/catalogs remain unchanged and public/owner projections omit undrawn IDs.
+
+Both touched source files were untracked before this iteration. Preserve their existing foundation: the committed `docs/superpowers/patches/2026-10-22-encounter-setup-ownership.patch` saves only these two already-applied line replacements. Do not apply twice. It is not a standalone clean-checkout implementation. Full source remains in this working directory. Execution/checks/review: `docs/superpowers/plans/2026-10-22-encounter-setup-ownership.md`.
+
+Next: inspect actual remaining setup/recycle RNG boundaries before assuming broader ownership safety. In-place mutation of unrelated Mystery/Asset shuffles is a separate candidate, discovered when an initially overbroad test provider changed every setup shuffle.
+
+Verification also exposed an existing Personal Assistant browser scenario leaving Reserve collapsed after Monster/Travel fallback. Trace/DOM established the missing Buy nothing was hidden by the test itself; deterministic collapsed-panel RED reproduced it, explicit expansion GREEN passed. Four added test lines are saved separately in `docs/superpowers/patches/2026-10-23-personal-assistant-reserve-visibility.patch`, already applied. Do not apply twice or stage the pre-existing browser changes. Engine changes received independent review; this later test-only harness correction was author-verified via browser RED/GREEN.

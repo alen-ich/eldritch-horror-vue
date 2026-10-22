@@ -19,3 +19,7 @@ Real START_GAME with no starting Spell grant rejects retained-reference mutation
 ## Self-review and approval
 
 Bounded behavioral fix follows the full written spec/plan workflow explicitly requested by the user. No placeholders or contradictions; acceptance covers both exposed command paths and cloning controls. Self-approved under delegated approval. Framework APIs and installed dependencies remain unchanged (pnpm 10.28.0, Vitest 3.2.7).
+
+## Verification addendum — 2026-10-23
+
+Default Playwright exposed a pre-existing Personal Assistant test defect: Monster/Travel fallback collapses Reserve, then the test searches for Buy nothing without reopening it. Trace and DOM snapshot confirm the collapsed shelf; no gameplay regression was found. Extend only the validation harness: deliberately collapse the market on every path for deterministic RED, then explicitly expand before checking the purchase button. No app behavior changes. Save this test's own delta as a patch too, since the file already contains unrelated dirty changes. Self-reviewed/approved as necessary verification repair.

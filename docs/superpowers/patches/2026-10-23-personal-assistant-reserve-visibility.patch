@@ -1,0 +1,19 @@
+diff --git a/tests/e2e/multiplayer.spec.ts b/tests/e2e/multiplayer.spec.ts
+index 196915f..4d01ef6 100644
+--- a/tests/e2e/multiplayer.spec.ts
++++ b/tests/e2e/multiplayer.spec.ts
+@@ -145,10 +145,14 @@ test('Personal Assistant offers an explicit free reroll during Acquire Assets',
+     }
+     await expect(freeReroll).toBeVisible()
+   }).toPass({ timeout: 15000 })
++  // Exercise the collapsed market on every path, including the Travel fallback.
++  const collapseReserve = page.getByRole('button', { name: 'Collapse reserve' })
++  if (await collapseReserve.isVisible()) await collapseReserve.click()
+   await freeReroll.click()
+   await dialog.getByRole('button', { name: 'Use selected reroll' }).click()
+   await expect(page.getByRole('button', { name: /Personal Assistant: reroll die/ })).toHaveCount(0)
+   if (await dialog.isVisible()) await dialog.getByRole('button', { name: 'Keep result' }).click()
++  await page.getByRole('button', { name: 'Expand reserve' }).click()
+   await expect(page.getByRole('button', { name: 'Buy nothing' })).toBeVisible()
+   } finally {
+     await guestContext.close()
