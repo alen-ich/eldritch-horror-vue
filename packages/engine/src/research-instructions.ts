@@ -11,12 +11,14 @@ export function bindResearchInstruction(value: unknown, markerId: string, depth 
         if (!("operation" in effect) || effect.operation !== "gain") return undefined;
         return { kind: "collect_encountered_clue", markerId };
       }
+      if (effect && typeof effect === "object" && "kind" in effect
+        && (effect.kind === "collect_encountered_clue" || effect.kind === "relocate_encountered_clue")) return undefined;
       return effect;
     });
     return effects.some(effect => !effect) ? undefined : parseLocationEncounterInstruction({ kind: "effects", effects });
   }
   if (value.kind === "sequence" && "steps" in value && Array.isArray(value.steps)) {
-    const steps = value.steps.map(step => bindResearchInstruction(step, markerId, depth + 1));
+    const steps = Array.from(value.steps, step => bindResearchInstruction(step, markerId, depth + 1));
     return steps.some(step => !step) ? undefined : { kind: "sequence", steps: steps as LocationEncounterInstruction[] };
   }
   if (value.kind === "test" && "pass" in value && "fail" in value) {
