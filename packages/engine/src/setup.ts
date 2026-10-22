@@ -4,10 +4,19 @@ export type LocationEncounterDeckId = typeof locationEncounterDeckIds[number];
 export type ResearchEncounterDeckId = "research_azathoth" | "research_cthulhu" | "research_shub_niggurath" | "research_yog_sothoth";
 export type EncounterDeckId = LocationEncounterDeckId | ResearchEncounterDeckId | "other_world";
 
+/** Validate against caller-owned identities, never the provider's mutable input. */
+function shufflePhysicalIds(ids: readonly string[], shuffle: <T>(items: readonly T[]) => T[]): string[] {
+  const expected = new Set(ids), order = shuffle([...ids]);
+  if (!Array.isArray(order) || order.length !== ids.length || new Set(order).size !== ids.length
+    || !Array.from(order).every(id => expected.has(id))) throw new Error("Physical setup shuffle must conserve every supplied ID.");
+  return [...order];
+}
+
 /** One physical copy of each Artifact; undrawn order stays server-private. */
 export function buildArtifactDeck(ids: readonly string[], shuffle: <T>(items: readonly T[]) => T[]): string[] {
-  if (!ids.length || new Set(ids).size !== ids.length || ids.some(id => !/^artifact_[a-z0-9_]+$/.test(id))) throw new Error("Artifacts require unique canonical physical IDs.");
-  return shuffle(ids);
+  if (!Array.isArray(ids) || !ids.length || new Set(ids).size !== ids.length
+    || Array.from(ids).some(id => typeof id !== "string" || !/^artifact_[a-z0-9_]+$/.test(id))) throw new Error("Artifacts require unique canonical physical IDs.");
+  return shufflePhysicalIds(ids, shuffle);
 }
 
 /** Each location deck has its own private top-to-bottom order. */
@@ -31,10 +40,11 @@ export function buildLocationEncounterDecks(
 
 /** The first element remains the hidden top of the Gate stack. */
 export function buildGateStack(gateIds: readonly string[], shuffle: <T>(items: readonly T[]) => T[]): string[] {
-  if (!gateIds.length || new Set(gateIds).size !== gateIds.length || gateIds.some(id => !id)) {
+  if (!Array.isArray(gateIds) || !gateIds.length || new Set(gateIds).size !== gateIds.length
+    || Array.from(gateIds).some(id => typeof id !== "string" || !id.length)) {
     throw new Error("Gate stack requires unique, nonempty Gate IDs.");
   }
-  return shuffle(gateIds);
+  return shufflePhysicalIds(gateIds, shuffle);
 }
 
 export function buildMonsterPool(
