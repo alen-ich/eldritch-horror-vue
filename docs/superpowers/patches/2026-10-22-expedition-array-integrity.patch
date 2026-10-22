@@ -1,0 +1,20 @@
+--- a/packages/engine/src/expeditions.ts
++++ b/packages/engine/src/expeditions.ts
+@@ -8,7 +8,7 @@
+ 
+ export function validateExpeditionSetupCatalog(cards: readonly ExpeditionSetupCard[], map: GameContent["map"]): string | undefined {
+   if (!Array.isArray(cards) || cards.length !== 18 || new Set(cards.map(card => card?.id)).size !== 18
+-    || cards.some(card => !card || !canonicalLocations.has(card.id) || canonicalLocations.get(card.id) !== card.locationId)
++    || Array.from(cards).some(card => !card || !canonicalLocations.has(card.id) || canonicalLocations.get(card.id) !== card.locationId)
+     || expeditionLocationIds.some(site => !map.locationTypes[site])) {
+     return "Expedition setup requires all 18 canonical cards and six known board sites.";
+   }
+@@ -19,7 +19,7 @@
+   cards: readonly ExpeditionSetupCard[], shuffle: EngineContext["shuffle"],
+ ): { deck: string[]; locationId: ExpeditionLocationId } {
+   const deck = shuffle(cards.map(card => card.id));
+-  if (deck.length !== 18 || new Set(deck).size !== 18 || deck.some(id => !canonicalLocations.has(id))) {
++  if (deck.length !== 18 || new Set(deck).size !== 18 || Array.from(deck).some(id => !canonicalLocations.has(id))) {
+     throw new Error("Expedition shuffle must conserve every physical card.");
+   }
+   return { deck, locationId: canonicalLocations.get(deck[0]!)! };
