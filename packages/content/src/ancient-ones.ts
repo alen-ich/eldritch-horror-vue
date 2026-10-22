@@ -20,6 +20,13 @@ export type FinalMystery =
   | { type: "special_encounter_progress"; deckId: string; eligibleSpace: "gate"; target: "half_investigators" }
   | { type: "immediate_loss" };
 
+/** Printed attributes only; execution still requires an Ancient One-aware resolver. */
+export interface CultistCombatProfile {
+  horrorCheck: { skill: "will"; modifier: number; damage: number } | null;
+  damageCheck: { skill: "strength"; modifier: number; damage: number } | null;
+  beforeStrengthSanityLoss: number;
+}
+
 export interface AncientOneData {
   id: AncientOneId;
   name: string;
@@ -34,6 +41,8 @@ export interface AncientOneData {
     awakenedToughness?: number;
     normalEffectIds: readonly string[];
     awakenedEffectIds: readonly string[];
+    normalCombat?: CultistCombatProfile;
+    awakenedCombat?: CultistCombatProfile;
   };
   finalMystery: FinalMystery;
   imageUrl: string;
@@ -61,8 +70,11 @@ export const baseGameAncientOnes = [
     cultist: {
       normalToughness: 1,
       awakenedToughness: 2,
-      normalEffectIds: ["cthulhu_cultist_pre_will_sanity_loss_1"],
-      awakenedEffectIds: ["cthulhu_cultist_pre_will_sanity_loss_2"],
+      normalEffectIds: ["cthulhu_cultist_pre_strength_sanity_loss_1"],
+      awakenedEffectIds: ["cthulhu_cultist_pre_strength_sanity_loss_2"],
+      // Explicit null type also supports consumers compiled without strictNullChecks.
+      normalCombat: { horrorCheck: null as CultistCombatProfile["horrorCheck"], damageCheck: { skill: "strength", modifier: 0, damage: 1 }, beforeStrengthSanityLoss: 1 },
+      awakenedCombat: { horrorCheck: null as CultistCombatProfile["horrorCheck"], damageCheck: { skill: "strength", modifier: 0, damage: 1 }, beforeStrengthSanityLoss: 2 },
     },
     finalMystery: {
       type: "defeat_epic_monster",
@@ -183,6 +195,11 @@ const finalMysterySchema = z.discriminatedUnion("type", [
   }).strict(),
   z.object({ type: z.literal("immediate_loss") }).strict(),
 ]);
+const cultistCombatProfileSchema = z.object({
+  horrorCheck: z.object({ skill: z.literal("will"), modifier: z.number().int(), damage: z.number().int().nonnegative() }).strict().nullable(),
+  damageCheck: z.object({ skill: z.literal("strength"), modifier: z.number().int(), damage: z.number().int().nonnegative() }).strict().nullable(),
+  beforeStrengthSanityLoss: z.number().int().nonnegative(),
+}).strict();
 const ancientOneSchema = z.object({
   id: z.enum(ancientOneIds),
   name: z.string().min(1),
@@ -197,11 +214,18 @@ const ancientOneSchema = z.object({
     awakenedToughness: z.number().int().positive().optional(),
     normalEffectIds: z.array(effectIdSchema),
     awakenedEffectIds: z.array(effectIdSchema),
+    normalCombat: cultistCombatProfileSchema.optional(),
+    awakenedCombat: cultistCombatProfileSchema.optional(),
   }).strict(),
   finalMystery: finalMysterySchema,
   imageUrl: z.string().regex(/^\/ancient-ones\/[a-z-]+\.jpg$/),
   sourceSha256: z.string().regex(/^[a-f0-9]{64}$/),
 }).strict();
+
+function matchesCthulhuCultist(profile: CultistCombatProfile | undefined, loss: number): boolean {
+  return profile?.horrorCheck === null && profile.damageCheck?.skill === "strength"
+    && profile.damageCheck.modifier === 0 && profile.damageCheck.damage === 1 && profile.beforeStrengthSanityLoss === loss;
+}
 
 export function validateAncientOneContent(ancientOnes: readonly AncientOneData[]): void {
   const parsed = z.array(ancientOneSchema).parse(ancientOnes);
@@ -213,6 +237,17 @@ export function validateAncientOneContent(ancientOnes: readonly AncientOneData[]
   for (const ancientOne of ancientOnes) {
     if (ancientOne.mythosDeck.some((stage) => stage.green + stage.yellow + stage.blue === 0)) {
       throw new Error(`${ancientOne.id} has an empty Mythos stage.`);
+    }
+    const cultist = ancientOne.cultist;
+    if (ancientOne.id === "cthulhu") {
+      if (!matchesCthulhuCultist(cultist.normalCombat, 1) || !matchesCthulhuCultist(cultist.awakenedCombat, 2)
+        || cultist.normalToughness !== 1 || cultist.awakenedToughness !== 2
+        || cultist.normalEffectIds.length !== 1 || cultist.normalEffectIds[0] !== "cthulhu_cultist_pre_strength_sanity_loss_1"
+        || cultist.awakenedEffectIds.length !== 1 || cultist.awakenedEffectIds[0] !== "cthulhu_cultist_pre_strength_sanity_loss_2") {
+        throw new Error("Cthulhu Cultist combat profiles must match both verified sheet sides.");
+      }
+    } else if (cultist.normalCombat !== undefined || cultist.awakenedCombat !== undefined) {
+      throw new Error("Cultist combat profiles are verified only for Cthulhu.");
     }
   }
 }

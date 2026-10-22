@@ -21,13 +21,21 @@ Each record includes:
 
 The Shub-Niggurath awakening effect matches the corrected wording identified by the supplied FAQ.
 
-## Current implementation
+## Initial implementation (historical)
 
 - The host selects the Ancient One in the lobby through a runtime-validated command.
 - The server authorizes and synchronizes the selection.
 - A game cannot start until an Ancient One has been selected.
 - Sheet effects are modeled as stable IDs but are not yet executed.
 
-## Remaining dependencies
+## Initial dependencies (historical)
 
 Ancient One setup cannot fully resolve until referenced Monster tokens and Special Encounter decks have structured stable IDs. The separate Mystery decks are also still required; the Final Mystery printed on an Ancient One's back does not replace its normal Mystery deck.
+
+## Cthulhu Cultist combat profiles — 2026-10-23
+
+The local sheet and its recorded checksum were rechecked. Both Cultist sides have no Horror/Will check, Strength modifier 0 and Damage 1. Before the Strength test, lose 1 Sanity on the front or 2 on the awakened side; toughness is respectively 1 or 2. The former pre_will effect IDs were a transcription error and are corrected to pre_strength. No repository consumer used the old IDs.
+
+Typed normalCombat/awakenedCombat profiles now preserve these values. Strict catalog validation requires both exact Cthulhu profiles and their existing toughness/effect IDs; profiles for the other Ancient Ones remain unverified and reject rather than inherit Cthulhu defaults. This is public descriptive content only: Monster attributes still reference ancient_one, Cultist ambush/board combat stays guarded, and no readiness or awakening support is promoted.
+
+Next dependency: an authoritative Ancient One-aware resolver with null-Horror sequencing and pre-Strength Sanity loss/defeat before enabling Cthulhu Research 1 Wilderness/7 City. Other Ancient One profiles and their special text need separate scan verification. Detailed evidence/checks: docs/superpowers/plans/2026-10-23-cthulhu-cultist-profile.md.
