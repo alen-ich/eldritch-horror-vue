@@ -80,7 +80,7 @@ export function parseLocationEncounterInstruction(value: unknown, depth = 0): Lo
     || (value.kind === "choice" && "options" in value && Array.isArray(value.options))) {
     const nodes: unknown[] = value.kind === "sequence" ? (value as { steps: unknown[] }).steps : (value as { options: unknown[] }).options;
     if (value.kind === "choice" && !nodes.length) return undefined;
-    const parsed = nodes.map(node => parseLocationEncounterInstruction(node, depth + 1));
+    const parsed = Array.from(nodes, node => parseLocationEncounterInstruction(node, depth + 1));
     if (parsed.some(node => !node)) return undefined;
     return value.kind === "sequence" ? { kind: "sequence", steps: parsed as LocationEncounterInstruction[] } : { kind: "choice", options: parsed as LocationEncounterInstruction[] };
   }

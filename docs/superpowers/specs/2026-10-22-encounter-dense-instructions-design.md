@@ -1,0 +1,8 @@
+# Dense generic encounter instruction arrays
+
+Goal: close the remaining sparse-array source boundary in the shared Location/Other World instruction parser. Research source compilation was fixed separately; generic sequence/choice still uses map/some, so holes survive validation and reach execution.
+Scope: parseLocationEncounterInstruction sequence.steps and choice.options must visit every slot and reject holes exactly like explicit undefined/null, including nested conditional branches. Preserve empty-sequence support, empty-choice rejection, ordering, valid nested content and source immutability. No rule semantics, runtime continuation, network, package or UI change.
+Recommended: Array.from traversal before existing recursive validation. Alternative explicit hasOwnProperty slot scan adds duplicated work; skip/filter holes silently changes printed outcomes and is invalid. Broad runtime schema rewrite is unnecessary.
+Authority/privacy: authored invalid sections reject before canonical state/random input changes via existing ENCOUNTER_UNSUPPORTED. Engine remains pure; remaining cards stay private. No new diagnostics or client outcomes are introduced.
+Acceptance/tests: sparse sequence/choice at root/nested; explicit undefined/null and JSON equivalent rejected; dense valid/empty controls unchanged; actual Location draw refuses invalid source before state/RNG use. Existing actual Research/Other World/Location suites and multiplayer/root/browser baselines remain green.
+Self-review: self-approved per explicit delegation; preserve unrelated tree. Parser is initially clean, new tests/docs authored here, no integration patch needed. Vitest3.2.7 installed.
