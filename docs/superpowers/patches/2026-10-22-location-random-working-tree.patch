@@ -1,0 +1,75 @@
+--- a/packages/engine/src/index.ts
++++ b/packages/engine/src/index.ts
+@@ -1,4 +1,5 @@
+ import { validateResearchDrawInventory } from "./research-draw-integrity.js";
++import { withLocationRandomTransaction } from "./location-random.js";
+ import { withResearchRandomTransaction } from "./research-random.js";
+ import { removeResearchEncounterCard, finishResearchEncounterCard, validateResearchState } from "./research-state.js";
+ export { validateResearchState } from "./research-state.js";
+@@ -36,7 +37,7 @@
+ } from "@eldritch/protocol";
+ import { calculateDicePool, countTestSuccesses } from "./skill-tests.js";
+ import { loseResource, recoverResource } from "./resources.js";
+-import { buildArtifactDeck, buildGateStack, buildLocationEncounterDecks, buildMonsterPool, buildMythosDeck, type AncientSetup, type LocationEncounterDeckId, type EncounterDeckId, type ResearchEncounterDeckId, type MythosColor } from "./setup.js";
++import { buildArtifactDeck, buildGateStack, buildLocationEncounterDecks, locationEncounterDeckIds, buildMonsterPool, buildMythosDeck, type AncientSetup, type LocationEncounterDeckId, type EncounterDeckId, type ResearchEncounterDeckId, type MythosColor } from "./setup.js";
+ import { bindResearchInstruction } from "./research-instructions.js";
+ import { encounterItemAssetIds, encounterItemsAreConserved, encounterDamagePreventions, physicalAssetIsUnique, nonCombatEncounterAuraBonus, supportsEncounterAssets } from "./encounter-assets.js";
+ import { resolveStandardCombat, type CombatCheck } from "./combat.js";
+@@ -2366,6 +2367,10 @@
+
+ /** Draws a modeled location encounter and resolves until a choice, test, or defeat. */
+ export function resolveLocationEncounter(state: GameState, playerId: string, deck: LocationEncounterDeckId, content: GameContent, context: EngineContext): CommandResult {
++  return withLocationRandomTransaction(context, () => resolveLocationEncounterImpl(state, playerId, deck, content, context));
++}
++
++function resolveLocationEncounterImpl(state: GameState, playerId: string, deck: LocationEncounterDeckId, content: GameContent, context: EngineContext): CommandResult {
+   if (spellEffectIsUnsupported(state, playerId, "encounter", content) || spellEffectIsUnsupported(state, playerId, "combat", content)) return failure("SPELL_EFFECT_UNSUPPORTED", "Spell encounter effects are not implemented.");
+   if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
+   if (state.phase !== "encounter" || state.activePlayerId !== playerId || state.pendingDecision || state.pendingDefeat || state.activeTest) {
+@@ -2893,6 +2898,11 @@
+   }
+   if (context && command.type === "RESOLVE_DECISION" && state.pendingLocationEncounter?.deck.startsWith("research_")) {
+     return withResearchRandomTransaction(context, () => executeCommandImpl(state, actorPlayerId, command, content, context));
++  }
++  const pendingLocationDeck = state.pendingLocationEncounter?.deck;
++  if (context && command.type === "RESOLVE_DECISION" && pendingLocationDeck
++    && locationEncounterDeckIds.some(deck => deck === pendingLocationDeck)) {
++    return withLocationRandomTransaction(context, () => executeCommandImpl(state, actorPlayerId, command, content, context));
+   }
+   if (command.type === "USE_INVESTIGATOR_ACTION" && state.players.some(player => player.id === actorPlayerId && player.investigatorId === "norman_withers") && context) {
+     return withNormanActionRandomTransaction(context, () => executeCommandImpl(state, actorPlayerId, command, content, context));
+--- a/tests/e2e/norman-acquire-reroll.spec.ts
++++ b/tests/e2e/norman-acquire-reroll.spec.ts
+@@ -16,10 +16,23 @@
+     await host.getByRole('button', { name: /Azathoth.*Doom 15/i }).click()
+     await host.getByRole('button', { name: 'Start game' }).click()
+     const payment = host.getByRole('button', { name: 'Spend 1 Sanity (Norman): reroll die 1', exact: true })
++    let traveled = false
+     // As in the existing multiplayer journey, retry only an unaccepted initial
+     // intent whose observed state version can precede the post-start patch.
+     await expect(async () => {
+       await host.getByRole('button', { name: 'Acquire Assets', exact: true }).click()
++      const monsterError = host.getByRole('alert').filter({ hasText: 'cannot acquire Assets on a space containing a Monster' }).first()
++      await expect(payment.or(monsterError)).toBeVisible()
++      if (await monsterError.isVisible()) {
++        // City 5 is adjacent to Arkham and cannot receive a starting Gate Monster.
++        await host.getByRole('button', { name: 'Close investigator details' }).click()
++        await host.getByRole('button', { name: 'Collapse reserve' }).click()
++        await host.getByRole('button', { name: '5, city, legal destination', exact: true }).click()
++        await host.getByRole('button', { name: 'Confirm travel' }).click()
++        await expect(host.getByText('Your action · 1 remaining', { exact: true })).toBeVisible()
++        traveled = true
++        await host.getByRole('button', { name: 'Acquire Assets', exact: true }).click()
++      }
+       await expect(payment).toBeVisible()
+     }).toPass({ timeout: 15000 })
+     await expect(guest.getByRole('button', { name: /Spend 1 Sanity/ })).toHaveCount(0)
+@@ -30,7 +43,7 @@
+     await expect(payment).toHaveCount(0)
+     await host.getByRole('button', { name: 'Buy nothing', exact: true }).click()
+     await host.getByRole('button', { name: 'Keep all', exact: true }).click()
+-    await expect(host.getByText('Your action · 1 remaining', { exact: true })).toBeVisible()
++    if (!traveled) await expect(host.getByText('Your action · 1 remaining', { exact: true })).toBeVisible()
+     await host.reload()
+     await expect(host.locator('.dock-vitals .sanity')).toHaveText('✦ 6')
+     await expect(payment).toHaveCount(0)

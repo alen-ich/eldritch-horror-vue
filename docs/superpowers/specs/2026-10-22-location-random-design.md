@@ -1,0 +1,11 @@
+# Atomic Location encounter randomness
+
+Research discard/recycling is already implemented (5add7bd/c6535b7). The next physical-lifecycle dependency is Location random-input atomicity: resolveLocationEncounter directly consumes injected input without a checkpoint, and resumed general/regional decisions bypass family transaction wrappers. A partial die/ID exhaustion can throw after consuming retained deterministic input even though the source state is unchanged. Fix this before adding Location discard reshuffles.
+
+Use a pure withLocationRandomTransaction(context,run):CommandResult helper following the existing Research/Other World transaction contract. Wrap the direct exported entry point and only RESOLVE_DECISION for pending decks general, america, europe and asia_australia. Initial command dispatch already calls the direct entry, avoiding double checkpoints. Commit successful input; rollback rejected results and exceptions; sanitize exceptions to generic RANDOM_INPUT_REQUIRED. Contexts without checkpoint remain compatible but cannot roll back an external random source.
+
+Recommended family-specific wrapper preserves unrelated error semantics. A global command wrapper changes other subsystems; input-length preflight cannot predict nested effects and future shuffles. No package, wire field, command or printed rule changes. Server supplies all input; private input/queues/errors never become public. Existing owner/phase/content guards and version semantics remain.
+
+Acceptance: direct and initial command failure restore partial dice; JSON-restored paid reroll restores state/payment/input on later ID failure; successful draw/reroll consumes once; wrong owner consumes nothing; helper failure/exception restores dice, IDs, tokens and shuffle input. Verify general and regional dispatch. Full baseline, multiplayer and sequential browser suites pass. Physical Location discard remains a subsequent iteration, not claimed complete.
+
+Self-reviewed and self-approved under user delegation. Current branch/directory, preserve existing dirty tree; save exact integration delta rather than stage unrelated index.ts prerequisites. Existing Research/Other World code and test patterns are local evidence; no framework API changes.
