@@ -1,3 +1,4 @@
+import { registerOtherWorldStateRoomTests } from "./OtherWorldState.test.js";
 import { registerSpellCastingRoomTests } from "./SpellCasting.test.js";
 import { registerNormanSpellCastingRoomTests } from "./NormanSpellCasting.test.js";
 import assert from "node:assert/strict";
@@ -41,6 +42,7 @@ describe("authoritative game room", () => {
   before(async () => { colyseus = await boot(appConfig); });
   after(async () => colyseus.shutdown());
   beforeEach(async () => colyseus.cleanup());
+  registerOtherWorldStateRoomTests(() => colyseus);
   registerSpellRoomTests(() => colyseus);
   registerSpellCastingRoomTests(() => colyseus);
   registerNormanSpellCastingRoomTests(() => colyseus);

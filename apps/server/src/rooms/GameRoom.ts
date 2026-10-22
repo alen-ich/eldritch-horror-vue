@@ -1,3 +1,4 @@
+import { validateOtherWorldState } from "@eldritch/engine";
 import { privateFeedTheMindRules } from "../private-feed-the-mind.js";
 import { canCastFeedTheMind, validateSpellCastingState, validateInvestigatorAbilityUsage } from "@eldritch/engine";
 import type { GameCommand } from "@eldritch/protocol";
@@ -297,6 +298,11 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
   }
 
   private applyEngineState(engineState: GameState): void {
+    if (this.privateState.deckOrderById["encounter:other_world"] && !engineState.privateState.deckOrderById["encounter:other_world"]) {
+      throw new Error("Other World restoration rejected: missing initialized deck.");
+    }
+    const otherWorldInvalid = validateOtherWorldState(engineState, baseGameContent);
+    if (otherWorldInvalid) throw new Error(`Other World restoration rejected: ${otherWorldInvalid}`);
     if (this.privateState.investigatorAbilityUsage && !engineState.privateState.investigatorAbilityUsage) throw new Error("Investigator ability usage restoration rejected: missing ledger.");
     const usageInvalid = validateInvestigatorAbilityUsage(engineState);
     if (usageInvalid) throw new Error(`Investigator ability restoration rejected: ${usageInvalid}`);

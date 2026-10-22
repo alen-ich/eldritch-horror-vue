@@ -1,3 +1,5 @@
+import { validateOtherWorldState } from "./other-world-state.js";
+export { validateOtherWorldState } from "./other-world-state.js";
 import { beginSpellCast, finishSpellCastTest, resolveSpellCastDecision, validateSpellCastingState, withSpellRandomTransaction } from "./spell-casting.js";
 import { validateSpellTestApplicability } from "./spell-test-assets.js";
 import { grantStartingSpells, validateStartingSpells, withStartingSpellRandomTransaction } from "./starting-spells.js";
@@ -2245,6 +2247,7 @@ function otherWorldPossessionsAreSupported(state: GameState, player: EnginePlaye
 }
 
 function otherWorldBindingIsValid(state: GameState, content: GameContent): boolean {
+  if (validateOtherWorldState(state, content)) return false;
   const pending = state.pendingLocationEncounter;
   if (!pending || pending.deck !== "other_world" || !pending.gateId || !pending.gateLocationId) return false;
   const player = state.players.find(player => player.id === pending.playerId);
@@ -2262,6 +2265,7 @@ function otherWorldBindingIsValid(state: GameState, content: GameContent): boole
 
 /** Draw the actual private top card, binding every continuation to a physical Gate. */
 export function resolveOtherWorldEncounter(state: GameState, playerId: string, gateId: string, content: GameContent, context: EngineContext): CommandResult {
+  if (validateOtherWorldState(state, content)) return failure("ENCOUNTER_CONTENT_MISSING", "Other World state is inconsistent.");
   if (spellEffectIsUnsupported(state, playerId, "encounter", content)) return failure("SPELL_EFFECT_UNSUPPORTED", "Spell encounter effects are not implemented.");
   if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
   if (!legalLocationEncounterDecks(state, playerId, content).length || state.pendingLocationEncounter) return failure("WRONG_PHASE", "This investigator cannot resolve an Other World encounter now.");
