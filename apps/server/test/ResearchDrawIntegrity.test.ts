@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { registerResearchOrphanRevealTests } from "./ResearchOrphanReveal.test.js";
 import type { ColyseusTestServer } from "@colyseus/testing";
 import type { GameState } from "@eldritch/engine";
 import { commandErrorMessageType, commandMessageType, type GameCommand } from "@eldritch/protocol";
@@ -6,6 +7,7 @@ import type appConfig from "../src/app.config.js";
 import { GameRoom } from "../src/rooms/GameRoom.js";
 
 export function registerResearchDrawIntegrityTests(getServer: () => ColyseusTestServer<typeof appConfig>): void {
+registerResearchOrphanRevealTests(getServer);
 describe("Research draw physical integrity over the network", () => {
   it("rejects inconsistent restored Research before changing either client's state", async () => {
     const server = getServer(), room = await server.createRoom<GameRoom>("game", {});

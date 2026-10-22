@@ -47,7 +47,30 @@ describe("Research continuation binding", () => {
   });
   it("leaves unrelated encounter types unchanged", () => {
     const state = pending(); state.pendingLocationEncounter!.deck = "other_world";
+    state.currentLocationEncounterCardId = state.pendingLocationEncounter!.cardId = "encounter_other_world_01";
     expect(validateResearchContinuationState(state, content)).toBeUndefined();
+    state.pendingLocationEncounter = undefined;
+    state.currentLocationEncounterCardId = undefined;
+    expect(validateResearchContinuationState(state, content)).toBeUndefined();
+  });
+
+  it.each(["absent", "generic"])("rejects an orphan Research reveal with %s continuation before command dispatch", kind => {
+    const state = pending();
+    if (kind === "absent") state.pendingLocationEncounter = undefined;
+    else state.pendingLocationEncounter!.deck = "general";
+    const before = structuredClone(state), context = createDeterministicEngineContext({ dice: [6] });
+    expect(validateResearchContinuationState(state, content)).toBeTypeOf("string");
+    const result = executeCommand(state, "host", { type: "END_TURN" }, content, context);
+    expect(result).toMatchObject({ ok: false, error: { code: "ENCOUNTER_CONTENT_MISSING" } });
+    expect(JSON.stringify(result)).not.toMatch(/encounter_research_/);
+    expect(state).toEqual(before);
+    expect(context.rollDie()).toBe(6);
+  });
+
+  it("accepts a completed last Research card without a current reveal", () => {
+    const state = pending();
+    state.lastLocationEncounterCardId = state.currentLocationEncounterCardId;
+    state.currentLocationEncounterCardId = undefined;
     state.pendingLocationEncounter = undefined;
     expect(validateResearchContinuationState(state, content)).toBeUndefined();
   });
