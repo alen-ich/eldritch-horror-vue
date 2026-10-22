@@ -80,8 +80,11 @@ export function buildMythosDeck(
   stages: AncientSetup["mythosDeck"],
   shuffle: <T>(items: readonly T[]) => T[],
 ): string[] {
-  if (stages.length !== 3 || new Set(cards.map(card => card.id)).size !== cards.length) throw new Error("Invalid Mythos setup catalog.");
   const colors = ["green", "yellow", "blue"] as const;
+  if (!Array.isArray(cards) || Array.from(cards).some(card => !card || typeof card.id !== "string" || !card.id.length || !colors.includes(card.color))
+    || new Set(cards.map(card => card.id)).size !== cards.length
+    || !Array.isArray(stages) || stages.length !== 3
+    || Array.from(stages).some(stage => !stage || typeof stage !== "object" || Array.isArray(stage))) throw new Error("Invalid Mythos setup catalog.");
   for (const color of colors) {
     const counts = stages.map(stage => stage[color]);
     if (counts.some(count => !Number.isInteger(count) || count < 0)
@@ -89,6 +92,6 @@ export function buildMythosDeck(
       throw new Error(`Insufficient or invalid ${color} Mythos cards.`);
     }
   }
-  const pools = Object.fromEntries(colors.map(color => [color, shuffle(cards.filter(card => card.color === color).map(card => card.id))])) as Record<MythosColor, string[]>;
-  return stages.flatMap(stage => shuffle(colors.flatMap(color => pools[color].splice(0, stage[color]))));
+  const pools = Object.fromEntries(colors.map(color => [color, shufflePhysicalIds(cards.filter(card => card.color === color).map(card => card.id), shuffle)])) as Record<MythosColor, string[]>;
+  return stages.flatMap(stage => shufflePhysicalIds(colors.flatMap(color => pools[color].splice(0, stage[color])), shuffle));
 }
