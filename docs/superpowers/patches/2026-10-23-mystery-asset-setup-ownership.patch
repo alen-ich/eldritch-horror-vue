@@ -1,0 +1,14 @@
+diff --git a/packages/engine/src/index.ts b/packages/engine/src/index.ts
+index 20fa7d9..0e0a88e 100644
+--- a/packages/engine/src/index.ts
++++ b/packages/engine/src/index.ts
+@@ -3949,3 +3949,3 @@ function executeCommandImpl(
+     if (!context) return failure("RANDOM_INPUT_REQUIRED", "Starting the game requires deterministic random input.");
+-    const shuffledMysteries = context.shuffle(mysteryIds);
++    const shuffledMysteries = [...context.shuffle([...mysteryIds])];
+     const activeMysteryId = shuffledMysteries.shift()!;
+@@ -3971,3 +3971,3 @@ function executeCommandImpl(
+     next.privateState.deckOrderById.mysteries = shuffledMysteries;
+-    const shuffledAssets = context.shuffle(availableAssetIds);
++    const shuffledAssets = [...context.shuffle(availableAssetIds)];
+     next.reserveAssetIds = shuffledAssets.splice(0, 4);
