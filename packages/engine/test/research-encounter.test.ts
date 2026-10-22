@@ -83,7 +83,8 @@ describe("internal scan-backed Research encounters", () => {
     expect(result.state.privateState.deckOrderById.artifacts).toEqual([]);
     expect(result.state.boardClues?.map(clue => clue.id)).toEqual(["other"]);
     expect(result.state.activePlayerId).toBe("guest");
-    expect(result.state.privateState.deckOrderById["encounter:research_azathoth"]).toEqual(["encounter_research_azathoth_08", "encounter_research_azathoth_05"]);
+    expect(result.state.privateState.deckOrderById["encounter:research_azathoth"]).toEqual(["encounter_research_azathoth_08"]);
+    expect(result.state.researchDiscardIds).toEqual(["encounter_research_azathoth_05"]);
     expect(before).toEqual(snapshot);
   });
   it("allows refusal and rejects another investigator's acceptance", () => {
@@ -219,13 +220,14 @@ describe("internal scan-backed Research encounters", () => {
     expect(result.events).toContainEqual({ type: "OMEN_ADVANCED", position: 0, symbol: "comet", doomAdvance: 3 });
     expect(result.state.boardClues).toHaveLength(2);
   });
-  it("ends the game and cycles the Research card once when Omen advancement awakens Azathoth", () => {
+  it("ends the game and discards the Research card once when Omen advancement awakens Azathoth", () => {
     const before = state(6); before.omen = 3; before.doom = 1;
     const result = resolveResearchEncounter(before, "host", "chosen", content, rng([1, 1]));
     if (!result.ok) throw new Error(result.error.message);
     expect(result.state.gameResult).toBe("investigators_lose");
     expect(result.state.pendingLocationEncounter).toBeUndefined();
-    expect(result.state.privateState.deckOrderById["encounter:research_azathoth"]).toEqual(["encounter_research_azathoth_08", "encounter_research_azathoth_06"]);
+    expect(result.state.privateState.deckOrderById["encounter:research_azathoth"]).toEqual(["encounter_research_azathoth_08"]);
+    expect(result.state.researchDiscardIds).toEqual(["encounter_research_azathoth_06"]);
     expect(result.state.activePlayerId).toBe("host");
   });
   it("rejects missing Omen data atomically instead of throwing or consuming the deck", () => {
@@ -244,14 +246,15 @@ describe("internal scan-backed Research encounters", () => {
     expect(supported).toContain("5:city");
     expect(supported).toContain("5:sea");
   });
-  it("gains the exact encountered Clue plus an additional supply Clue and cycles once", () => {
+  it("gains the exact encountered Clue plus an additional supply Clue and discards once", () => {
     const before = state();
     const result = resolveResearchEncounter(before, "host", "chosen", content, rng([6]));
     if (!result.ok) throw new Error(result.error.message);
     expect(result.state.players[0]?.clues).toBe(2);
     expect(result.state.privateState.tokenPoolById["held_clues:host"]).toEqual(["clue_arkham", "clue_rome"]);
     expect(result.state.boardClues).toEqual([{ id: "other", locationId: "arkham" }]);
-    expect(result.state.privateState.deckOrderById["encounter:research_azathoth"]).toEqual(["encounter_research_azathoth_08", "encounter_research_azathoth_01"]);
+    expect(result.state.privateState.deckOrderById["encounter:research_azathoth"]).toEqual(["encounter_research_azathoth_08"]);
+    expect(result.state.researchDiscardIds).toEqual(["encounter_research_azathoth_01"]);
     expect(result.state.activePlayerId).toBe("guest");
     expect(result.state.stateVersion).toBe(3);
     expect(result.events).toContainEqual({ type: "RESEARCH_ENCOUNTER_RESOLVED", playerId: "host", cardId: "encounter_research_azathoth_01", deck: "research_azathoth", dice: [6], successes: 1 });

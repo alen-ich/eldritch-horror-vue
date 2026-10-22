@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { registerResearchDiscardTests } from "./ResearchDiscard.test.js";
 import { registerResearchOrphanRevealTests } from "./ResearchOrphanReveal.test.js";
 import type { ColyseusTestServer } from "@colyseus/testing";
 import type { GameState } from "@eldritch/engine";
@@ -7,6 +8,7 @@ import type appConfig from "../src/app.config.js";
 import { GameRoom } from "../src/rooms/GameRoom.js";
 
 export function registerResearchDrawIntegrityTests(getServer: () => ColyseusTestServer<typeof appConfig>): void {
+registerResearchDiscardTests(getServer);
 registerResearchOrphanRevealTests(getServer);
 describe("Research draw physical integrity over the network", () => {
   it("rejects inconsistent restored Research before changing either client's state", async () => {
@@ -56,9 +58,11 @@ describe("Research draw physical integrity over the network", () => {
     const state = internal.toEngineState(), marker = state.boardClues![0]!;
     state.phase = "encounter"; state.activePlayerId = state.players[0]!.id;
     state.players[0]!.locationId = marker.locationId; state.monsters = []; state.monsterLocationIds = [];
-    const order = state.privateState.deckOrderById["encounter:research_azathoth"]!;
-    order[7] = order[0]!;
     internal.applyEngineState(state);
+    // Simulate server-private corruption after the restoration boundary accepted a valid snapshot.
+    const live = room as unknown as { privateState: GameState["privateState"] };
+    const order = live.privateState.deckOrderById["encounter:research_azathoth"]!;
+    order[7] = order[0]!;
     const before = structuredClone(internal.toEngineState()), error = host.waitForMessage(commandErrorMessageType);
     await send({ type: "RESOLVE_RESEARCH_ENCOUNTER", clueId: marker.id });
     const rejected = await error;

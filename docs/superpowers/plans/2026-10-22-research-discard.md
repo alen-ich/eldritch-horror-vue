@@ -1,0 +1,43 @@
+# Research discard Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: superpowers:executing-plans, inline current branch as requested.
+
+**Goal:** Conserve Research cards across private undrawn, active and faceup discard zones.
+**Architecture:** Pure physical helpers integrate with existing interpreter; server validates restoration and clients display readonly public discard data.
+**Tech Stack:** existing TypeScript/Vitest/Mocha; installed Colyseus0.18.5; existing Schema JSON and Vue ref patterns, no new dependencies.
+**Spec:** docs/superpowers/specs/2026-10-22-research-discard-design.md
+
+## Constraints and review focus
+Server authority and private decks remain unchanged. Current branch, preserve initial dirty files. Review last-card recycle excluding active card, legacy partial fixtures, defeat cleanup, malformed zones and restored continuations. Task1 tests all five. No new command or Location lifecycle rewrite.
+
+## Task1: Physical engine lifecycle (RED→GREEN)
+Modify packages/engine/src/index.ts, research-draw-integrity.ts, research-continuation-integrity.ts; create research-state.ts and test/research-discard.test.ts. GameState.researchDiscardIds?:string[]. Export helpers through direct module imports in tests. removeResearchEncounterCard(state,content,context):string|undefined and finishResearchEncounterCard(state,content,context):string|undefined mutate only caller-owned clones. validateResearchDrawInventory checks all zones; configured expected8, legacy selected-prefix unique subset. validateResearchState permits absent inactive inventory and delegates active inventory validation. Continuation accepts true removed flag and validates top only for legacy unremoved card.
+- [x] Write tests: removed before pending test; finish one discard; JSON resume; prior discard recycle; depleted shuffle checkpoints/source unchanged; malformed discard/false flag/duplicates; valid projection copies. Run direct Vitest, expect old bottom-cycle/absent discard failures.
+- [x] Implement helpers, add removal at continueLocationEncounter entry, Research-specific finish before clearing pending, validate final zones, initialize discard at setup, copy in projectPublicState. Rerun focused tests and full engine; update only old bottom-cycle expectations exposed by actual failures.
+
+## Task2: Room/client boundary (RED→GREEN)
+Modify apps/server/src/rooms/GameRoom.ts and schema/GameRoomState.ts; apps/web/app/composables/useGameRoom.ts. Add JSON researchDiscardIds field/default, roundtrip, validator before mutation and initialized-deck stripping guard. Add readonly/reset ref by existing Other World pattern. Modify clean apps/server/test/ResearchDrawIntegrity.test.ts to register new ResearchDiscard.test.ts using shared server. Add two-client projection/restoration/corruption assertions; update synthetic top-bound fixtures only as failures require. Extend snapshot isolation test for reset. Run focused server tests RED before wiring and GREEN after. No UI controls or new routes.
+
+## Task3: Review and final checks
+One clean-context read-only independent reviewer; material findings RED→GREEN. Run pnpm lint/typecheck/test/build and sequential default/Norman/Spell Playwright. Bundled pnpm env from prior iterations; localhost tests require permitted unrestricted execution. Update docs/architecture/research-discard.md and this ledger. git diff --check and scoped commit preserving baseline modifications. For dirty files create exact baseline-to-current patches if needed; do not stage unrelated foundations.
+
+## Self-review and execution ledger
+Self-approved under user delegation. Baseline copies saved in .superpowers/research-discard/baseline and initial Git inventory recorded. Interfaces aligned; no new product packages. Scope fixed to selected Research physical lifecycle.
+
+- Task1 RED: after supplying complete deterministic IDs, all11 new cases failed on missing lifecycle/validation/projection isolation. GREEN11/11; full engine1426/1426 after updating three Azathoth and Cthulhu/Asset bottom-cycle expectations. Cthulhu card1 fixture had duplicate physical card1; fixed its second physical ID to card2.
+- Ruling: accept disjoint prior discards with a legacy top-bound continuation, provided top and complete physical conservation validate. This is also the transient new-draw state before removal, so rejecting it blocks correct last-card recycling. Cost if wrong: stricter legacy migration policy would need a separate transient-draw API; no physical duplication accepted.
+- Test execution deviation: running Vitest from repository root accidentally matched archival .superpowers copies (18 suite import failures). Repeated from packages/engine, excluding archival trees by working directory, yielding full package suite green. No product workaround.
+- Task2 RED: real room dropped researchDiscardIds on roundtrip. GREEN new two-peer restoration test passes including reconnect. Six full-server failures were old bottom-cycle expectations plus the corruption test now rejected earlier at restoration; updated expectations and injected deliberate private corruption after a valid restore to retain command-boundary coverage. No authority rule relaxed.
+- Added complete configured8-card deterministic recycle/conservation test and real-composable discard reset test. Pending final full checks and review.
+- Task1/2 complete: final root test exit0,8/8 tasks; engine1427, content127, protocol21, server300. The two additional server cases are the room physical lifecycle projection/reconnect test and composable reset.
+- One implementation script used Windows locale-default Python decoding and altered three test files' non-ASCII strings, causing three unrelated assertion failures. Reversed that encoding transformation, switched all patch generation to explicit UTF-8, and verified the full suite green. No unrelated source text remains changed by this error.
+- Independent clean-context reviewer found no Critical/Important/Minor findings;142/142 focused engine tests pass independently. Reviewer inspected physical lifecycle, legacy migration, defeat cleanup, malformed zones/shuffles and privacy, and reverse-checked the scoped patch. Unrelated prerequisites/full subsystem certification and final verification remain outside that review, explicitly not certified.
+- Ruling: preserve six initially dirty/untracked source/test files through exact already-applied baseline-to-current patches instead of committing their unrelated foundation. Reverse applicability check exit0. Cost if wrong: the commit requires existing working-tree prerequisites and is not a standalone clean-checkout implementation. Current branch/master remains in place, no push/merge/deploy.
+- Lint and typecheck exit0,5/5 tasks each. Build first attempt failed with sandbox EPERM mkdir in generated apps/web/.output/server/node_modules/vue-bundle-renderer; unrestricted retry pending. Browser checks pending.
+- Build permitted unrestricted retry exit0,5/5. Default browser first run6/7, Personal Assistant timed out in its existing random-start Monster/Travel fallback; isolated retry1/1 passed without code changes. This is a recorded intermittent browser result, not silently discarded. Full browser rerun and dedicated Norman/Spell pending.
+- Full browser rerun again6/7. Trace inspection established the exact cause: Reserve market intercepted pointer events on City1 in the Personal Assistant Monster fallback. This refines the initial intermittent diagnosis; an isolated pass did not prove this path correct.
+- Ruling: add one existing-UI action to collapse Reserve before selecting City1 in that test fallback. RED twice observed in the real browser trace; no product or game rule changed. Cost if wrong: the test depends on the existing Collapse reserve accessible control. Its exact delta is added to the preserved dirty-source patch (now seven files). GREEN pending full browser result.
+
+- Final default Playwright after Reserve fallback correction:7/7 exit0. The targeted pre-fix retry passed1/1; two prior full6/7 failures remain documented above. No skipped tests. Dedicated Norman/Spell checks pending.
+
+- Task3 complete: final default Playwright7/7, Norman2/2, Spell2/2, all exit0. Root lint/typecheck/test/build green; build and localhost tests required permitted unrestricted execution. Existing Turbo output-declaration, Nuxt devtools and color warnings remain. git diff --check and reverse patch check exit0. Initial dirty-path inventory remains intact; no unrelated path disappeared. Finishing decision: scoped local save, keep current branch/directory, no merge/push/deploy.

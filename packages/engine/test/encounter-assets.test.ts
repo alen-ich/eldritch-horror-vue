@@ -416,7 +416,8 @@ describe("scoped non-combat encounter Assets", () => {
     expect(result.state.assetDiscardIds).toEqual(["asset_king_james_bible", "asset_38_revolver"]);
     expect(result.state.reserveAssetIds).toEqual(before.reserveAssetIds); expect(result.state.privateState.deckOrderById.assets).toEqual(before.privateState.deckOrderById.assets);
     expect(result.state.privateState.tokenPoolById).toEqual(before.privateState.tokenPoolById); expect(result.state.boardClues).toEqual(before.boardClues);
-    expect(result.state.privateState.deckOrderById["encounter:research_cthulhu"]).toEqual(["encounter_research_cthulhu_02", "encounter_research_cthulhu_03"]);
+    expect(result.state.privateState.deckOrderById["encounter:research_cthulhu"]).toEqual(["encounter_research_cthulhu_02"]);
+    expect(result.state.researchDiscardIds).toEqual(["encounter_research_cthulhu_03"]);
     expect(result.events).toContainEqual({ type: "ASSET_DISCARDED", playerId: "host", assetId: "asset_38_revolver", reason: "encounter" });
     expect(result.state.activePlayerId).toBe("guest");
   });
@@ -438,7 +439,8 @@ describe("scoped non-combat encounter Assets", () => {
     const restored: GameState = JSON.parse(JSON.stringify(first.state));
     expect(restored.pendingDecision?.optionIds).toEqual(["asset_38_revolver", "asset_arcane_manuscripts"]);
     expect(restored.boardClues).toEqual(before.boardClues);
-    expect(restored.privateState.deckOrderById["encounter:research_cthulhu"]).toEqual(before.privateState.deckOrderById["encounter:research_cthulhu"]);
+    expect(restored.privateState.deckOrderById["encounter:research_cthulhu"]).toEqual(["encounter_research_cthulhu_02"]);
+    expect(restored.pendingLocationEncounter).toMatchObject({ cardId: "encounter_research_cthulhu_06", cardRemovedFromDeck: true });
     expect(executeCommand(restored, "guest", { type: "RESOLVE_DECISION", decisionId: restored.pendingDecision!.id, selectedOptionIds: ["asset_38_revolver"] }, discardContent, context())).toMatchObject({ ok: false, error: { code: "NOT_DECISION_OWNER" } });
     expect(chooseDiscard(restored, "asset_45_automatic").ok).toBe(false);
     const second = chooseDiscard(restored, "asset_arcane_manuscripts"); if (!second.ok) throw new Error(second.error.message);

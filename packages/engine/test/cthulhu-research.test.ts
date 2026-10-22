@@ -18,7 +18,7 @@ function state(number: number, section = "city"): GameState {
   before.phase = "encounter"; before.activePlayerId = before.leadInvestigatorId = "host"; before.ancientOneId = "cthulhu"; before.doom = 12;
   before.players[0] = { ...before.players[0]!, investigatorId: "akachi_onyele", locationId, health: 5, sanity: 7, maxHealth: 5, maxSanity: 7 };
   before.boardClues = [{ id: "chosen", locationId }, { id: "other", locationId }];
-  before.privateState.deckOrderById["encounter:research_cthulhu"] = [`encounter_research_cthulhu_0${number}`, "encounter_research_cthulhu_01"];
+  before.privateState.deckOrderById["encounter:research_cthulhu"] = [`encounter_research_cthulhu_0${number}`, number === 1 ? "encounter_research_cthulhu_02" : "encounter_research_cthulhu_01"];
   before.privateState.tokenPoolById = { "board_clue:chosen": ["clue_arkham"], "board_clue:other": ["clue_london"], "held_clues:host": [], clues: ["clue_london"] };
   for (const condition of baseGameConditions) (before.privateState.tokenPoolById[`condition:${condition.kind}`] ??= []).push(condition.id);
   return before;
@@ -37,7 +37,7 @@ describe("Cthulhu scan-backed Research", () => {
       }
     }
   });
-  it.each(supported)("runs both branches of card $number $section and cycles once", ({ number, section }) => {
+  it.each(supported)("runs both branches of card $number $section and discards once", ({ number, section }) => {
     for (const die of [1, 6]) {
       const before = state(number, section); const snapshot = structuredClone(before);
       const result = resolveResearchEncounter(before, "host", "chosen", content, rng(die));
@@ -46,7 +46,8 @@ describe("Cthulhu scan-backed Research", () => {
       const extra = number === 2 || number === 3 && section === "city" || number === 5 && section === "city" || number === 7;
       expect(result.state.players[0]?.clues).toBe(die === 6 ? extra ? 2 : 1 : 0);
       if (die === 6) expect(result.state.boardClues?.map(clue => clue.id)).toEqual(["other"]);
-      expect(result.state.privateState.deckOrderById["encounter:research_cthulhu"]).toEqual(["encounter_research_cthulhu_01", `encounter_research_cthulhu_0${number}`]);
+      expect(result.state.privateState.deckOrderById["encounter:research_cthulhu"]).toEqual([number === 1 ? "encounter_research_cthulhu_02" : "encounter_research_cthulhu_01"]);
+      expect(result.state.researchDiscardIds).toEqual([`encounter_research_cthulhu_0${number}`]);
       expect(before).toEqual(snapshot);
     }
   });
@@ -117,7 +118,8 @@ describe("Cthulhu scan-backed Research", () => {
       expect(result.events).toContainEqual({ type: "NAMED_MONSTER_AMBUSH_RESOLVED", playerId: "host", monsterId: "monster_star_spawn", successes: 5, healthLost: 0, defeated: true });
       expect(result.events.some(event => event.type === "MONSTER_SPAWNED" || event.type === "MONSTER_DEFEATED")).toBe(false);
       expect(result.state.activePlayerId).toBe("guest");
-      expect(result.state.privateState.deckOrderById["encounter:research_cthulhu"]).toEqual(["encounter_research_cthulhu_01", "encounter_research_cthulhu_05"]);
+      expect(result.state.privateState.deckOrderById["encounter:research_cthulhu"]).toEqual(["encounter_research_cthulhu_01"]);
+    expect(result.state.researchDiscardIds).toEqual(["encounter_research_cthulhu_05"]);
       expect(before).toEqual(snapshot);
     }
   });
@@ -154,7 +156,8 @@ describe("Cthulhu scan-backed Research", () => {
       expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.doom).toBe(11);
       expect(result.events.some(event => event.type === "DOOM_RETREATED")).toBe(false);
       expect(result.state.boardClues).toEqual(before.boardClues);
-      expect(result.state.privateState.deckOrderById["encounter:research_cthulhu"]).toEqual(["encounter_research_cthulhu_01", "encounter_research_cthulhu_05"]);
+      expect(result.state.privateState.deckOrderById["encounter:research_cthulhu"]).toEqual(["encounter_research_cthulhu_01"]);
+    expect(result.state.researchDiscardIds).toEqual(["encounter_research_cthulhu_05"]);
     }
   });
   it("preflights Star Spawn statistics and possession bonuses before even successful Research", () => {
@@ -198,7 +201,8 @@ describe("Cthulhu scan-backed Research", () => {
     expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.players[0]?.clues).toBe(0);
     expect(result.state.players[0]?.conditionIds ?? []).toEqual([]);
     expect(result.state.currentLocationEncounterCardId).toBeUndefined();
-    expect(result.state.privateState.deckOrderById["encounter:research_cthulhu"]).toEqual(["encounter_research_cthulhu_01", "encounter_research_cthulhu_07"]);
+    expect(result.state.privateState.deckOrderById["encounter:research_cthulhu"]).toEqual(["encounter_research_cthulhu_01"]);
+    expect(result.state.researchDiscardIds).toEqual(["encounter_research_cthulhu_07"]);
     expect(result.events.some(event => event.type === "NAMED_MONSTER_AMBUSH_RESOLVED")).toBe(false);
   });
   it("stops at Health defeat before the printed non-defeat effect", () => {

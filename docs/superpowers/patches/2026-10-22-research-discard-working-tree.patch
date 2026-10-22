@@ -1,0 +1,223 @@
+--- a/packages/engine/src/index.ts
++++ b/packages/engine/src/index.ts
+@@ -1,5 +1,7 @@
+ import { validateResearchDrawInventory } from "./research-draw-integrity.js";
+ import { withResearchRandomTransaction } from "./research-random.js";
++import { removeResearchEncounterCard, finishResearchEncounterCard, validateResearchState } from "./research-state.js";
++export { validateResearchState } from "./research-state.js";
+ import { validateResearchContinuationState } from "./research-continuation-integrity.js";
+ export { validateResearchContinuationState } from "./research-continuation-integrity.js";
+ import { removeOtherWorldEncounterCard, validateOtherWorldState } from "./other-world-state.js";
+@@ -183,6 +185,7 @@
+ export interface GameState {
+   expeditionDiscardIds?: string[];
+   otherWorldDiscardIds?: string[];
++  researchDiscardIds?: string[];
+   activeExpeditionLocationId?: import("@eldritch/protocol").ExpeditionLocationId;
+   /** Private continuation: every Rest trigger resolves at most once before one action is charged. */
+   pendingRest?: { playerId: string; remainingAssetIds: string[]; testingAssetId?: string };
+@@ -414,6 +417,7 @@
+   return {
+     ...publicState,
+     otherWorldDiscardIds: [...(publicState.otherWorldDiscardIds ?? [])],
++    researchDiscardIds: [...(publicState.researchDiscardIds ?? [])],
+     expeditionDiscardIds: [...(publicState.expeditionDiscardIds ?? [])],
+     spellSupplyTopId: state.privateState.spells?.deck[0] ? publicSpellId(state.privateState.spells.deck[0]) : undefined,
+     defeatedInvestigators: publicState.defeatedInvestigators?.map(sheet => ({ ...structuredClone(sheet), spellIds: (state.privateState.spells?.heldByDefeatedInvestigator[sheet.investigatorId] ?? []).map(publicSpellId) })),
+@@ -2033,6 +2037,8 @@
+   let next = structuredClone(state);
+   const invalidDraw = removeOtherWorldEncounterCard(next, content, context);
+   if (invalidDraw) return failure("ENCOUNTER_CONTENT_MISSING", invalidDraw);
++  const invalidResearchDraw = removeResearchEncounterCard(next, content, context);
++  if (invalidResearchDraw) return failure("ENCOUNTER_CONTENT_MISSING", invalidResearchDraw);
+   while (next.pendingLocationEncounter?.queue.length) {
+     const pending = next.pendingLocationEncounter;
+     const node = pending.queue[0]!;
+@@ -2217,6 +2223,9 @@
+       next.privateState.deckOrderById["encounter:other_world"] = context.shuffle(next.otherWorldDiscardIds);
+       next.otherWorldDiscardIds = [];
+     }
++  } else if (pending.deck.startsWith("research_")) {
++    const invalidResearchFinish = finishResearchEncounterCard(next, content, context);
++    if (invalidResearchFinish) return failure("ENCOUNTER_CONTENT_MISSING", invalidResearchFinish);
+   } else {
+     if (order?.[0] !== pending.cardId) return failure("ENCOUNTER_DECK_MISSING", "The active encounter is no longer on top of its deck.");
+     next.privateState.deckOrderById[`encounter:${pending.deck}`] = [...order.slice(1), pending.cardId];
+@@ -2224,6 +2233,7 @@
+   next.lastLocationEncounterCardId = pending.cardId;
+   next.currentLocationEncounterCardId = undefined;
+   next.pendingLocationEncounter = undefined;
++  if (pending.deck.startsWith("research_") && validateResearchState(next, content)) return failure("ENCOUNTER_CONTENT_MISSING", "Research inventory is inconsistent after discard.");
+   if (pending.deck === "other_world" && validateOtherWorldState(next, content)) return failure("ENCOUNTER_CONTENT_MISSING", "Other World inventory is inconsistent after discard.");
+   const resolved: GameEvent = pending.deck === "other_world"
+     ? { type: "OTHER_WORLD_ENCOUNTER_RESOLVED", playerId: pending.playerId, cardId: pending.cardId, gateId: pending.gateId!, dice: pending.dice, successes: pending.successes }
+@@ -3969,6 +3979,7 @@
+       for (const [deck, cards] of Object.entries(decks)) next.privateState.deckOrderById[`encounter:${deck}`] = cards;
+     }
+     if (content.researchEncounterSetup !== undefined && next.ancientOneId) {
++      next.researchDiscardIds = [];
+       const deck: ResearchEncounterDeckId = `research_${next.ancientOneId}`;
+       next.privateState.deckOrderById[`encounter:${deck}`] = initializeResearchDeck(content.researchEncounterSetup, deck, context.shuffle);
+     } else if (content.researchEncounters?.length && next.ancientOneId) {
+--- a/apps/server/src/rooms/GameRoom.ts
++++ b/apps/server/src/rooms/GameRoom.ts
+@@ -1,5 +1,5 @@
+ import { validateOtherWorldState } from "@eldritch/engine";
+-import { validateResearchContinuationState } from "@eldritch/engine";
++import { validateResearchContinuationState, validateResearchState } from "@eldritch/engine";
+ import { privateFeedTheMindRules } from "../private-feed-the-mind.js";
+ import { validateExpeditionState } from "@eldritch/engine";
+ import { baseGameExpeditionSetup } from "@eldritch/content";
+@@ -239,6 +239,7 @@
+       activeExpeditionLocationId: (this.state.activeExpeditionLocationId || undefined) as GameState["activeExpeditionLocationId"],
+       expeditionDiscardIds: JSON.parse(this.state.expeditionDiscardIds) as string[],
+       otherWorldDiscardIds: JSON.parse(this.state.otherWorldDiscardIds) as string[],
++      researchDiscardIds: JSON.parse(this.state.researchDiscardIds) as string[],
+       ...JSON.parse(this.state.investigatorLifecycle) as Pick<GameState, "pendingDefeat" | "pendingMythosDamage" | "pendingFromBadToWorse" | "pendingHeatWave" | "pendingTideOfDespair" | "pendingUnexpectedBetrayal" | "defeatedInvestigators" | "replacementWindow" | "awakened">,
+       doom: this.state.doom,
+       omen: this.state.omen,
+@@ -310,6 +311,10 @@
+   }
+ 
+   private applyEngineState(engineState: GameState): void {
++    if (Object.keys(this.privateState.deckOrderById).some(key => key.startsWith("encounter:research_")
++      && !engineState.privateState.deckOrderById[key])) throw new Error("Research restoration rejected: missing initialized deck.");
++    const physicalResearchInvalid = validateResearchState(engineState, baseGameContent);
++    if (physicalResearchInvalid) throw new Error(`Research restoration rejected: ${physicalResearchInvalid}`);
+     const researchInvalid = validateResearchContinuationState(engineState, baseGameContent);
+     if (researchInvalid) throw new Error(`Research restoration rejected: ${researchInvalid}`);
+     if (this.privateState.deckOrderById["encounter:other_world"] && !engineState.privateState.deckOrderById["encounter:other_world"]) {
+@@ -342,6 +347,7 @@
+     this.state.activeExpeditionLocationId = engineState.activeExpeditionLocationId ?? "";
+     this.state.expeditionDiscardIds = JSON.stringify(engineState.expeditionDiscardIds ?? []);
+     this.state.otherWorldDiscardIds = JSON.stringify(engineState.otherWorldDiscardIds ?? []);
++    this.state.researchDiscardIds = JSON.stringify(engineState.researchDiscardIds ?? []);
+     this.state.omen = engineState.omen ?? 0;
+     this.state.greenOmenTokens = engineState.greenOmenTokens ?? 0;
+     this.state.tradeOffer = engineState.tradeOffer ? JSON.stringify(engineState.tradeOffer) : "";
+--- a/apps/server/src/rooms/schema/GameRoomState.ts
++++ b/apps/server/src/rooms/schema/GameRoomState.ts
+@@ -63,6 +63,7 @@
+   activeExpeditionLocationId: t.string().default(""),
+   expeditionDiscardIds: t.string().default("[]"),
+   otherWorldDiscardIds: t.string().default("[]"),
++  researchDiscardIds: t.string().default("[]"),
+   spellSupplyTopId: t.string().default(""),
+   investigatorLifecycle: t.string().default("{}"),
+   doom: t.uint8().default(0),
+--- a/apps/web/app/composables/useGameRoom.ts
++++ b/apps/web/app/composables/useGameRoom.ts
+@@ -51,6 +51,7 @@
+   activeExpeditionLocationId?: string
+   expeditionDiscardIds?: string
+   otherWorldDiscardIds?: string
++  researchDiscardIds?: string
+   spellSupplyTopId?: string
+   activeGateIds?: string
+   monsters?: string
+@@ -116,6 +117,7 @@
+ const activeExpeditionLocationId = ref('')
+ const expeditionDiscardIds = ref<string[]>([])
+ const otherWorldDiscardIds = ref<string[]>([])
++const researchDiscardIds = ref<string[]>([])
+ const ancientOneId = ref('')
+ const currentMythosCardId = ref('')
+ const currentMythosIconIndex = ref(0)
+@@ -160,6 +162,7 @@
+     activeExpeditionLocationId.value = state.activeExpeditionLocationId ?? ''
+     expeditionDiscardIds.value = JSON.parse(state.expeditionDiscardIds ?? '[]') as string[]
+     otherWorldDiscardIds.value = JSON.parse(state.otherWorldDiscardIds ?? '[]') as string[]
++    researchDiscardIds.value = JSON.parse(state.researchDiscardIds ?? '[]') as string[]
+     spellSupplyTopId.value = state.spellSupplyTopId ?? ''
+     investigatorLifecycle.value = JSON.parse(state.investigatorLifecycle ?? '{}')
+     tradeOffer.value = state.tradeOffer ? JSON.parse(state.tradeOffer) as TradeOffer : undefined
+@@ -332,6 +335,7 @@
+     activeExpeditionLocationId: readonly(activeExpeditionLocationId),
+     expeditionDiscardIds: readonly(expeditionDiscardIds),
+     otherWorldDiscardIds: readonly(otherWorldDiscardIds),
++    researchDiscardIds: readonly(researchDiscardIds),
+     spellSupplyTopId: readonly(spellSupplyTopId),
+     activeGateIds: readonly(activeGateIds),
+     investigatorLifecycle: readonly(investigatorLifecycle),
+--- a/apps/server/test/GameRoom.test.ts
++++ b/apps/server/test/GameRoom.test.ts
+@@ -1569,7 +1569,8 @@
+       assert.equal(decision.playerId, state.players[1]?.id); assert.equal(decision.optionLabels?.[assetId], resource === "health" ? "Discard Bandages: prevent 1 Health loss" : "Discard Whiskey: prevent 1 Sanity loss");
+       const paused = internal.toEngineState(); assert.equal(paused.players[0]?.[resource], 1); assert.equal(paused.pendingDefeat, undefined);
+       assert.equal(paused.pendingLocationEncounter?.playerId, state.players[0]?.id);
+-      assert.deepEqual(paused.privateState.deckOrderById["encounter:research_azathoth"], state.privateState.deckOrderById["encounter:research_azathoth"]);
++      assert.deepEqual(paused.privateState.deckOrderById["encounter:research_azathoth"], state.privateState.deckOrderById["encounter:research_azathoth"]!.slice(1));
++      assert.equal(paused.pendingLocationEncounter?.cardRemovedFromDeck, true);
+       assert.equal(JSON.stringify(room.state).includes("damage_reaction"), false); assert.equal(JSON.stringify(room.state).includes("optionIds"), false);
+       const refresh = guest.waitForMessage(pendingDecisionMessageType); internal.applyEngineState(JSON.parse(JSON.stringify(paused))); await refresh;
+       const denied = host.waitForMessage(commandErrorMessageType);
+@@ -1580,7 +1581,7 @@
+       assert.deepEqual(after.assetDiscardIds, [assetId]); assert.deepEqual(after.players[1]?.assetIds, []);
+       assert.deepEqual(after.boardClues, state.boardClues); assert.equal(after.pendingDefeat, undefined);
+       assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.activePlayerId, state.players[1]?.id);
+-      assert.deepEqual(after.privateState.deckOrderById["encounter:research_azathoth"], physicalResearchOrder([cardId, "encounter_research_azathoth_02"]).slice(1).concat(cardId));
++      assert.deepEqual(after.privateState.deckOrderById["encounter:research_azathoth"], physicalResearchOrder([cardId, "encounter_research_azathoth_02"]).slice(1));
+     });
+   }
+ 
+@@ -1718,7 +1719,7 @@
+     assert.equal(after.boardClues?.[0]?.id, "discard-clue"); assert.notEqual(after.boardClues?.[0]?.locationId, "the_amazon");
+     assert.deepEqual(after.privateState.tokenPoolById, state.privateState.tokenPoolById);
+     assert.deepEqual(after.privateState.deckOrderById.assets, state.privateState.deckOrderById.assets);
+-    assert.deepEqual(after.privateState.deckOrderById["encounter:research_cthulhu"], physicalResearchOrder(["encounter_research_cthulhu_06", "encounter_research_cthulhu_02"]).slice(1).concat("encounter_research_cthulhu_06"));
++    assert.deepEqual(after.privateState.deckOrderById["encounter:research_cthulhu"], physicalResearchOrder(["encounter_research_cthulhu_06", "encounter_research_cthulhu_02"]).slice(1));
+     assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.activePlayerId, after.players[1]?.id);
+   });
+ 
+@@ -1916,7 +1917,7 @@
+     const after = internal.toEngineState();
+     assert.equal(after.boardClues?.[0]?.locationId, "space_8");
+     assert.deepEqual(after.privateState.tokenPoolById["board_clue:cthulhu-clue"], ["clue_arkham"]);
+-    assert.deepEqual(after.privateState.deckOrderById["encounter:research_cthulhu"], physicalResearchOrder(["encounter_research_cthulhu_01", "encounter_research_cthulhu_02"]).slice(1).concat("encounter_research_cthulhu_01"));
++    assert.deepEqual(after.privateState.deckOrderById["encounter:research_cthulhu"], physicalResearchOrder(["encounter_research_cthulhu_01", "encounter_research_cthulhu_02"]).slice(1));
+     assert.equal(after.activePlayerId, after.players[1]?.id);
+     assert.equal(after.players[0]?.clues, 1);
+     assert.equal(JSON.stringify(room.state).includes("encounter_research_cthulhu_02"), false);
+@@ -2151,7 +2152,7 @@
+     assert.equal(resolved.pendingLocationEncounter, undefined);
+     assert.equal(resolved.activePlayerId, state.players[1]!.id);
+     assert.deepEqual(resolved.privateState.tokenPoolById[`held_clues:${state.players[0]!.id}`], ["clue_arkham"]);
+-    assert.deepEqual(resolved.privateState.deckOrderById["encounter:research_azathoth"], physicalResearchOrder(["encounter_research_azathoth_02", "encounter_research_azathoth_01"]).slice(1).concat("encounter_research_azathoth_02"));
++    assert.deepEqual(resolved.privateState.deckOrderById["encounter:research_azathoth"], physicalResearchOrder(["encounter_research_azathoth_02", "encounter_research_azathoth_01"]).slice(1));
+   });
+ 
+   it("places starting Gates, Monsters, and Clues without exposing private token order", async () => {
+--- a/apps/server/test/RoomSnapshotIsolation.test.ts
++++ b/apps/server/test/RoomSnapshotIsolation.test.ts
+@@ -33,6 +33,7 @@
+   activeExpeditionLocationId: { value: string };
+   expeditionDiscardIds: { value: string[] };
+   otherWorldDiscardIds: { value: string[] };
++  researchDiscardIds: { value: string[] };
+   playerId: { value: string }; roomId: { value: string }; errorMessage: { value: string };
+   activeTest: { value?: { id: string } }; stateVersion: { value: number };
+   [key: string]: unknown;
+@@ -90,6 +91,13 @@
+ }
+ 
+ describe('room snapshot isolation (real composable)', () => {
++  it('exposes public Research discards and clears them on attachment replacement', async () => {
++    const { game, connect } = harness();
++    await connect(room('old', { ...populated('old'), researchDiscardIds: '["encounter_research_azathoth_02"]' }));
++    assert.deepEqual(Array.from(game.researchDiscardIds.value), ['encounter_research_azathoth_02']);
++    await connect(room('new', {}));
++    assert.deepEqual(Array.from(game.researchDiscardIds.value), []);
++  });
+   it('exposes public Other World discards and clears them on attachment replacement', async () => {
+     const { game, connect } = harness();
+     await connect(room('old', { ...populated('old'), otherWorldDiscardIds: '["encounter_other_world_02"]' }));
+--- a/tests/e2e/multiplayer.spec.ts
++++ b/tests/e2e/multiplayer.spec.ts
+@@ -137,6 +137,7 @@
+       // Setup can place its Gate Monster in San Francisco. Numbered City 1
+       // is adjacent and cannot contain a starting Gate; use legal Travel.
+       await page.getByRole('button', { name: 'Close investigator details' }).click()
++      await page.getByRole('button', { name: 'Collapse reserve' }).click()
+       await page.getByRole('button', { name: '1, city, legal destination', exact: true }).click()
+       await page.getByRole('button', { name: 'Confirm travel' }).click()
+       await expect(page.getByText('Your action · 1 remaining')).toBeVisible()

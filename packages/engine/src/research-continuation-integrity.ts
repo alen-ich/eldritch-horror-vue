@@ -13,9 +13,9 @@ export function validateResearchContinuationState(state: GameState, content: Gam
   if (state.phase !== "encounter" || !state.ancientOneId || pending.deck !== `research_${state.ancientOneId}`
     || pending.playerId !== state.activePlayerId || !state.players.some(player => player.id === pending.playerId)
     || state.currentLocationEncounterCardId !== pending.cardId
-    || state.privateState.deckOrderById[`encounter:${pending.deck}`]?.[0] !== pending.cardId
+    || !pending.cardRemovedFromDeck && state.privateState.deckOrderById[`encounter:${pending.deck}`]?.[0] !== pending.cardId
     || pending.gateId !== undefined || pending.gateLocationId !== undefined || pending.gateClosed !== undefined
-    || pending.cardRemovedFromDeck !== undefined) {
+    ) {
     return "Research encounter binding is inconsistent.";
   }
   return undefined;
