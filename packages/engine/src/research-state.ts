@@ -14,7 +14,7 @@ function shuffleCards(ids: readonly string[], context: EngineContext): string[] 
   const shuffled = context.shuffle([...ids]);
   if (!Array.isArray(shuffled) || shuffled.length !== ids.length || new Set(shuffled).size !== ids.length
     || !Array.from(shuffled).every(id => ids.includes(id))) throw new Error("Invalid physical Research shuffle.");
-  return shuffled;
+  return [...shuffled];
 }
 
 /** Caller supplies a cloned state within the Research RNG transaction. */
