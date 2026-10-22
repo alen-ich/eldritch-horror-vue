@@ -26,8 +26,8 @@ function state(number: number, section = "city"): GameState {
 const rng = (die = 6) => createDeterministicEngineContext({ dice: Array(12).fill(die), tokenIndexes: [0, 0], ids: ["test", "choice", "next"] });
 describe("Cthulhu scan-backed Research", () => {
   const supported = baseGameResearchEncounterRules.filter(card => card.deck === "research_cthulhu").flatMap(card => Object.entries(card.sections).filter(([, instruction]) => bindResearchInstruction(instruction, "chosen")).map(([section]) => ({ number: card.number, section })));
-  it("supports exactly 18 sections without dropping unsupported ambush, Spell or Artifact effects", () => {
-    expect(supported).toHaveLength(18);
+  it("binds exactly 20 sections without dropping unsupported Spell or Artifact effects", () => {
+    expect(supported).toHaveLength(20);
     for (const card of baseGameResearchEncounterRules.filter(card => card.deck === "research_cthulhu")) {
       for (const [section, instruction] of Object.entries(card.sections)) {
         if (bindResearchInstruction(instruction, "chosen")) continue;
@@ -37,7 +37,7 @@ describe("Cthulhu scan-backed Research", () => {
       }
     }
   });
-  it.each(supported)("runs both branches of card $number $section and discards once", ({ number, section }) => {
+  it.each(supported.filter(({ number, section }) => !(number === 1 && section === "wilderness" || number === 7 && section === "city")))("runs both branches of card $number $section and discards once", ({ number, section }) => {
     for (const die of [1, 6]) {
       const before = state(number, section); const snapshot = structuredClone(before);
       const result = resolveResearchEncounter(before, "host", "chosen", content, rng(die));

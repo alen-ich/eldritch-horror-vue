@@ -1,0 +1,11 @@
+# Normal Cthulhu Cultist Research
+
+2026-10-23: Research1 Wilderness and7 City now use the verified normal Cthulhu Cultist attributes through `AncientSetup.normalCultistCombat`. Server mapping supplies the content primitives; pure `namedAmbushStats` validates the normal-only profile and existing Cultist placeholders/effect ID. Other Ancient Ones, awakening, malformed profiles and unknown Monster text remain unsupported.
+
+Queue expansion skips Will entirely, applies ordinary Sanity loss1, then offers the existing Strength0 test and Damage1/toughness1 ambush result. Sanity defeat interrupts before Strength RNG and before parent branches. Success gains the encountered Clue; failure gains Cursed (1W) or Amnesia and moves this Clue to the nearest Sea (7C). The physical Research card is removed/discarded once; the bound marker and physical Clue remain authoritative. No physical Monster is drawn/spawned/returned/damaged.
+
+Private Strength checkpoints use existing owner-only Clue rerolls and JSON restoration; the pre-Strength loss is already consumed and cannot repeat on resume. Restored Cultist nodes revalidate profile and possession guards before decision RNG. No new network payloads or public projection fields. No readiness promotion or generic board Cultist combat. Broad possession, colleague aura and applicable prevention guards remain closed before any loss/draw/RNG; this is not implementation of prevention during combat. The raw monolithic combat calculator is not called from this interruptible path.
+
+Two original dirty source foundations (`index.ts`, `GameRoom.ts`) and dirty test registration remain outside the commit. Exact already-applied deltas are saved in `docs/superpowers/patches/2026-10-23-cultist-{index,GameRoom,GameRoomTest}.patch`; they depend on existing dirty prerequisites and must not be applied again. Full checks validate this working directory, not a clean checkout of those prerequisites.
+
+Tests and actual verification: `docs/superpowers/plans/2026-10-23-cultist-research.md`. Next: inspect remaining authored Cthulhu named Spell/Artifact reward sections against current supply/effect handlers before choosing a new dependency. Do not assume parser acceptance means executable gameplay for another Ancient One or awakening.

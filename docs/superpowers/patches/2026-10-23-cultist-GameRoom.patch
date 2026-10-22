@@ -1,0 +1,6 @@
+--- a/apps/server/src/rooms/GameRoom.ts
++++ b/apps/server/src/rooms/GameRoom.ts
+@@ -81,2 +81,3 @@
+     startingDoom: ancient.startingDoom,
++    normalCultistCombat: "normalCombat" in ancient.cultist ? { ...ancient.cultist.normalCombat, toughness: ancient.cultist.normalToughness, effectIds: ancient.cultist.normalEffectIds } : undefined,
+     mythosDeck: ancient.mythosDeck,

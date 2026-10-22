@@ -67,6 +67,14 @@ export function buildMonsterPool(
   return { cup: [...counts].flatMap(([id, count]) => Array<string>(count).fill(id)), setAsideById };
 }
 export interface AncientSetup {
+  /** Verified normal-side attributes only; awakening support is separate. */
+  normalCultistCombat?: {
+    horrorCheck: { modifier: number; damage: number } | null;
+    damageCheck: { modifier: number; damage: number } | null;
+    toughness: number;
+    beforeStrengthSanityLoss: number;
+    effectIds: readonly string[];
+  };
   startingDoom: number;
   mythosDeck: readonly Readonly<Record<MythosColor, number>>[];
   greenOmenTokens: number;

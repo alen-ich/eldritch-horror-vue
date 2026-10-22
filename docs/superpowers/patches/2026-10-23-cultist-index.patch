@@ -1,0 +1,42 @@
+--- a/packages/engine/src/index.ts
++++ b/packages/engine/src/index.ts
+@@ -1 +1,2 @@
++import { namedAmbushStats } from "./named-ambush.js";
+ import { validateLocationState, removeLocationEncounterCard, finishLocationEncounterCard } from "./location-state.js";
+@@ -2011,2 +2012,8 @@
+   for (const node of nodes) {
++    if ((node.kind === "ambush" || node.kind === "ambush_result") && node.monsterId === "monster_cultist") {
++      const stats = namedAmbushStats(state, content, node.monsterId);
++      if (!stats || node.kind === "ambush_result" && (node.damage !== stats.damageCheck.damage || node.toughness !== stats.toughness)) return failure("MONSTER_CONTENT_MISSING", "The Cultist profile is missing or unsupported.");
++      const player = state.players.find(candidate => candidate.id === state.pendingLocationEncounter?.playerId);
++      if (player && (player.artifactIds?.length || !supportsEncounterAssets(state, player, content, node))) return failure("MONSTER_EFFECT_UNSUPPORTED", "Cultist ambush possession effects are unsupported.");
++    }
+     if (node.kind === "effects" && node.effects.some(effect => effect.kind === "condition" && ["injury", "back_injury", "leg_injury"].includes(effect.condition))) {
+@@ -2081,10 +2088,14 @@
+     if (node.kind === "ambush") {
+-      const monster = content.monsters?.find(card => card.id === node.monsterId);
+-      if (!monster || monster.type !== "normal" || monster.specialEffect || !monster.horrorCheck || monster.horrorCheck === "ancient_one" || !monster.damageCheck || monster.damageCheck === "ancient_one" || monster.toughness === "ancient_one") return failure("MONSTER_CONTENT_MISSING", "The named Monster's combat statistics are unavailable.");
++      const monster = namedAmbushStats(next, content, node.monsterId);
++      if (!monster) return failure("MONSTER_CONTENT_MISSING", "The named Monster's combat statistics are unavailable.");
+       if (player.assetIds.length || player.artifactIds?.length) return failure("MONSTER_EFFECT_UNSUPPORTED", "Ambush possession bonuses are not supported.");
+-      const result: LocationEncounterInstruction = { kind: "ambush_result", monsterId: node.monsterId, damage: monster.damageCheck.damage, toughness: monster.toughness.base + monster.toughness.perInvestigator * next.players.filter(player => !player.defeated && !player.eliminated).length, defeated: node.defeated, notDefeated: node.notDefeated };
+-      const horror: LocationEncounterInstruction = { kind: "effects", effects: [{ kind: "ambush_horror", damage: monster.horrorCheck.damage }] };
+-      pending.queue.splice(0, 1,
+-        { kind: "test", skill: "will", modifier: monster.horrorCheck.modifier, pass: horror, fail: horror },
+-        { kind: "test", skill: "strength", modifier: monster.damageCheck.modifier, pass: result, fail: result });
++      const result: LocationEncounterInstruction = { kind: "ambush_result", monsterId: node.monsterId, damage: monster.damageCheck.damage, toughness: monster.toughness, defeated: node.defeated, notDefeated: node.notDefeated };
++      const tests: LocationEncounterInstruction[] = [];
++      if (monster.horrorCheck) {
++        const horror: LocationEncounterInstruction = { kind: "effects", effects: [{ kind: "ambush_horror", damage: monster.horrorCheck.damage }] };
++        tests.push({ kind: "test", skill: "will", modifier: monster.horrorCheck.modifier, pass: horror, fail: horror });
++      }
++      if (monster.beforeStrengthSanityLoss) tests.push({ kind: "effects", effects: [{ kind: "sanity", amount: -monster.beforeStrengthSanityLoss }] });
++      tests.push({ kind: "test", skill: "strength", modifier: monster.damageCheck.modifier, pass: result, fail: result });
++      pending.queue.splice(0, 1, ...tests);
+       continue;
+@@ -2368,4 +2379,3 @@
+   for (const ambush of ambushes) {
+-    const definition = content.monsters?.find(monster => monster.id === ambush.monsterId);
+-    if (!definition || definition.type !== "normal" || definition.specialEffect || !definition.horrorCheck || definition.horrorCheck === "ancient_one" || !definition.damageCheck || definition.damageCheck === "ancient_one" || definition.toughness === "ancient_one") return failure("MONSTER_CONTENT_MISSING", "The named Monster's statistics are missing or unsupported.");
++    if (!namedAmbushStats(state, content, ambush.monsterId)) return failure("MONSTER_CONTENT_MISSING", "The named Monster's statistics are missing or unsupported.");
+   }

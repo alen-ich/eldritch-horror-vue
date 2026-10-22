@@ -1,0 +1,9 @@
+--- a/apps/server/test/GameRoom.test.ts
++++ b/apps/server/test/GameRoom.test.ts
+@@ -1 +1,2 @@
++import { registerCultistResearchTests } from "./CultistResearch.test.js";
+ import { registerResearchMarkerBindingTests } from "./ResearchMarkerBinding.test.js";
+@@ -69,2 +70,3 @@
+   registerResearchSetupRoomTests(() => colyseus);
++  registerCultistResearchTests(() => colyseus);
+   registerLocationBindingRoomTests(() => colyseus);

@@ -56,6 +56,7 @@ describe("Puzzle Box Rest test", () => {
     expect(paused.pendingRest).toEqual({ playerId: "host", remainingAssetIds: [box] });
     expect(pendingDecisionSchema.parse(paused.pendingDecision)).toEqual(paused.pendingDecision);
     expect(paused.pendingDecision?.optionIds).toEqual([`${box}:attempt`, `${box}:skip`]);
+    expect(paused.pendingDecision?.optionLabels?.[`${box}:attempt`]).toBe("Puzzle Box: attempt Observation \u22122");
     expect(JSON.stringify(projectPublicState(paused))).not.toContain("pendingRest");
     expect(JSON.stringify(projectPublicState(paused))).not.toContain("artifact_grotesque_statue");
     expect(paused.actionsRemaining).toBe(2);

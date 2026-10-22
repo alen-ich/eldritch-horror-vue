@@ -6,6 +6,6 @@ Strict schema and canonical catalog checks reject incomplete/malformed/mismatche
 
 TDD RED2/39 (base metadata absent/wrong timing and positive new schema rejected), GREEN39/39 new and55/55 related content cases. Source image visually inspected, checksum independently checked by a test. Full checks, independent source comparison and execution journal: docs/superpowers/plans/2026-10-23-cthulhu-cultist-profile.md.
 
-Next: verified profile consumption in a pure Ancient One-aware resolver. Current encounter parser excludes Cultist and the ambush preflight requires a non-null Horror check; both must be handled explicitly alongside ordered Sanity loss, defeat, tests/rerolls, restoration and token isolation before live execution. This iteration intentionally does not bypass those guards.
+At completion of the content prerequisite, the encounter parser excluded Cultist and the ambush preflight required a non-null Horror check. The content iteration did not activate execution.
 
-Follow-up: the separately tested raw combat timing primitive is implemented; see [pre-Strength loss](pre-strength-loss.md). Live profile consumption and the authoritative Research continuation remain pending with the same guards.
+Follow-ups: the separately tested raw combat timing primitive is implemented; see [pre-Strength loss](pre-strength-loss.md). Normal Cthulhu Research profile consumption is now implemented through the interruptible continuation; see [Cultist Research](cultist-research.md) for scope and remaining possession/awakening exclusions.
