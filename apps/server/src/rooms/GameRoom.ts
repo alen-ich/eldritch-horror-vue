@@ -1,3 +1,4 @@
+import { validateResearchContinuationState } from "@eldritch/engine";
 import { validateOtherWorldState } from "@eldritch/engine";
 import { privateFeedTheMindRules } from "../private-feed-the-mind.js";
 import { canCastFeedTheMind, validateSpellCastingState, validateInvestigatorAbilityUsage } from "@eldritch/engine";
@@ -298,6 +299,8 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
   }
 
   private applyEngineState(engineState: GameState): void {
+    const researchInvalid = validateResearchContinuationState(engineState, baseGameContent);
+    if (researchInvalid) throw new Error(`Research restoration rejected: ${researchInvalid}`);
     if (this.privateState.deckOrderById["encounter:other_world"] && !engineState.privateState.deckOrderById["encounter:other_world"]) {
       throw new Error("Other World restoration rejected: missing initialized deck.");
     }

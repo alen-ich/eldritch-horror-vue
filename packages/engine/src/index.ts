@@ -1,3 +1,5 @@
+import { validateResearchContinuationState } from "./research-continuation-integrity.js";
+export { validateResearchContinuationState } from "./research-continuation-integrity.js";
 import { validateResearchDrawInventory } from "./research-draw-integrity.js";
 import { validateOtherWorldState } from "./other-world-state.js";
 export { validateOtherWorldState } from "./other-world-state.js";
@@ -2806,6 +2808,8 @@ function beginSkillTest(
 
 const spellAdapters = { beginTest: beginSkillTest, damage: damageInvestigator, completeAction };
 export function executeCommand(state: GameState, actorPlayerId: string, command: GameCommand, content: GameContent, context?: EngineContext): CommandResult {
+  const researchInvalid = validateResearchContinuationState(state, content);
+  if (researchInvalid) return failure("ENCOUNTER_CONTENT_MISSING", researchInvalid);
   const usageInvalid = validateInvestigatorAbilityUsage(state);
   if (usageInvalid) return failure("SPELL_CAST_INVALID", usageInvalid);
   const invalid = validateSpellCastingState(state,content);
