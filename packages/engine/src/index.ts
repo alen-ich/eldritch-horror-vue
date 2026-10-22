@@ -1,3 +1,4 @@
+import { validateResearchDrawInventory } from "./research-draw-integrity.js";
 import { validateOtherWorldState } from "./other-world-state.js";
 export { validateOtherWorldState } from "./other-world-state.js";
 import { beginSpellCast, finishSpellCastTest, resolveSpellCastDecision, validateSpellCastingState, withSpellRandomTransaction } from "./spell-casting.js";
@@ -2295,6 +2296,8 @@ export function resolveResearchEncounter(state: GameState, playerId: string, mar
   const held = state.privateState.tokenPoolById[heldClueKey(playerId)];
   if (!physical || physical.length !== 1 || !content.clues?.some(clue => clue.id === physical[0]) || !held || held.length !== player.clues) return failure("CLUE_CONTENT_MISSING", "Research requires consistent physical Clue holdings.");
   if (!state.ancientOneId) return failure("ANCIENT_ONE_REQUIRED", "Research requires the selected Ancient One.");
+  const invalidInventory = validateResearchDrawInventory(state, content);
+  if (invalidInventory) return failure("ENCOUNTER_CONTENT_MISSING", invalidInventory);
   const deck: ResearchEncounterDeckId = `research_${state.ancientOneId}`;
   const order = state.privateState.deckOrderById[`encounter:${deck}`];
   if (!order?.length) return failure("ENCOUNTER_DECK_MISSING", "The selected Ancient One's Research deck is unavailable.");

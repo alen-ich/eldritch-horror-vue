@@ -21,6 +21,45 @@ function state(number = 1, locationId = "arkham"): GameState {
 }
 const rng = (dice: number[]) => createDeterministicEngineContext({ dice, tokenIndexes: [0], ids: ["test", "decision", "later"] });
 
+describe("configured Research draw inventory", () => {
+  const ancients = ["azathoth", "cthulhu", "shub_niggurath", "yog_sothoth"] as const;
+  const catalog = ancients.flatMap(ancient => Array.from({ length: 8 }, (_, n) => ({
+    id: `encounter_research_${ancient}_0${n + 1}`, deck: `research_${ancient}` as const,
+  })));
+  const configured: GameContent = { ...content, researchEncounterSetup: catalog };
+  function physicalState(ancient: typeof ancients[number] = "azathoth"): GameState {
+    const next = state(); next.ancientOneId = ancient;
+    next.privateState.deckOrderById = { [`encounter:research_${ancient}`]: catalog.filter(card => card.deck === `research_${ancient}`).map(card => card.id) };
+    return next;
+  }
+  it.each(["missing", "duplicate", "foreign", "cross-deck", "sparse", "extra", "absent"])("rejects %s inventory atomically before random use", corruption => {
+    const before = physicalState(), key = "encounter:research_azathoth", order = before.privateState.deckOrderById[key]!;
+    if (corruption === "missing") order.pop();
+    if (corruption === "duplicate") order[7] = order[0]!;
+    if (corruption === "foreign") order[7] = "secret_foreign_card";
+    if (corruption === "cross-deck") order[7] = "encounter_research_cthulhu_08";
+    if (corruption === "sparse") delete order[7];
+    if (corruption === "extra") order.push("secret_extra_card");
+    if (corruption === "absent") delete before.privateState.deckOrderById[key];
+    const snapshot = structuredClone(before), context = rng([6, 1]);
+    const result = resolveResearchEncounter(before, "host", "chosen", configured, context);
+    expect(result).toMatchObject({ ok: false, error: { code: "ENCOUNTER_CONTENT_MISSING" } });
+    expect(JSON.stringify(result)).not.toMatch(/secret_|encounter_research_/);
+    expect(before).toEqual(snapshot); expect([context.rollDie(), context.rollDie()]).toEqual([6, 1]);
+  });
+  it("refuses a malformed configured catalog without legacy fallback", () => {
+    expect(resolveResearchEncounter(physicalState(), "host", "chosen", { ...configured, researchEncounterSetup: catalog.slice(1) }, rng([6, 6])))
+      .toMatchObject({ ok: false, error: { code: "ENCOUNTER_CONTENT_MISSING" } });
+  });
+  it.each(ancients)("accepts conserved %s inventory and respects the actual top", ancient => {
+    const before = physicalState(ancient);
+    before.privateState.deckOrderById[`encounter:research_${ancient}`]!.reverse();
+    const unsupported: GameContent = { ...configured, researchEncounters: [] };
+    expect(resolveResearchEncounter(before, "host", "chosen", unsupported, rng([])))
+      .toMatchObject({ ok: false, error: { code: "ENCOUNTER_UNSUPPORTED" } });
+  });
+});
+
 describe("internal scan-backed Research encounters", () => {
   const exchangeContent: GameContent = { ...content, artifacts: [{ id: "artifact_ttka_halot" }], conditions: [{ id: "condition_dark_pact_01", kind: "dark_pact", trait: "deal" }] };
   function exchangeState() {

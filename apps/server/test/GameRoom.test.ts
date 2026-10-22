@@ -1,3 +1,4 @@
+import { registerResearchDrawIntegrityTests } from "./ResearchDrawIntegrity.test.js";
 import { registerOtherWorldStateRoomTests } from "./OtherWorldState.test.js";
 import { registerSpellCastingRoomTests } from "./SpellCasting.test.js";
 import { registerNormanSpellCastingRoomTests } from "./NormanSpellCasting.test.js";
@@ -36,6 +37,12 @@ function fixtureInternals(room: unknown): { toEngineState(): GameState; applyEng
 
 import { registerStartingSpellRoomTests } from "./StartingSpells.test.js";
 
+/** Explicit draw fixtures retain the whole configured physical Research inventory. */
+function physicalResearchOrder(top: string[]): string[] {
+  const deck = baseGameScannedTokenEncounters.find(card => card.id === top[0])!.deck;
+  return [...top, ...baseGameScannedTokenEncounters.filter(card => card.deck === deck && !top.includes(card.id)).map(card => card.id)];
+}
+
 describe("authoritative game room", () => {
   let colyseus: ColyseusTestServer<typeof appConfig>;
 
@@ -46,6 +53,7 @@ describe("authoritative game room", () => {
   registerSpellRoomTests(() => colyseus);
   registerSpellCastingRoomTests(() => colyseus);
   registerNormanSpellCastingRoomTests(() => colyseus);
+  registerResearchDrawIntegrityTests(() => colyseus);
   registerStartingSpellRoomTests(() => colyseus);
 
   for (const branch of ["strength-close", "back-injury", "will-pass", "will-loss", "health-defeat", "sanity-defeat", "lily-once", "lily-twice"]) {
@@ -1538,7 +1546,7 @@ describe("authoritative game room", () => {
       Object.assign(state.players[1]!, { investigatorId: "trish_scarborough", locationId, health: 7, sanity: 5, assetIds: [assetId] });
       state.boardClues = [{ id: "research-clue", locationId }];
       state.privateState.tokenPoolById = { "board_clue:research-clue": ["clue_arkham"], [`held_clues:${state.players[0]!.id}`]: ["clue_london"], clues: [], clue_discard: [] };
-      state.privateState.deckOrderById["encounter:research_azathoth"] = [cardId, "encounter_research_azathoth_02"];
+      state.privateState.deckOrderById["encounter:research_azathoth"] = physicalResearchOrder([cardId, "encounter_research_azathoth_02"]);
       internal.applyEngineState(state);
       const testMessage = host.waitForMessage(pendingDecisionMessageType);
       sendCommand(room, host, { type: "RESOLVE_RESEARCH_ENCOUNTER", clueId: "research-clue" }); await room.waitForMessage(commandMessageType);
@@ -1564,7 +1572,7 @@ describe("authoritative game room", () => {
       assert.deepEqual(after.assetDiscardIds, [assetId]); assert.deepEqual(after.players[1]?.assetIds, []);
       assert.deepEqual(after.boardClues, state.boardClues); assert.equal(after.pendingDefeat, undefined);
       assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.activePlayerId, state.players[1]?.id);
-      assert.deepEqual(after.privateState.deckOrderById["encounter:research_azathoth"], ["encounter_research_azathoth_02", cardId]);
+      assert.deepEqual(after.privateState.deckOrderById["encounter:research_azathoth"], physicalResearchOrder([cardId, "encounter_research_azathoth_02"]).slice(1).concat(cardId));
     });
   }
 
@@ -1665,7 +1673,7 @@ describe("authoritative game room", () => {
     state.boardClues = [{ id: "discard-clue", locationId: "the_amazon" }];
     state.privateState.tokenPoolById = { "board_clue:discard-clue": ["clue_arkham"], [`held_clues:${state.players[0]!.id}`]: ["clue_london"], clues: [], clue_discard: [] };
     state.privateState.deckOrderById.assets = ["asset_holy_cross"];
-    state.privateState.deckOrderById["encounter:research_cthulhu"] = ["encounter_research_cthulhu_06", "encounter_research_cthulhu_02"];
+    state.privateState.deckOrderById["encounter:research_cthulhu"] = physicalResearchOrder(["encounter_research_cthulhu_06", "encounter_research_cthulhu_02"]);
     internal.applyEngineState(state);
     const rolledMessage = host.waitForMessage(pendingDecisionMessageType);
     sendCommand(room, host, { type: "RESOLVE_RESEARCH_ENCOUNTER", clueId: "discard-clue" }); await room.waitForMessage(commandMessageType);
@@ -1702,7 +1710,7 @@ describe("authoritative game room", () => {
     assert.equal(after.boardClues?.[0]?.id, "discard-clue"); assert.notEqual(after.boardClues?.[0]?.locationId, "the_amazon");
     assert.deepEqual(after.privateState.tokenPoolById, state.privateState.tokenPoolById);
     assert.deepEqual(after.privateState.deckOrderById.assets, state.privateState.deckOrderById.assets);
-    assert.deepEqual(after.privateState.deckOrderById["encounter:research_cthulhu"], ["encounter_research_cthulhu_02", "encounter_research_cthulhu_06"]);
+    assert.deepEqual(after.privateState.deckOrderById["encounter:research_cthulhu"], physicalResearchOrder(["encounter_research_cthulhu_06", "encounter_research_cthulhu_02"]).slice(1).concat("encounter_research_cthulhu_06"));
     assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.activePlayerId, after.players[1]?.id);
   });
 
@@ -1755,7 +1763,7 @@ describe("authoritative game room", () => {
     state.players[1] = { ...state.players[1]!, investigatorId: "trish_scarborough", locationId: "arkham", health: 7, sanity: 5, assetIds: ["asset_urban_guide"] };
     state.boardClues = [{ id: "aura-clue", locationId: "arkham" }];
     state.privateState.tokenPoolById = { "board_clue:aura-clue": ["clue_arkham"], [`held_clues:${state.players[0]!.id}`]: ["clue_london"], clues: [], clue_discard: [] };
-    state.privateState.deckOrderById["encounter:research_cthulhu"] = ["encounter_research_cthulhu_01", "encounter_research_cthulhu_02"];
+    state.privateState.deckOrderById["encounter:research_cthulhu"] = physicalResearchOrder(["encounter_research_cthulhu_01", "encounter_research_cthulhu_02"]);
     internal.applyEngineState(state);
     const decisionMessage = host.waitForMessage(pendingDecisionMessageType);
     sendCommand(room, host, { type: "RESOLVE_RESEARCH_ENCOUNTER", clueId: "aura-clue" });
@@ -1793,7 +1801,7 @@ describe("authoritative game room", () => {
     state.monsters = [{ id: "remote-star", monsterId: "monster_star_spawn", locationId: "arkham", damage: 4, setAside: true }];
     state.boardClues = [{ id: "star-clue", locationId: "space_2" }];
     state.privateState.tokenPoolById = { "board_clue:star-clue": ["clue_arkham"], [`held_clues:${state.players[0]!.id}`]: ["clue_london"], monsters: ["monster_ghoul"], "set_aside:monster_star_spawn": [] };
-    state.privateState.deckOrderById["encounter:research_cthulhu"] = ["encounter_research_cthulhu_05", "encounter_research_cthulhu_01"];
+    state.privateState.deckOrderById["encounter:research_cthulhu"] = physicalResearchOrder(["encounter_research_cthulhu_05", "encounter_research_cthulhu_01"]);
     internal.applyEngineState(state);
     const researchMessage = host.waitForMessage(pendingDecisionMessageType);
     sendCommand(room, host, { type: "RESOLVE_RESEARCH_ENCOUNTER", clueId: "star-clue" });
@@ -1837,7 +1845,7 @@ describe("authoritative game room", () => {
     state.boardClues = [{ id: "ambush-clue", locationId: "space_2" }];
     state.privateState.tokenPoolById = { "board_clue:ambush-clue": ["clue_arkham"], [`held_clues:${state.players[0]!.id}`]: ["clue_london"], clues: ["clue_rome"], monsters: ["monster_deep_one"], "set_aside:monster_deep_one": ["monster_deep_one"] };
     for (const card of baseGameConditions) (state.privateState.tokenPoolById[`condition:${card.kind}`] ??= []).push(card.id);
-    state.privateState.deckOrderById["encounter:research_cthulhu"] = ["encounter_research_cthulhu_07", "encounter_research_cthulhu_01"];
+    state.privateState.deckOrderById["encounter:research_cthulhu"] = physicalResearchOrder(["encounter_research_cthulhu_07", "encounter_research_cthulhu_01"]);
     internal.applyEngineState(state);
     const horrorMessage = host.waitForMessage(pendingDecisionMessageType);
     sendCommand(room, host, { type: "RESOLVE_RESEARCH_ENCOUNTER", clueId: "ambush-clue" });
@@ -1885,7 +1893,7 @@ describe("authoritative game room", () => {
     state.boardClues = [{ id: "cthulhu-clue", locationId: "arkham" }];
     state.privateState.tokenPoolById["board_clue:cthulhu-clue"] = ["clue_arkham"];
     state.privateState.tokenPoolById[`held_clues:${state.players[0]!.id}`] = ["clue_london"];
-    state.privateState.deckOrderById["encounter:research_cthulhu"] = ["encounter_research_cthulhu_01", "encounter_research_cthulhu_02"];
+    state.privateState.deckOrderById["encounter:research_cthulhu"] = physicalResearchOrder(["encounter_research_cthulhu_01", "encounter_research_cthulhu_02"]);
     internal.applyEngineState(state);
     const rerollMessage = host.waitForMessage(pendingDecisionMessageType);
     sendCommand(room, host, { type: "RESOLVE_RESEARCH_ENCOUNTER", clueId: "cthulhu-clue" });
@@ -1900,7 +1908,7 @@ describe("authoritative game room", () => {
     const after = internal.toEngineState();
     assert.equal(after.boardClues?.[0]?.locationId, "space_8");
     assert.deepEqual(after.privateState.tokenPoolById["board_clue:cthulhu-clue"], ["clue_arkham"]);
-    assert.deepEqual(after.privateState.deckOrderById["encounter:research_cthulhu"], ["encounter_research_cthulhu_02", "encounter_research_cthulhu_01"]);
+    assert.deepEqual(after.privateState.deckOrderById["encounter:research_cthulhu"], physicalResearchOrder(["encounter_research_cthulhu_01", "encounter_research_cthulhu_02"]).slice(1).concat("encounter_research_cthulhu_01"));
     assert.equal(after.activePlayerId, after.players[1]?.id);
     assert.equal(after.players[0]?.clues, 1);
     assert.equal(JSON.stringify(room.state).includes("encounter_research_cthulhu_02"), false);
@@ -1920,7 +1928,7 @@ describe("authoritative game room", () => {
     state.privateState.tokenPoolById[`held_clues:${state.players[0]!.id}`] = [];
     state.privateState.tokenPoolById["condition:dark_pact"] = ["condition_dark_pact_01"];
     state.privateState.deckOrderById.artifacts = baseGameArtifacts.map(card => card.id);
-    state.privateState.deckOrderById["encounter:research_azathoth"] = ["encounter_research_azathoth_05", "encounter_research_azathoth_01"];
+    state.privateState.deckOrderById["encounter:research_azathoth"] = physicalResearchOrder(["encounter_research_azathoth_05", "encounter_research_azathoth_01"]);
     internal.applyEngineState(state);
     const offerMessage = host.waitForMessage(pendingDecisionMessageType);
     let exchangeError: unknown;
@@ -2028,7 +2036,7 @@ describe("authoritative game room", () => {
     state.boardClues = [{ id: "mystery-research", locationId: "arkham" }];
     state.privateState.tokenPoolById = { clues: ["clue_rome"], clue_discard: [], "board_clue:mystery-research": ["clue_arkham"], [`held_clues:${state.players[0]!.id}`]: ["clue_london"] };
     state.privateState.deckOrderById.mysteries = ["azathoth_the_true_name"];
-    state.privateState.deckOrderById["encounter:research_azathoth"] = ["encounter_research_azathoth_05", "encounter_research_azathoth_01"];
+    state.privateState.deckOrderById["encounter:research_azathoth"] = physicalResearchOrder(["encounter_research_azathoth_05", "encounter_research_azathoth_01"]);
     internal.applyEngineState(state);
     const rerollMessage = host.waitForMessage(pendingDecisionMessageType);
     sendCommand(room, host, { type: "RESOLVE_RESEARCH_ENCOUNTER", clueId: "mystery-research" });
@@ -2064,7 +2072,7 @@ describe("authoritative game room", () => {
     state.players[1] = { ...state.players[1]!, locationId: "london", clues: 0 };
     state.boardClues = [{ id: "omen-research", locationId: "space_2" }];
     state.privateState.tokenPoolById = { clues: [], clue_discard: [], "board_clue:omen-research": ["clue_arkham"], [`held_clues:${state.players[0]!.id}`]: [], [`held_clues:${state.players[1]!.id}`]: [] };
-    state.privateState.deckOrderById["encounter:research_azathoth"] = ["encounter_research_azathoth_08", "encounter_research_azathoth_01"];
+    state.privateState.deckOrderById["encounter:research_azathoth"] = physicalResearchOrder(["encounter_research_azathoth_08", "encounter_research_azathoth_01"]);
     internal.applyEngineState(state);
     const rerollMessage = host.waitForMessage(pendingDecisionMessageType);
     sendCommand(room, host, { type: "RESOLVE_RESEARCH_ENCOUNTER", clueId: "omen-research" });
@@ -2109,7 +2117,7 @@ describe("authoritative game room", () => {
     state.players[1] = { ...state.players[1]!, locationId: "london", clues: 0 };
     state.boardClues = [{ id: "research-marker", locationId: "space_2" }];
     state.privateState.tokenPoolById = { clues: [], clue_discard: [], "board_clue:research-marker": ["clue_arkham"], [`held_clues:${state.players[0]!.id}`]: [], [`held_clues:${state.players[1]!.id}`]: [] };
-    state.privateState.deckOrderById["encounter:research_azathoth"] = ["encounter_research_azathoth_02", "encounter_research_azathoth_01"];
+    state.privateState.deckOrderById["encounter:research_azathoth"] = physicalResearchOrder(["encounter_research_azathoth_02", "encounter_research_azathoth_01"]);
     internal.applyEngineState(state);
     const denied = guest.waitForMessage(commandErrorMessageType);
     sendCommand(room, guest, { type: "RESOLVE_RESEARCH_ENCOUNTER", clueId: "research-marker" });
@@ -2135,7 +2143,7 @@ describe("authoritative game room", () => {
     assert.equal(resolved.pendingLocationEncounter, undefined);
     assert.equal(resolved.activePlayerId, state.players[1]!.id);
     assert.deepEqual(resolved.privateState.tokenPoolById[`held_clues:${state.players[0]!.id}`], ["clue_arkham"]);
-    assert.deepEqual(resolved.privateState.deckOrderById["encounter:research_azathoth"], ["encounter_research_azathoth_01", "encounter_research_azathoth_02"]);
+    assert.deepEqual(resolved.privateState.deckOrderById["encounter:research_azathoth"], physicalResearchOrder(["encounter_research_azathoth_02", "encounter_research_azathoth_01"]).slice(1).concat("encounter_research_azathoth_02"));
   });
 
   it("places starting Gates, Monsters, and Clues without exposing private token order", async () => {
