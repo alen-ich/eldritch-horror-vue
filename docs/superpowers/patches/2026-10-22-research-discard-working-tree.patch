@@ -78,7 +78,7 @@
        omen: this.state.omen,
 @@ -310,6 +311,10 @@
    }
- 
+
    private applyEngineState(engineState: GameState): void {
 +    if (Object.keys(this.privateState.deckOrderById).some(key => key.startsWith("encounter:research_")
 +      && !engineState.privateState.deckOrderById[key])) throw new Error("Research restoration rejected: missing initialized deck.");
@@ -159,7 +159,7 @@
 +      assert.deepEqual(after.privateState.deckOrderById["encounter:research_azathoth"], physicalResearchOrder([cardId, "encounter_research_azathoth_02"]).slice(1));
      });
    }
- 
+
 @@ -1718,7 +1719,7 @@
      assert.equal(after.boardClues?.[0]?.id, "discard-clue"); assert.notEqual(after.boardClues?.[0]?.locationId, "the_amazon");
      assert.deepEqual(after.privateState.tokenPoolById, state.privateState.tokenPoolById);
@@ -168,7 +168,7 @@
 +    assert.deepEqual(after.privateState.deckOrderById["encounter:research_cthulhu"], physicalResearchOrder(["encounter_research_cthulhu_06", "encounter_research_cthulhu_02"]).slice(1));
      assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.activePlayerId, after.players[1]?.id);
    });
- 
+
 @@ -1916,7 +1917,7 @@
      const after = internal.toEngineState();
      assert.equal(after.boardClues?.[0]?.locationId, "space_8");
@@ -185,7 +185,7 @@
 -    assert.deepEqual(resolved.privateState.deckOrderById["encounter:research_azathoth"], physicalResearchOrder(["encounter_research_azathoth_02", "encounter_research_azathoth_01"]).slice(1).concat("encounter_research_azathoth_02"));
 +    assert.deepEqual(resolved.privateState.deckOrderById["encounter:research_azathoth"], physicalResearchOrder(["encounter_research_azathoth_02", "encounter_research_azathoth_01"]).slice(1));
    });
- 
+
    it("places starting Gates, Monsters, and Clues without exposing private token order", async () => {
 --- a/apps/server/test/RoomSnapshotIsolation.test.ts
 +++ b/apps/server/test/RoomSnapshotIsolation.test.ts
@@ -199,7 +199,7 @@
    [key: string]: unknown;
 @@ -90,6 +91,13 @@
  }
- 
+
  describe('room snapshot isolation (real composable)', () => {
 +  it('exposes public Research discards and clears them on attachment replacement', async () => {
 +    const { game, connect } = harness();
