@@ -2,25 +2,17 @@ diff --git a/packages/engine/src/research-setup.ts b/packages/engine/src/researc
 index 059f503..3d4bc18 100644
 --- a/packages/engine/src/research-setup.ts
 +++ b/packages/engine/src/research-setup.ts
-@@ -17,7 +17,7 @@ export function initializeResearchDeck(cards: readonly ResearchSetupCard[], deck
-   const order = shuffle(ids);
-   if (!Array.isArray(order) || order.length !== 8 || new Set(order).size !== 8
+@@ -19,3 +19,3 @@ export function initializeResearchDeck(cards: readonly ResearchSetupCard[], deck
      || !Array.from(order).every(id => canonicalDecks.get(id) === deck)) throw new Error("Research shuffle must conserve the selected eight physical cards.");
 -  return order;
 +  return [...order];
  }
- 
- export function withResearchSetupRandomTransaction(context: EngineContext, run: () => CommandResult): CommandResult {
 diff --git a/packages/engine/src/expeditions.ts b/packages/engine/src/expeditions.ts
 index 226cc78..5bba918 100644
 --- a/packages/engine/src/expeditions.ts
 +++ b/packages/engine/src/expeditions.ts
-@@ -22,7 +22,7 @@ export function initializeExpeditionDeck(
-   if (deck.length !== 18 || new Set(deck).size !== 18 || Array.from(deck).some(id => !canonicalLocations.has(id))) {
-     throw new Error("Expedition shuffle must conserve every physical card.");
+@@ -24,3 +24,3 @@ export function initializeExpeditionDeck(
    }
 -  return { deck, locationId: canonicalLocations.get(deck[0]!)! };
 +  return { deck: [...deck], locationId: canonicalLocations.get(deck[0]!)! };
  }
- 
- /** Legacy snapshots without either field are preserved, never repaired. */
