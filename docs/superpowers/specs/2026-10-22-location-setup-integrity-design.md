@@ -1,0 +1,13 @@
+# Location physical setup integrity
+
+Location RNG atomicity is already implemented in a7e2125. Before physical discard/recycling can trust four deck inventories, buildLocationEncounterDecks must conserve their inputs. Code inspection found sparse catalog slots skipped by map/filter/some and no validation of shuffle output; malformed injected shuffle can silently duplicate, drop or replace physical cards at setup.
+
+Keep the existing pure buildLocationEncounterDecks(cards,shuffle):Record<LocationEncounterDeckId,string[]> interface. Require a dense array of unique nonempty string IDs assigned to one of general/america/europe/asia_australia; every deck must have at least one card. Validate the complete catalog and all four required decks before consuming randomness. For each shuffle require dense output with the same length, unique IDs and exact membership of that deck. Protect comparison inputs from an in-place shuffler by passing a copy. Do not impose production card counts on deliberately partial rule fixtures.
+
+Recommended local boundary validation keeps physical setup self-contained. Deferring conservation checks until first draw allows an invalid canonical game to start; hardcoding printed counts would reject existing valid partial fixtures. No new dependency, command, schema, UI field, printed effect or hidden-data projection. Server remains authoritative; shuffle/context remains injected. Existing START_GAME transactional behavior handles failures; this pure helper throws generic content errors without embedding IDs and does not mutate caller cards.
+
+Acceptance: sparse/null/malformed entries, duplicate IDs, unknown deck and missing deck reject before shuffle; duplicate/foreign/truncated/sparse shuffle outputs reject; reverse and in-place shuffle conserve each deck and leave input catalog unchanged. Root checks, multiplayer and serial browser regressions run. Physical Location discard remains a follow-up, not completed by this prerequisite.
+
+Self-reviewed and self-approved under delegated authority. Current branch/directory, preserve all initial dirty work. setup.ts is initially tracked/clean; only this iteration's changes and new tests/docs may be committed.
+
+Integration correction after review: START_GAME previously relied on unrelated optional Research/Expedition/Spell wrappers. Explicitly use the existing Location transaction whenever Location cards are configured, including bare Location fixtures. This catches helper exceptions and restores earlier setup random input. Save this small index.ts integration delta as an already-applied patch because index.ts was already dirty.

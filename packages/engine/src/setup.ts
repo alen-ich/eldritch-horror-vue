@@ -15,13 +15,17 @@ export function buildLocationEncounterDecks(
   cards: readonly { id: string; deck: LocationEncounterDeckId }[],
   shuffle: <T>(items: readonly T[]) => T[],
 ): Record<LocationEncounterDeckId, string[]> {
-  if (new Set(cards.map(card => card.id)).size !== cards.length || cards.some(card => !card.id)) {
-    throw new Error("Location encounters require unique, nonempty card IDs.");
+  if (!Array.isArray(cards) || Array.from(cards).some(card => !card || typeof card.id !== "string" || !card.id.length
+    || !locationEncounterDeckIds.includes(card.deck)) || new Set(cards.map(card => card.id)).size !== cards.length) {
+    throw new Error("Location encounters require unique, nonempty card IDs and known decks.");
   }
-  return Object.fromEntries(locationEncounterDeckIds.map(deck => {
-    const ids = cards.filter(card => card.deck === deck).map(card => card.id);
-    if (!ids.length) throw new Error(`Location encounter deck ${deck} is empty.`);
-    return [deck, shuffle(ids)];
+  const decks = locationEncounterDeckIds.map(deck => ({ deck, ids: cards.filter(card => card.deck === deck).map(card => card.id) }));
+  if (decks.some(({ ids }) => !ids.length)) throw new Error("Location encounter decks cannot be empty.");
+  return Object.fromEntries(decks.map(({ deck, ids }) => {
+    const expected = new Set(ids), order = shuffle([...ids]);
+    if (!Array.isArray(order) || order.length !== ids.length || new Set(order).size !== ids.length
+      || !Array.from(order).every(id => expected.has(id))) throw new Error("Location shuffle must conserve every physical card in its deck.");
+    return [deck, [...order]];
   })) as Record<LocationEncounterDeckId, string[]>;
 }
 

@@ -1,0 +1,12 @@
+--- a/packages/engine/src/index.ts
++++ b/packages/engine/src/index.ts
+@@ -2883,6 +2883,9 @@
+   if (command.type === "START_GAME" || command.type === "REPLACE_INVESTIGATOR") {
+     const invalidStarting = validateStartingSpells(content);
+     if (invalidStarting) return failure("SPELL_CONTENT_MISSING", invalidStarting);
++    if (command.type === "START_GAME" && content.locationEncounters?.length && context) {
++      return withLocationRandomTransaction(context, () => executeCommandImpl(state, actorPlayerId, command, content, context));
++    }
+     if (command.type === "START_GAME" && content.researchEncounterSetup !== undefined && context) {
+       return withResearchSetupRandomTransaction(context, () => executeCommandImpl(state, actorPlayerId, command, content, context));
+     }
