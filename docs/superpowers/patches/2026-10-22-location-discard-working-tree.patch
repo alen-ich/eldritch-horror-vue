@@ -1,0 +1,117 @@
+--- a/packages/engine/src/index.ts
++++ b/packages/engine/src/index.ts
+@@ -0,0 +1,2 @@
++import { validateLocationState, removeLocationEncounterCard, finishLocationEncounterCard } from "./location-state.js";
++export { validateLocationState } from "./location-state.js";
+@@ -191,0 +194 @@
++  locationDiscardIdsByDeck?: Partial<Record<LocationEncounterDeckId, string[]>>;
+@@ -301,0 +305 @@
++  locationEncounterSetup?: readonly { id: string; deck: LocationEncounterDeckId }[];
+@@ -423,0 +428 @@
++    locationDiscardIdsByDeck: Object.fromEntries(Object.entries(publicState.locationDiscardIdsByDeck ?? {}).map(([deck, ids]) => [deck, [...ids]])),
+@@ -2044,0 +2050,2 @@
++  const invalidLocationDraw = removeLocationEncounterCard(next, content, context);
++  if (invalidLocationDraw) return failure("ENCOUNTER_CONTENT_MISSING", invalidLocationDraw);
+@@ -2233,2 +2240,2 @@
+-    if (order?.[0] !== pending.cardId) return failure("ENCOUNTER_DECK_MISSING", "The active encounter is no longer on top of its deck.");
+-    next.privateState.deckOrderById[`encounter:${pending.deck}`] = [...order.slice(1), pending.cardId];
++    const invalidLocationFinish = finishLocationEncounterCard(next, content, context);
++    if (invalidLocationFinish) return failure("ENCOUNTER_CONTENT_MISSING", invalidLocationFinish);
+@@ -2238,0 +2246 @@
++  if (locationEncounterDeckIds.some(deck => deck === pending.deck) && validateLocationState(next, content)) return failure("ENCOUNTER_CONTENT_MISSING", "Location inventory is inconsistent after discard.");
+@@ -2375,0 +2384,2 @@
++  const inventoryInvalid = validateLocationState(state, content);
++  if (inventoryInvalid) return failure("ENCOUNTER_CONTENT_MISSING", inventoryInvalid);
+@@ -2863,0 +2874,2 @@
++  const locationInventoryInvalid = validateLocationState(state, content);
++  if (locationInventoryInvalid) return failure("ENCOUNTER_CONTENT_MISSING", locationInventoryInvalid);
+@@ -2892 +2904 @@
+-    if (command.type === "START_GAME" && content.locationEncounters?.length && context) {
++    if (command.type === "START_GAME" && (content.locationEncounterSetup !== undefined || content.locationEncounters?.length) && context) {
+@@ -3996,2 +4008,3 @@
+-    if (content.locationEncounters?.length) {
+-      const decks = buildLocationEncounterDecks(content.locationEncounters, context.shuffle);
++    if (content.locationEncounterSetup !== undefined || content.locationEncounters?.length) {
++      const decks = buildLocationEncounterDecks(content.locationEncounterSetup ?? content.locationEncounters!, context.shuffle);
++      next.locationDiscardIdsByDeck = {};
+--- a/apps/server/src/rooms/GameRoom.ts
++++ b/apps/server/src/rooms/GameRoom.ts
+@@ -0,0 +1 @@
++import { validateLocationState } from "@eldritch/engine";
+@@ -69,0 +71 @@
++  locationEncounterSetup: baseGameScannedLocationEncounters.map(({ id, deck }) => ({ id, deck })),
+@@ -243,0 +246 @@
++      locationDiscardIdsByDeck: JSON.parse(this.state.locationDiscardIdsByDeck) as GameState["locationDiscardIdsByDeck"],
+@@ -320,0 +324,6 @@
++    for (const deck of ["general", "america", "europe", "asia_australia"]) {
++      const key = `encounter:${deck}`;
++      if (this.privateState.deckOrderById[key] !== undefined && engineState.privateState.deckOrderById[key] === undefined) throw new Error("Location restoration rejected: missing initialized deck.");
++    }
++    const locationInventoryInvalid = validateLocationState(engineState, baseGameContent);
++    if (locationInventoryInvalid) throw new Error(`Location restoration rejected: ${locationInventoryInvalid}`);
+@@ -353,0 +363 @@
++    this.state.locationDiscardIdsByDeck = JSON.stringify(engineState.locationDiscardIdsByDeck ?? {});
+--- a/apps/server/src/rooms/schema/GameRoomState.ts
++++ b/apps/server/src/rooms/schema/GameRoomState.ts
+@@ -66,0 +67 @@
++  locationDiscardIdsByDeck: t.string().default("{}"),
+--- a/apps/server/test/GameRoom.test.ts
++++ b/apps/server/test/GameRoom.test.ts
+@@ -0,0 +1 @@
++import { registerLocationDiscardTests } from "./LocationDiscard.test.js";
+@@ -13 +14 @@
+-import { baseGameArtifacts, baseGameAssets, baseGameClues, baseGameConditions, baseGameGates, baseGameScannedTokenEncounters } from "@eldritch/content";
++import { baseGameArtifacts, baseGameAssets, baseGameClues, baseGameConditions, baseGameGates, baseGameScannedTokenEncounters, baseGameScannedLocationEncounters } from "@eldritch/content";
+@@ -44,0 +46,9 @@
++/** Explicit Location fixtures retain all configured cards; never repairs restored snapshots. */
++function seedPhysicalLocation(state: GameState, top: string[]): void {
++  for (const deck of ["general", "america", "europe", "asia_australia"]) {
++    const preferred = top.filter(id => baseGameScannedLocationEncounters.some(card => card.id === id && card.deck === deck));
++    state.privateState.deckOrderById[`encounter:${deck}`] = [...preferred, ...baseGameScannedLocationEncounters.filter(card => card.deck === deck && !preferred.includes(card.id)).map(card => card.id)];
++  }
++  state.locationDiscardIdsByDeck = {};
++}
++
+@@ -59,0 +70 @@
++  registerLocationDiscardTests(() => colyseus);
+@@ -1602 +1613 @@
+-    state.privateState.deckOrderById["encounter:general"] = ["encounter_general_10"];
++    seedPhysicalLocation(state, ["encounter_general_10"]);
+@@ -2878 +2889 @@
+-    state.privateState.deckOrderById["encounter:general"] = ["encounter_general_08", "encounter_general_01"];
++    seedPhysicalLocation(state, ["encounter_general_08", "encounter_general_01"]);
+@@ -2889 +2900,2 @@
+-    assert.deepEqual(internal.toEngineState().privateState.deckOrderById["encounter:general"], ["encounter_general_01", "encounter_general_08"]);
++    assert.deepEqual(internal.toEngineState().privateState.deckOrderById["encounter:general"], state.privateState.deckOrderById["encounter:general"]!.slice(1));
++    assert.deepEqual(internal.toEngineState().locationDiscardIdsByDeck?.general, ["encounter_general_08"]);
+@@ -2932 +2944 @@
+-    state.privateState.deckOrderById["encounter:america"] = ["encounter_america_05"];
++    seedPhysicalLocation(state, ["encounter_america_05"]);
+@@ -2971 +2983 @@
+-    state.privateState.deckOrderById["encounter:general"] = ["encounter_general_07"];
++    seedPhysicalLocation(state, ["encounter_general_07"]);
+@@ -3002 +3014 @@
+-    state.privateState.deckOrderById["encounter:general"] = ["encounter_general_08"];
++    seedPhysicalLocation(state, ["encounter_general_08"]);
+--- a/apps/web/app/composables/useGameRoom.ts
++++ b/apps/web/app/composables/useGameRoom.ts
+@@ -54,0 +55 @@
++  locationDiscardIdsByDeck?: string
+@@ -120,0 +122 @@
++const locationDiscardIdsByDeck = ref<Record<string, string[]>>({})
+@@ -165,0 +168 @@
++    locationDiscardIdsByDeck.value = JSON.parse(state.locationDiscardIdsByDeck ?? '{}') as Record<string, string[]>
+@@ -338,0 +342 @@
++    locationDiscardIdsByDeck: readonly(locationDiscardIdsByDeck),
+--- a/apps/server/test/RoomSnapshotIsolation.test.ts
++++ b/apps/server/test/RoomSnapshotIsolation.test.ts
+@@ -36,0 +37 @@
++  locationDiscardIdsByDeck: { value: Record<string, string[]> };
+@@ -93,0 +95,7 @@
++  it('exposes Location discards and resets on replacement', async () => {
++    const { game, connect } = harness();
++    await connect(room('old', { ...populated('old'), locationDiscardIdsByDeck: '{"general":["encounter_general_02"]}' }));
++    assert.deepEqual(Array.from(game.locationDiscardIdsByDeck.value.general!), ['encounter_general_02']);
++    await connect(room('new', {}));
++    assert.equal(Object.keys(game.locationDiscardIdsByDeck.value).length, 0);
++  });

@@ -1,5 +1,7 @@
 # Location physical setup integrity
 
+Current status: the physical discard/recycle follow-up is now implemented; see [Location lifecycle](location-discard.md). Statements below describing it as pending record this earlier iteration.
+
 2026-10-22: buildLocationEncounterDecks now validates every catalog slot, unique nonempty string IDs, four known deck assignments and nonempty decks before invoking its first shuffle. Each returned order must densely conserve exactly its own identities. Input copies tolerate in-place shufflers; output copies isolate all four decks even if the shuffler reuses a mutable buffer. Partial fixtures remain valid; no printed card counts are imposed.
 
 The Location START_GAME boundary now uses the existing random transaction independently of optional Research/Expedition/starting-Spell content. Generic errors replace escaped setup exceptions and retained deterministic input is restored after partial consumption. No public field, command, UI rule, dependency or card effect changes. Physical Location discard/recycling remains pending.

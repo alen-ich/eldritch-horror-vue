@@ -87,7 +87,7 @@ describe("guarded location encounter", () => {
     if (!finished.ok) throw new Error(finished.error.message);
     expect(finished.state.players[0]).toMatchObject({ clues: 0, sanity: 7, skillImprovements: { influence: 1 } });
     expect(finished.state.privateState.tokenPoolById.clue_discard).toEqual(["clue_london"]);
-    expect(finished.state.privateState.deckOrderById["encounter:general"]).toEqual(["encounter_general_01", "encounter_general_08"]);
+    expect(finished.state.privateState.deckOrderById["encounter:general"]).toEqual(["encounter_general_01"]);
   });
 
   it("requires the entire optional cost and conserves paid physical Clues", () => {
@@ -202,7 +202,7 @@ describe("guarded location encounter", () => {
     expect(duplicate.state.privateState.tokenPoolById["condition:paranoia"]).toEqual(["condition_paranoia_01"]);
     expect(duplicate.events).toContainEqual({ type: "CONDITION_GAIN_PREVENTED", playerId: "host", kind: "paranoia" });
   });
-  it("resolves the verified no-choice test, awards a physical Clue, cycles the card and advances the investigator", () => {
+  it("resolves the verified no-choice test, awards a physical Clue, discards the card and advances the investigator", () => {
     const before = state();
     const result = executeCommand(before, "host", { type: "RESOLVE_LOCATION_ENCOUNTER", deck: "general" }, content,
       createDeterministicEngineContext({ dice: [1, 5], tokenIndexes: [0] }));
@@ -210,7 +210,8 @@ describe("guarded location encounter", () => {
     if (!result.ok) return;
     expect(result.state.players[0]?.clues).toBe(1);
     expect(result.state.privateState.tokenPoolById["held_clues:host"]).toEqual(["clue_arkham"]);
-    expect(result.state.privateState.deckOrderById["encounter:general"]).toEqual(["encounter_general_01", "encounter_general_08"]);
+    expect(result.state.privateState.deckOrderById["encounter:general"]).toEqual(["encounter_general_01"]);
+    expect(result.state.locationDiscardIdsByDeck?.general).toEqual(["encounter_general_08"]);
     expect(result.events[0]).toMatchObject({ type: "LOCATION_ENCOUNTER_RESOLVED", cardId: "encounter_general_08", dice: [1, 5], successes: 1 });
     expect(before.privateState.deckOrderById["encounter:general"]).toEqual(["encounter_general_08", "encounter_general_01"]);
   });
@@ -232,7 +233,8 @@ describe("guarded location encounter", () => {
       createDeterministicEngineContext({ dice: [1, 1], ids: ["test-1", "choice-1"] }));
     expect(started).toMatchObject({ ok: true, state: { currentLocationEncounterCardId: "encounter_general_08", activeTest: { continuation: "location_encounter" }, pendingDecision: { playerId: "host" } } });
     if (!started.ok) return;
-    expect(started.state.privateState.deckOrderById["encounter:general"]?.[0]).toBe("encounter_general_08");
+    expect(started.state.privateState.deckOrderById["encounter:general"]?.[0]).toBe("encounter_general_01");
+    expect(started.state.pendingLocationEncounter?.cardRemovedFromDeck).toBe(true);
     const wrongOwner = executeCommand(started.state, "guest", { type: "RESOLVE_DECISION", decisionId: "choice-1", selectedOptionIds: ["die-0"] }, content, createDeterministicEngineContext({ dice: [5] }));
     expect(wrongOwner).toMatchObject({ ok: false, error: { code: "NOT_DECISION_OWNER" } });
     const finished = executeCommand(started.state, "host", { type: "RESOLVE_DECISION", decisionId: "choice-1", selectedOptionIds: ["die-0"] }, content,

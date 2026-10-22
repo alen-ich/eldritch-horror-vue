@@ -32,14 +32,16 @@ describe("ordinary encounter Bandages prevention", () => {
   it.each([1, 2, 3])("prevents up to two of %s Health loss without healing or changing Sanity loss", loss => {
     const { state, rules } = fixture(loss, 2); const before = start(state, rules);
     expect(before.players[0]?.health).toBe(5); expect(before.players[0]?.sanity).toBe(7);
-    expect(before.pendingDefeat).toBeUndefined(); expect(before.privateState.deckOrderById["encounter:general"]).toEqual(state.privateState.deckOrderById["encounter:general"]);
+    expect(before.pendingDefeat).toBeUndefined(); expect(before.privateState.deckOrderById["encounter:general"]).toEqual(["encounter_general_02"]);
+    expect(before.pendingLocationEncounter?.cardRemovedFromDeck).toBe(true);
     expect(before.pendingDecision?.optionLabels?.asset_bandages).toBe(`Discard Bandages: prevent ${Math.min(2, loss)} Health loss`);
     const snapshot = structuredClone(before); const result = choose(JSON.parse(JSON.stringify(before)), rules);
     if (!result.ok) throw new Error(result.error.message);
     expect(before).toEqual(snapshot); expect(result.state.players[0]?.health).toBe(5 - Math.max(0, loss - 2));
     expect(result.state.players[0]?.sanity).toBe(5); expect(result.state.players[0]?.skillImprovements.lore).toBe(1);
     expect(result.state.assetDiscardIds).toEqual(["asset_bandages"]); expect(result.state.players[0]?.assetIds).toEqual([]);
-    expect(result.state.privateState.deckOrderById["encounter:general"]).toEqual(["encounter_general_02", "encounter_general_01"]);
+    expect(result.state.privateState.deckOrderById["encounter:general"]).toEqual(["encounter_general_02"]);
+    expect(result.state.locationDiscardIdsByDeck?.general).toEqual(["encounter_general_01"]);
     expect(result.state.activePlayerId).toBe("guest");
   });
   it("lets a same-space colleague decide privately without changing the encounter owner", () => {
@@ -76,11 +78,12 @@ describe("ordinary encounter Bandages prevention", () => {
     expect(defeated.state.pendingDefeat?.causes).toEqual(["sanity"]); expect(defeated.state.players[0]?.skillImprovements.lore).toBeUndefined();
     expect(defeated.state.pendingLocationEncounter).toBeUndefined(); expect(defeated.state.assetDiscardIds).toEqual(["asset_bandages"]);
   });
-  it("declining lethal simultaneous damage retains both defeat causes and cycles once", () => {
+  it("declining lethal simultaneous damage retains both defeat causes and discards once", () => {
     const { state, rules } = fixture(5, 7); const result = choose(start(state, rules), rules, "skip");
     if (!result.ok) throw new Error(result.error.message);
     expect(result.state.pendingDefeat?.causes).toEqual(["health", "sanity"]);
-    expect(result.state.privateState.deckOrderById["encounter:general"]).toEqual(["encounter_general_02", "encounter_general_01"]);
+    expect(result.state.privateState.deckOrderById["encounter:general"]).toEqual(["encounter_general_02"]);
+    expect(result.state.locationDiscardIdsByDeck?.general).toEqual(["encounter_general_01"]);
     expect(result.state.players[0]?.skillImprovements.lore).toBeUndefined();
   });
   it("still defeats when remaining Health loss is lethal, preserving a pure input transition", () => {
@@ -213,7 +216,7 @@ describe("Whiskey and combined ordinary encounter prevention", () => {
     expect(reacted.state.pendingDecision?.optionIds).toContain(second);
     const saved = choose(JSON.parse(JSON.stringify(reacted.state)), rules, second); if (!saved.ok) throw new Error(saved.error.message);
     expect(saved.state.players[0]?.health).toBe(1); expect(saved.state.players[0]?.sanity).toBe(1); expect(saved.state.pendingDefeat).toBeUndefined();
-    expect(saved.state.assetDiscardIds).toEqual([first, second]); expect(saved.state.privateState.deckOrderById["encounter:general"]).toEqual(["encounter_general_02", "encounter_general_01"]);
+    expect(saved.state.assetDiscardIds).toEqual([first, second]); expect(saved.state.privateState.deckOrderById["encounter:general"]).toEqual(["encounter_general_02"]);
   });
   it.each(["asset_bandages", "asset_whiskey"])("declining %s does not decline another source held by the same investigator", first => {
     const { state, rules } = fixture(2, 2); const second = first === "asset_bandages" ? "asset_whiskey" : "asset_bandages";

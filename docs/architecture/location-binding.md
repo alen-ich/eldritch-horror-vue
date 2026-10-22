@@ -1,5 +1,7 @@
 # Location continuation binding
 
+Current status: the physical discard/recycle follow-up is now implemented; see [Location lifecycle](location-discard.md). Statements below describing it as pending record this earlier iteration.
+
 2026-10-22: the four Location families now validate active encounter owner, phase, matching public reveal, catalog family and private top card before command effects or direct draw. Foreign Gate metadata and premature removal flags are rejected. Orphan reveals are identified from content IDs and standard Location prefixes. The pure validator does not mutate snapshots or reveal private identities in diagnostics.
 
 Server restoration invokes the same validator before any room mutation, following the existing Research validation to preserve its diagnostic precedence. No wire fields, commands, packages or card effects changed. Current location and decision owner remain independent: effects may move the investigator and offer colleague-owned prevention.

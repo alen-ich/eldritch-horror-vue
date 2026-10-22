@@ -86,8 +86,8 @@ describe("Location regional restored reroll boundary", () => {
     source.activeTest!.sourceEncounterDeck = deck;
     source.privateState.deckOrderById[`encounter:${deck}`] = source.privateState.deckOrderById["encounter:general"]!;
     if (deck !== "general") delete source.privateState.deckOrderById["encounter:general"];
-    const state: GameState = JSON.parse(JSON.stringify(source)), before = structuredClone(state);
-    const regional: GameContent = { ...rules, locationEncounters: rules.locationEncounters!.map(card => ({ ...card, deck })) };
+    const state: GameState = JSON.parse(JSON.stringify(source).replaceAll("encounter_general_", `encounter_${deck}_`)), before = structuredClone(state);
+    const regional: GameContent = { ...rules, locationEncounters: rules.locationEncounters!.map(card => ({ ...card, id: card.id.replace("encounter_general_", `encounter_${deck}_`), deck })) };
     const context = createDeterministicEngineContext({ dice: [6] });
     expect(executeCommand(state, "host", { type: "RESOLVE_DECISION", decisionId: state.pendingDecision!.id, selectedOptionIds: ["die-0"] }, regional, context))
       .toMatchObject({ ok: false, error: { code: "RANDOM_INPUT_REQUIRED" } });

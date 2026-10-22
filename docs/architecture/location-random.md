@@ -1,5 +1,7 @@
 # Location random-input transaction
 
+Current status: the physical discard/recycle follow-up is now implemented; see [Location lifecycle](location-discard.md). Statements below describing it as pending record this earlier iteration.
+
 2026-10-22: Location draw and restored decisions now checkpoint retained deterministic input. The exported direct entry and its command caller return generic RANDOM_INPUT_REQUIRED on partial random exhaustion instead of throwing after consuming input. Resumed general/america/europe/asia_australia decisions use the same pure family helper; Research and Other World retain their own boundaries. Successful transitions commit once; failed results and exceptions roll back dice, IDs, token selection and shuffle input when checkpoint is supported. Contexts without checkpoint remain compatible but cannot undo their external random source.
 
 No printed rule, wire command, state field, client outcome or hidden-data projection changed. Server supplies random input and clients send validated intent/owner choices. Private exception details remain suppressed. Tests cover direct/command partial dice, a paid reroll restored from JSON followed by ID exhaustion, all four regional resume cases, successful consumption, non-owner refusal, no-checkpoint compatibility and all retained sequences on failure/exception.
