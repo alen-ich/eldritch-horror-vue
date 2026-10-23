@@ -60,6 +60,11 @@ export const ActiveTestState = schema({
 export type ActiveTestState = SchemaType<typeof ActiveTestState>;
 
 export const GameRoomState = schema({
+  activeExpeditionLocationId: t.string().default(""),
+  expeditionDiscardIds: t.string().default("[]"),
+  otherWorldDiscardIds: t.string().default("[]"),
+  researchDiscardIds: t.string().default("[]"),
+  locationDiscardIdsByDeck: t.string().default("{}"),
   spellSupplyTopId: t.string().default(""),
   investigatorLifecycle: t.string().default("{}"),
   doom: t.uint8().default(0),

@@ -23,6 +23,29 @@ export function registerOtherWorldStateRoomTests(getServer: () => ColyseusTestSe
       await send(host, { type: "START_GAME" });
       return { room, host, guest, internal, send };
     }
+    it("synchronizes faceup Other World discards and rejects corrupt restored zones atomically", async () => {
+      const { room, host, guest, internal } = await fixture();
+      const saved = internal.toEngineState();
+      const cardId = saved.privateState.deckOrderById["encounter:other_world"]!.shift()!;
+      saved.otherWorldDiscardIds = [cardId];
+      internal.applyEngineState(JSON.parse(JSON.stringify(saved)) as GameState);
+      assert.deepEqual(internal.toEngineState().otherWorldDiscardIds, [cardId]);
+      await new Promise(resolve => setTimeout(resolve, room.patchRate * 2));
+      for (const state of [room.state, host.state, guest.state]) {
+        assert.deepEqual(JSON.parse(state.otherWorldDiscardIds), [cardId]);
+        const wire = JSON.stringify(state);
+        assert.doesNotMatch(wire, /deckOrderById|cardRemovedFromDeck|pendingLocationEncounter/);
+        for (const id of saved.privateState.deckOrderById["encounter:other_world"]!) assert.ok(!wire.includes(id));
+      }
+      const before = JSON.stringify(internal.toEngineState()), publicBefore = JSON.stringify(room.state);
+      for (const discard of [[cardId, cardId], ["unknown"], null, Array(1)]) {
+        const bad = JSON.parse(before) as GameState;
+        Object.assign(bad, { otherWorldDiscardIds: discard });
+        assert.throws(() => internal.applyEngineState(bad), /Other World/);
+        assert.equal(JSON.stringify(internal.toEngineState()), before);
+        assert.equal(JSON.stringify(room.state), publicBefore);
+      }
+    });
     for (const corruption of ["missing", "duplicate", "unknown", "incomplete", "empty", "orphan", "sparse"]) {
       it(`rejects ${corruption} inventory before any room mutation`, async () => {
         const { room, internal } = await fixture();
@@ -60,6 +83,8 @@ export function registerOtherWorldStateRoomTests(getServer: () => ColyseusTestSe
       const offered = host.waitForMessage(pendingDecisionMessageType);
       await send(host, { type: "RESOLVE_OTHER_WORLD_ENCOUNTER", gateId: "gate_arkham" }); await offered;
       const initial = internal.toEngineState(); assert.ok(initial.pendingDecision); assert.ok(initial.activeTest);
+      assert.equal(initial.pendingLocationEncounter?.cardRemovedFromDeck, true);
+      assert.ok(!initial.privateState.deckOrderById["encounter:other_world"]!.includes(card));
       initial.activeTest.dice = initial.activeTest.dice.map(() => 6); initial.activeTest.successes = initial.activeTest.dice.length;
       const refreshed = host.waitForMessage(pendingDecisionMessageType);
       internal.applyEngineState(JSON.parse(JSON.stringify(initial)) as GameState); await refreshed;
@@ -76,6 +101,14 @@ export function registerOtherWorldStateRoomTests(getServer: () => ColyseusTestSe
         assert.doesNotMatch(wire, /deckOrderById|pendingLocationEncounter|gateLocationId|gateClosed/);
         for (const id of deck.filter(id => id !== card)) assert.ok(!wire.includes(id));
       }
+      const finish = internal.toEngineState(); assert.ok(finish.pendingDecision); assert.ok(finish.activeTest);
+      finish.activeTest.dice = finish.activeTest.dice.map(() => 6); finish.activeTest.successes = finish.activeTest.dice.length;
+      const finishOffer = host.waitForMessage(pendingDecisionMessageType);
+      internal.applyEngineState(finish); await finishOffer;
+      await send(host, { type: "RESOLVE_DECISION", decisionId: finish.pendingDecision.id, selectedOptionIds: [] });
+      await new Promise(resolve => setTimeout(resolve, room.patchRate * 2));
+      for (const state of [room.state, host.state, guest.state]) assert.deepEqual(JSON.parse(state.otherWorldDiscardIds), [card]);
+      assert.equal(internal.toEngineState().pendingLocationEncounter, undefined);
     });
     it("restores exact private order while both peers see only public state", async () => {
       const { room, host, guest, internal } = await fixture();

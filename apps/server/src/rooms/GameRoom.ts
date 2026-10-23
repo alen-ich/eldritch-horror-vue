@@ -1,7 +1,11 @@
-import { validateResearchContinuationState } from "@eldritch/engine";
+import { validateLocationState } from "@eldritch/engine";
+import { validateLocationContinuationState } from "@eldritch/engine";
 import { validateOtherWorldState } from "@eldritch/engine";
+import { validateResearchContinuationState, validateResearchState } from "@eldritch/engine";
 import { privateFeedTheMindRules } from "../private-feed-the-mind.js";
-import { canCastFeedTheMind, validateSpellCastingState, validateInvestigatorAbilityUsage } from "@eldritch/engine";
+import { validateExpeditionState } from "@eldritch/engine";
+import { baseGameExpeditionSetup } from "@eldritch/content";
+import { canCastFeedTheMind, validateSpellCastingState, validateInvestigatorAbilityUsage, validateNormanAcquireRerollState } from "@eldritch/engine";
 import type { GameCommand } from "@eldritch/protocol";
 import { randomInt, randomUUID } from "node:crypto";
 import { Client, CloseCode, Room } from "colyseus";
@@ -52,12 +56,19 @@ function serverMythosContext(): EngineContext {
   };
 }
 const baseGameContent: GameContent = {
+  expeditionEncounters: baseGameExpeditionSetup,
   privateSpellCastingRules: privateFeedTheMindRules,
   spells: baseGameSpells.map(({ id, kind, trait, timing }) => ({ id, kind, trait, timing })),
   artifacts: baseGameArtifacts.map(({ id, engineEffects }) => ({ id, engineEffects })),
   researchEncounters: baseGameResearchEncounterRules,
+  researchEncounterSetup: baseGameScannedTokenEncounters.flatMap(card => {
+    const deck = card.deck;
+    return deck === "research_azathoth" || deck === "research_cthulhu" || deck === "research_shub_niggurath" || deck === "research_yog_sothoth"
+      ? [{ id: card.id, deck }] : [];
+  }),
   otherWorldEncounters: baseGameOtherWorldEncounterRules,
   otherWorldEncounterIds: baseGameScannedTokenEncounters.filter(card => card.deck === "other_world").map(card => card.id),
+  locationEncounterSetup: baseGameScannedLocationEncounters.map(({ id, deck }) => ({ id, deck })),
   locationEncounters: baseGameScannedLocationEncounters.map(({ id, deck }) => ({ id, deck, sections: baseGameLocationEncounterRules.find(card => card.id === id)?.sections })),
   gates: baseGameGates.map(({ id, omenSymbol, locationId }) => ({ id, omenSymbol, locationId })),
   clues: baseGameClues.map(({ id, locationId }) => ({ id, locationId })),
@@ -68,6 +79,7 @@ const baseGameContent: GameContent = {
   })),
   ancientOnes: Object.fromEntries(baseGameAncientOnes.map(ancient => [ancient.id, {
     startingDoom: ancient.startingDoom,
+    normalCultistCombat: "normalCombat" in ancient.cultist ? { ...ancient.cultist.normalCombat, toughness: ancient.cultist.normalToughness, effectIds: ancient.cultist.normalEffectIds } : undefined,
     mythosDeck: ancient.mythosDeck,
     greenOmenTokens: ancient.setup.reduce((sum, effect) => sum + (effect.type === "place_eldritch_token_on_omen" ? effect.quantity : 0), 0),
     setAsideMonsters: ancient.setup.filter(effect => effect.type === "set_aside_monster").map(({ monsterId, quantity }) => ({ monsterId, quantity })),
@@ -228,6 +240,11 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
   private toEngineState(): GameState {
     const monsters = JSON.parse(this.state.monsters) as NonNullable<GameState["monsters"]>;
     return {
+      activeExpeditionLocationId: (this.state.activeExpeditionLocationId || undefined) as GameState["activeExpeditionLocationId"],
+      expeditionDiscardIds: JSON.parse(this.state.expeditionDiscardIds) as string[],
+      otherWorldDiscardIds: JSON.parse(this.state.otherWorldDiscardIds) as string[],
+      researchDiscardIds: JSON.parse(this.state.researchDiscardIds) as string[],
+      locationDiscardIdsByDeck: JSON.parse(this.state.locationDiscardIdsByDeck) as GameState["locationDiscardIdsByDeck"],
       ...JSON.parse(this.state.investigatorLifecycle) as Pick<GameState, "pendingDefeat" | "pendingMythosDamage" | "pendingFromBadToWorse" | "pendingHeatWave" | "pendingTideOfDespair" | "pendingUnexpectedBetrayal" | "defeatedInvestigators" | "replacementWindow" | "awakened">,
       doom: this.state.doom,
       omen: this.state.omen,
@@ -299,16 +316,41 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
   }
 
   private applyEngineState(engineState: GameState): void {
+    const priorResearch = this.pendingLocationEncounter, incomingResearch = engineState.pendingLocationEncounter;
+    if (priorResearch?.researchMarkerBinding && incomingResearch?.cardId === priorResearch.cardId
+      && (incomingResearch.researchMarkerBinding?.markerId !== priorResearch.researchMarkerBinding.markerId
+        || incomingResearch.researchMarkerBinding?.clueId !== priorResearch.researchMarkerBinding.clueId)) {
+      throw new Error("Research restoration rejected: original marker binding changed.");
+    }
+    if (Object.keys(this.privateState.deckOrderById).some(key => key.startsWith("encounter:research_")
+      && !engineState.privateState.deckOrderById[key])) throw new Error("Research restoration rejected: missing initialized deck.");
+    const physicalResearchInvalid = validateResearchState(engineState, baseGameContent);
+    if (physicalResearchInvalid) throw new Error(`Research restoration rejected: ${physicalResearchInvalid}`);
     const researchInvalid = validateResearchContinuationState(engineState, baseGameContent);
     if (researchInvalid) throw new Error(`Research restoration rejected: ${researchInvalid}`);
+    for (const deck of ["general", "america", "europe", "asia_australia"]) {
+      const key = `encounter:${deck}`;
+      if (this.privateState.deckOrderById[key] !== undefined && engineState.privateState.deckOrderById[key] === undefined) throw new Error("Location restoration rejected: missing initialized deck.");
+    }
+    const locationInventoryInvalid = validateLocationState(engineState, baseGameContent);
+    if (locationInventoryInvalid) throw new Error(`Location restoration rejected: ${locationInventoryInvalid}`);
+    const locationInvalid = validateLocationContinuationState(engineState, baseGameContent);
+    if (locationInvalid) throw new Error(`Location restoration rejected: ${locationInvalid}`);
     if (this.privateState.deckOrderById["encounter:other_world"] && !engineState.privateState.deckOrderById["encounter:other_world"]) {
       throw new Error("Other World restoration rejected: missing initialized deck.");
     }
     const otherWorldInvalid = validateOtherWorldState(engineState, baseGameContent);
     if (otherWorldInvalid) throw new Error(`Other World restoration rejected: ${otherWorldInvalid}`);
+    if (this.privateState.deckOrderById["encounter:expedition"] && !engineState.privateState.deckOrderById["encounter:expedition"]) {
+      throw new Error("Expedition restoration rejected: missing initialized deck.");
+    }
+    const expeditionInvalid = validateExpeditionState(engineState, baseGameContent);
+    if (expeditionInvalid) throw new Error(`Expedition restoration rejected: ${expeditionInvalid}`);
     if (this.privateState.investigatorAbilityUsage && !engineState.privateState.investigatorAbilityUsage) throw new Error("Investigator ability usage restoration rejected: missing ledger.");
     const usageInvalid = validateInvestigatorAbilityUsage(engineState);
     if (usageInvalid) throw new Error(`Investigator ability restoration rejected: ${usageInvalid}`);
+    const acquisitionInvalid = validateNormanAcquireRerollState(engineState, baseGameContent);
+    if (acquisitionInvalid) throw new Error(`Norman acquisition restoration rejected: ${acquisitionInvalid}`);
     // Validate before touching any synchronized/private room field. A restored
     // snapshot may not silently regenerate inventory that the room already had.
     if (engineState.phase !== "lobby" || engineState.privateState.spells || this.privateState.spells) {
@@ -321,6 +363,11 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     if (engineState.phase !== "lobby") this.autoDispose = false;
     this.state.investigatorLifecycle = JSON.stringify({ pendingDefeat: engineState.pendingDefeat, pendingMythosDamage: engineState.pendingMythosDamage, pendingFromBadToWorse: engineState.pendingFromBadToWorse, pendingHeatWave: engineState.pendingHeatWave, pendingTideOfDespair: engineState.pendingTideOfDespair, pendingUnexpectedBetrayal: engineState.pendingUnexpectedBetrayal, defeatedInvestigators: publicState.defeatedInvestigators, replacementWindow: engineState.replacementWindow, awakened: engineState.awakened });
     this.state.doom = engineState.doom ?? 0;
+    this.state.activeExpeditionLocationId = engineState.activeExpeditionLocationId ?? "";
+    this.state.expeditionDiscardIds = JSON.stringify(engineState.expeditionDiscardIds ?? []);
+    this.state.otherWorldDiscardIds = JSON.stringify(engineState.otherWorldDiscardIds ?? []);
+    this.state.researchDiscardIds = JSON.stringify(engineState.researchDiscardIds ?? []);
+    this.state.locationDiscardIdsByDeck = JSON.stringify(engineState.locationDiscardIdsByDeck ?? {});
     this.state.omen = engineState.omen ?? 0;
     this.state.greenOmenTokens = engineState.greenOmenTokens ?? 0;
     this.state.tradeOffer = engineState.tradeOffer ? JSON.stringify(engineState.tradeOffer) : "";

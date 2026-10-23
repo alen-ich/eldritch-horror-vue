@@ -49,7 +49,7 @@ describe("Other World card 23: The Abyss", () => {
   function initial(pass: boolean) { return accepted(resolve(card23(1), [pass ? 6 : 1])).state; }
   function finished(after: GameState, close = false, defeat = false) {
     expect(after.activeGateIds).toEqual(close ? [] : ["gate_arkham"]); expect(after.activePlayerId).toBe(defeat ? "host" : "guest");
-    expect(after.pendingLocationEncounter).toBeUndefined(); expect(after.privateState.deckOrderById["encounter:other_world"]).toEqual([...ids.filter(id => id !== cardId), cardId]);
+    expect(after.pendingLocationEncounter).toBeUndefined(); expect(after.privateState.deckOrderById["encounter:other_world"]).toEqual(ids.filter(id => id !== cardId));
   }
   it.each([true, false])("improves Will before Strength -1, closes only on success (%s)", pass => {
     const before = initial(true); const snapshot = structuredClone(before);
@@ -142,7 +142,7 @@ describe("Other World card 23: The Abyss", () => {
     const before = initial(true);
     if (field === "gate") { before.activeGateIds = []; before.discardedGateIds = ["gate_arkham"]; }
     if (field === "location") before.players[0]!.locationId = "london";
-    if (field === "deck") before.privateState.deckOrderById["encounter:other_world"]!.reverse();
+    if (field === "deck") before.privateState.deckOrderById["encounter:other_world"]!.push(before.pendingLocationEncounter!.cardId);
     if (field === "card") before.currentLocationEncounterCardId = ids[0];
     if (field === "artifact") before.players[0]!.artifactIds = ["artifact_ttka_halot"];
     const snapshot = structuredClone(before); expect(choose(before, field === "option" ? ["twice"] : []).ok).toBe(false); expect(before).toEqual(snapshot);
@@ -181,7 +181,7 @@ describe("Other World card 21: The Dreamlands", () => {
   function finished(after: GameState, close = false, defeat = false) {
     expect(after.activeGateIds).toEqual(close ? [] : ["gate_arkham"]);
     expect(after.activePlayerId).toBe(defeat ? "host" : "guest"); expect(after.pendingLocationEncounter).toBeUndefined();
-    expect(after.privateState.deckOrderById["encounter:other_world"]).toEqual([...ids.filter(id => id !== cardId), cardId]);
+    expect(after.privateState.deckOrderById["encounter:other_world"]).toEqual(ids.filter(id => id !== cardId));
   }
   it.each(["accept", "skip"])("reward precedes %s Health choice, only paid Health closes", option => {
     const before = card21(); const snapshot = structuredClone(before);
@@ -267,7 +267,7 @@ describe("Other World card 21: The Dreamlands", () => {
     const before = payment();
     if (field === "gate") { before.activeGateIds = []; before.discardedGateIds = ["gate_arkham"]; }
     if (field === "location") before.players[0]!.locationId = "london";
-    if (field === "deck") before.privateState.deckOrderById["encounter:other_world"]!.reverse();
+    if (field === "deck") before.privateState.deckOrderById["encounter:other_world"]!.push(before.pendingLocationEncounter!.cardId);
     if (field === "health") before.players[0]!.health = 1;
     if (field === "asset") before.players[0]!.assetIds = ["unsupported"];
     const snapshot = structuredClone(before); expect(choose(before, [field === "option" ? "close" : "accept"]).ok).toBe(false); expect(before).toEqual(snapshot);
@@ -324,7 +324,7 @@ describe("Other World card 19: City of the Great Race", () => {
     expect(result.state.players[0]).toMatchObject({ health: 7, sanity: pass ? 5 : 4, clues: 2 });
     expect(result.state.activeGateIds).toEqual(pass ? [] : ["gate_arkham"]); expect(result.state.activePlayerId).toBe("guest");
     expect(result.state.players[0]?.conditionIds ?? []).toEqual([]); expect(result.state.pendingLocationEncounter).toBeUndefined();
-    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual([...ids.filter(id => id !== ids[17]), ids[17]]); expect(before).toEqual(snapshot);
+    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual(ids.filter(id => id !== ids[17])); expect(before).toEqual(snapshot);
   });
   it("newly awarded Clues fund repeated restored Lore rerolls before exact closure", () => {
     const before = lore(); const snapshot = structuredClone(before);
@@ -402,7 +402,7 @@ describe("Other World card 19: City of the Great Race", () => {
     const before = offer();
     if (field === "gate") { before.activeGateIds = []; before.discardedGateIds = ["gate_arkham"]; }
     if (field === "location") before.players[0]!.locationId = "london";
-    if (field === "deck") before.privateState.deckOrderById["encounter:other_world"]!.reverse();
+    if (field === "deck") before.privateState.deckOrderById["encounter:other_world"]!.push(before.pendingLocationEncounter!.cardId);
     if (field === "delay") before.players[0]!.delayed = true;
     if (field === "asset") before.players[0]!.assetIds = ["unsupported"];
     const snapshot = structuredClone(before);
@@ -423,7 +423,7 @@ describe("Other World card 19: City of the Great Race", () => {
     expect(result.state.players[0]?.clues).toBe(path === "lore" ? 2 : 0);
     if (path === "refusal") expect(result.events.findIndex(event => event.type === "CONDITION_GAINED")).toBeLessThan(result.events.findIndex(event => event.type === "INVESTIGATOR_DEFEATED"));
     expect(result.state.activeGateIds).toEqual(["gate_arkham"]); expect(result.state.pendingLocationEncounter).toBeUndefined();
-    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual([...ids.filter(id => id !== ids[17]), ids[17]]);
+    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual(ids.filter(id => id !== ids[17]));
   });
   it("Delay acceptance avoids otherwise lethal Sanity loss", () => {
     const before = offer(); before.players[0]!.sanity = 1;
@@ -477,7 +477,7 @@ describe("Other World card 18: The Underworld", () => {
     expect(result.state.players[0]).toMatchObject({ health: 7, sanity: 5 }); expect(result.state.players[0]?.conditionIds ?? []).toEqual([]);
     expect(result.events.findIndex(event => event.type === "ASSET_DISCARDED")).toBeLessThan(result.events.findIndex(event => event.type === "GATE_CLOSED"));
     expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.activePlayerId).toBe("guest");
-    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual([...ids.filter(id => id !== ids[16]), ids[16]]); expect(before).toEqual(snapshot);
+    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual(ids.filter(id => id !== ids[16])); expect(before).toEqual(snapshot);
   });
   it("refusal retains Items, loses Health then privately draws an Injury", () => {
     const result = accepted(choose(offer(), ["skip"]));
@@ -555,7 +555,7 @@ describe("Other World card 18: The Underworld", () => {
     if (path === "refusal") result = accepted(choose(result.state, ["skip"]));
     expect(result.state.pendingDefeat).toBeDefined(); expect(result.state.players[0]?.conditionIds ?? []).toEqual([]);
     expect(result.state.activePlayerId).toBe("host"); expect(result.state.pendingLocationEncounter).toBeUndefined();
-    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual([...ids.filter(id => id !== ids[16]), ids[16]]);
+    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual(ids.filter(id => id !== ids[16]));
   });
   it("one Health can still pay an Item and close without damage", () => {
     const before = offer(); before.players[0]!.health = 1;
@@ -608,7 +608,7 @@ describe("Other World card 17: Lost Carcosa", () => {
     expect(result.events.filter(event => event.type === "GATE_CLOSED")).toHaveLength(1);
     expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.activePlayerId).toBe("guest"); expect(follow.state).toEqual(snapshot);
     expect(result.state.stateVersion).toBe(follow.state.stateVersion + 1);
-    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual([...ids.filter(id => id !== ids[15]), ids[15]]);
+    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual(ids.filter(id => id !== ids[15]));
   });
   it.each([true, false])("failed Lore after Initial pass %s loses only the printed resource", pass => {
     const before = card17(); const snapshot = structuredClone(before);
@@ -635,7 +635,7 @@ describe("Other World card 17: Lost Carcosa", () => {
     const result = accepted(resolveOtherWorldEncounter(before, "host", "gate_arkham", content, rng([1, 1, 1])));
     expect(result.state.players[0]).toMatchObject({ health: 0, sanity: 5 }); expect(result.state.pendingDefeat).toBeDefined();
     expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.activePlayerId).toBe("host"); expect(result.state.activeGateIds).toEqual(["gate_arkham"]);
-    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual([...ids.filter(id => id !== ids[15]), ids[15]]);
+    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual(ids.filter(id => id !== ids[15]));
   });
   it("lethal successful-Initial branch loses Sanity without closing", () => {
     const before = card17(); before.players[0]!.sanity = 1;
@@ -654,7 +654,7 @@ describe("Other World card 17: Lost Carcosa", () => {
     const before = accepted(keep(initial.state, [1])).state;
     if (field === "gate") { before.activeGateIds = []; before.discardedGateIds = ["gate_arkham"]; }
     if (field === "location") before.players[0]!.locationId = "london";
-    if (field === "deck") before.privateState.deckOrderById["encounter:other_world"]!.reverse();
+    if (field === "deck") before.privateState.deckOrderById["encounter:other_world"]!.push(before.pendingLocationEncounter!.cardId);
     if (field === "clues") before.players[0]!.clues = 0;
     if (field === "held") before.privateState.tokenPoolById["held_clues:host"] = [];
     if (field === "asset") before.players[0]!.assetIds = ["unsupported"];
@@ -692,7 +692,7 @@ describe("Other World card 16: Great Hall of Celaeno", () => {
     expect(result.events.filter(event => event.type === "GATE_CLOSED")).toHaveLength(option === "accept" ? 1 : 0);
     expect(result.state.activePlayerId).toBe("guest"); expect(result.state.pendingLocationEncounter).toBeUndefined();
     expect(result.state.stateVersion).toBe(before.stateVersion + 1); expect(before).toEqual(snapshot);
-    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual([...ids.filter(id => id !== ids[14]), ids[14]]);
+    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual(ids.filter(id => id !== ids[14]));
   });
   it.each([1, 6])("Lore %i closes on success or loses exactly one Sanity", die => {
     const result = accepted(resolveOtherWorldEncounter(card16(), "host", "gate_arkham", content, rng([6, 6, die])));
@@ -740,7 +740,7 @@ describe("Other World card 16: Great Hall of Celaeno", () => {
     const result = accepted(resolveOtherWorldEncounter(before, "host", "gate_arkham", content, rng([6, 6, 1])));
     expect(result.state.players[0]?.sanity).toBe(0); expect(result.state.pendingDefeat).toBeDefined();
     expect(result.state.activePlayerId).toBe("host"); expect(result.state.pendingLocationEncounter).toBeUndefined();
-    expect(result.state.activeGateIds).toEqual(["gate_arkham"]); expect(result.state.privateState.deckOrderById["encounter:other_world"]?.at(-1)).toBe(ids[14]);
+    expect(result.state.activeGateIds).toEqual(["gate_arkham"]); expect(result.state.otherWorldDiscardIds?.at(-1)).toBe(ids[14]);
   });
   it("Azathoth Doom 1 loses on lethal Lore failure, not on direct payment", () => {
     const before = card16(); before.players[0]!.sanity = 1; before.doom = 1;
@@ -752,7 +752,7 @@ describe("Other World card 16: Great Hall of Celaeno", () => {
     const before = offer();
     if (field === "gate") { before.activeGateIds = []; before.discardedGateIds = ["gate_arkham"]; }
     if (field === "location") before.players[0]!.locationId = "london";
-    if (field === "deck") before.privateState.deckOrderById["encounter:other_world"]!.reverse();
+    if (field === "deck") before.privateState.deckOrderById["encounter:other_world"]!.push(before.pendingLocationEncounter!.cardId);
     if (field === "clues") before.players[0]!.clues = 0;
     if (field === "held") before.privateState.tokenPoolById["held_clues:host"] = [];
     if (field === "asset") before.players[0]!.assetIds = ["unsupported"];
@@ -787,7 +787,7 @@ describe("Other World card 15: Yuggoth", () => {
     expect(result.state.privateState.tokenPoolById.clue_discard).toEqual(option === "accept" ? ["clue_a"] : []);
     expect(result.state.players[0]).toMatchObject({ health: 7, sanity: 5 }); expect(result.state.players[0]?.conditionIds ?? []).toEqual([]);
     expect(result.state.activePlayerId).toBe("guest"); expect(before).toEqual(snapshot);
-    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual([...ids.filter(id => id !== ids[13]), ids[13]]);
+    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual(ids.filter(id => id !== ids[13]));
   });
   it("spending the last Clue leaves no Lore reroll and gains front-only Hallucinations on failure", () => {
     const result = accepted(choose(offer(), "accept", [1]));
@@ -828,7 +828,7 @@ describe("Other World card 15: Yuggoth", () => {
     const result = accepted(resolveOtherWorldEncounter(before, "host", "gate_arkham", content, rng([1, 1])));
     expect(result.state.players[0]).toMatchObject({ health: 0, sanity: 5 });
     expect(result.state.pendingDefeat).toBeDefined(); expect(result.state.activePlayerId).toBe("host"); expect(result.state.pendingLocationEncounter).toBeUndefined();
-    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual([...ids.filter(id => id !== ids[13]), ids[13]]);
+    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual(ids.filter(id => id !== ids[13]));
   });
   it("Azathoth Doom 1 loses on lethal Will failure without closure", () => {
     const before = card15(); before.players[0]!.health = 1; before.doom = 1;
@@ -839,7 +839,7 @@ describe("Other World card 15: Yuggoth", () => {
     const before = offer();
     if (field === "gate") { before.activeGateIds = []; before.discardedGateIds = ["gate_arkham"]; }
     if (field === "location") before.players[0]!.locationId = "london";
-    if (field === "deck") before.privateState.deckOrderById["encounter:other_world"]!.reverse();
+    if (field === "deck") before.privateState.deckOrderById["encounter:other_world"]!.push(before.pendingLocationEncounter!.cardId);
     if (field === "clues") before.players[0]!.clues = 0;
     if (field === "held") before.privateState.tokenPoolById["held_clues:host"] = [];
     if (field === "condition") before.privateState.tokenPoolById["condition:hallucinations"] = ["unknown"];
@@ -894,7 +894,7 @@ describe("Other World card 14: City of the Great Race", () => {
     expect(result.state.players[0]?.delayed).toBeFalsy(); expect(result.state.players[0]?.conditionIds ?? []).toEqual([]);
     expect(result.events.filter(event => event.type === "GATE_CLOSED")).toHaveLength(1);
     expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.activePlayerId).toBe("guest"); expect(before).toEqual(snapshot);
-    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual([...ids.filter(id => id !== ids[12]), ids[12]]);
+    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual(ids.filter(id => id !== ids[12]));
   });
   it("payment spends the last Clue before Will, leaving none for a reroll", () => {
     const result = accepted(choose(offer(), "accept", [1, 1]));
@@ -932,7 +932,7 @@ describe("Other World card 14: City of the Great Race", () => {
     expect(result.state.players[0]?.sanity).toBe(resource === "health" ? 4 : 0);
     expect(result.state.pendingDefeat).toBeDefined(); expect(result.state.activePlayerId).toBe("host");
     expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.activeGateIds).toEqual(["gate_arkham"]);
-    expect(result.state.privateState.deckOrderById["encounter:other_world"]?.at(-1)).toBe(ids[12]);
+    expect(result.state.otherWorldDiscardIds?.at(-1)).toBe(ids[12]);
   });
   it("lethal paid Will loss retains the Gate and stops handoff", () => {
     const before = offer(); before.players[0]!.sanity = 1;
@@ -950,7 +950,7 @@ describe("Other World card 14: City of the Great Race", () => {
     const before = offer();
     if (field === "gate") { before.activeGateIds = []; before.discardedGateIds = ["gate_arkham"]; }
     if (field === "location") before.players[0]!.locationId = "london";
-    if (field === "deck") before.privateState.deckOrderById["encounter:other_world"]!.reverse();
+    if (field === "deck") before.privateState.deckOrderById["encounter:other_world"]!.push(before.pendingLocationEncounter!.cardId);
     if (field === "clues") before.players[0]!.clues = 0;
     if (field === "held") before.privateState.tokenPoolById["held_clues:host"] = [];
     if (field === "asset") before.players[0]!.assetIds = ["unsupported"];
@@ -986,7 +986,7 @@ describe("Other World card 13: Yuggoth", () => {
     expect(result.events.filter(event => event.type === "GATE_CLOSED")).toHaveLength(1);
     expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.activePlayerId).toBe("guest");
     expect(result.state.stateVersion).toBe(follow.state.stateVersion + 1); expect(follow.state).toEqual(snapshot);
-    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual([...ids.filter(id => id !== ids[11]), ids[11]]);
+    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual(ids.filter(id => id !== ids[11]));
     expect(JSON.stringify(projectStateForPlayer(result.state, "guest"))).not.toContain("encounter_other_world_12");
   });
   it.each([true, false])("failed Lore after Initial pass %s Delays or loses exactly three Sanity", pass => {
@@ -1020,7 +1020,7 @@ describe("Other World card 13: Yuggoth", () => {
     const result = accepted(executeCommand(JSON.parse(JSON.stringify(offered.state)), "host", { type: "RESOLVE_DECISION", decisionId: decision.id, selectedOptionIds: [option] }, markContent, rng([])));
     expect(result.state.players[0]?.delayed ?? false).toBe(option === "accept"); expect(result.state.players[0]?.sanity).toBe(5);
     expect(result.state.activeGateIds).toEqual(["gate_arkham"]); expect(result.state.activePlayerId).toBe("guest");
-    expect(result.state.privateState.deckOrderById["encounter:other_world"]?.at(-1)).toBe(ids[11]);
+    expect(result.state.otherWorldDiscardIds?.at(-1)).toBe(ids[11]);
   });
   it("already Delayed remains Delayed after the zero-modifier Lore failure", () => {
     const before = card13(); before.players[0]!.delayed = true;
@@ -1033,7 +1033,7 @@ describe("Other World card 13: Yuggoth", () => {
     expect(result.state.players[0]?.sanity).toBe(0); expect(result.state.pendingDefeat).toBeDefined();
     expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.activePlayerId).toBe("host");
     expect(result.state.activeGateIds).toEqual(["gate_arkham"]);
-    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual([...ids.filter(id => id !== ids[11]), ids[11]]);
+    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual(ids.filter(id => id !== ids[11]));
   });
   it("at Azathoth Doom 1 lethal loss ends without closing", () => {
     const before = card13(); before.players[0]!.sanity = 3; before.doom = 1;
@@ -1046,7 +1046,7 @@ describe("Other World card 13: Yuggoth", () => {
     const before = accepted(keep(initial.state, [1])).state;
     if (field === "gate") { before.activeGateIds = []; before.discardedGateIds = ["gate_arkham"]; }
     if (field === "location") before.players[0]!.locationId = "london";
-    if (field === "deck") before.privateState.deckOrderById["encounter:other_world"]!.reverse();
+    if (field === "deck") before.privateState.deckOrderById["encounter:other_world"]!.push(before.pendingLocationEncounter!.cardId);
     if (field === "clues") before.players[0]!.clues = 0;
     if (field === "held") before.privateState.tokenPoolById["held_clues:host"] = [];
     if (field === "asset") before.players[0]!.assetIds = ["unsupported"];
@@ -1081,7 +1081,7 @@ describe("Other World card 12: Lost Carcosa", () => {
     expect(result.state.players[0]?.conditionIds ?? []).toEqual([]);
     expect(result.state.activeGateIds).toEqual(["gate_arkham"]); expect(result.state.activePlayerId).toBe("guest");
     expect(result.state.pendingLocationEncounter).toBeUndefined();
-    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual([...ids.filter(id => id !== ids[10]), ids[10]]);
+    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual(ids.filter(id => id !== ids[10]));
     expect(result.state.stateVersion).toBe(before.stateVersion + 1); expect(before).toEqual(snapshot);
   });
   it("already Delayed cannot pay again and automatically loses two Sanity", () => {
@@ -1134,7 +1134,7 @@ describe("Other World card 12: Lost Carcosa", () => {
     const result = accepted(choose(before, "skip"));
     expect(result.state.players[0]?.sanity).toBe(0); expect(result.state.activeGateIds).toEqual(["gate_arkham"]);
     expect(result.state.activePlayerId).toBe("host"); expect(result.state.pendingLocationEncounter).toBeUndefined();
-    expect(result.state.privateState.deckOrderById["encounter:other_world"]?.at(-1)).toBe(ids[10]);
+    expect(result.state.otherWorldDiscardIds?.at(-1)).toBe(ids[10]);
   });
   it("accepting Delay avoids lethal loss, while Azathoth Doom 1 ends on refusal", () => {
     const before = offer(); before.players[0]!.sanity = 1; before.doom = 1;
@@ -1146,7 +1146,7 @@ describe("Other World card 12: Lost Carcosa", () => {
     const before = offer();
     if (field === "gate") { before.activeGateIds = []; before.discardedGateIds = ["gate_arkham"]; }
     if (field === "location") before.players[0]!.locationId = "london";
-    if (field === "deck") before.privateState.deckOrderById["encounter:other_world"]!.reverse();
+    if (field === "deck") before.privateState.deckOrderById["encounter:other_world"]!.push(before.pendingLocationEncounter!.cardId);
     if (field === "delay") before.players[0]!.delayed = true;
     if (field === "asset") before.players[0]!.assetIds = ["unsupported"];
     const snapshot = structuredClone(before); expect(choose(before, field === "option" ? "refuse" : "accept").ok).toBe(false); expect(before).toEqual(snapshot);
@@ -1194,7 +1194,7 @@ describe("Other World card 11: Great Hall of Celaeno", () => {
     expect(result.state.activeGateIds).toEqual(["gate_arkham"]); expect(result.state.players[0]?.delayed).toBeFalsy();
     expect(result.state.players[0]).toMatchObject({ health: 7, sanity: 5 });
     expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.activePlayerId).toBe("guest");
-    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual([...ids.filter(id => id !== ids[9]), ids[9]]);
+    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual(ids.filter(id => id !== ids[9]));
     expect(result.state.stateVersion).toBe(before.stateVersion + 1); expect(before).toEqual(snapshot);
     expect(JSON.stringify(projectStateForPlayer(result.state, "guest"))).not.toContain("condition_amnesia_01");
   });
@@ -1243,7 +1243,7 @@ describe("Other World card 11: Great Hall of Celaeno", () => {
     const result = accepted(executeCommand(JSON.parse(JSON.stringify(offered.state)), "host", { type: "RESOLVE_DECISION", decisionId: offered.state.pendingDecision!.id, selectedOptionIds: [option] }, markContent, rng([])));
     expect(result.state.players[0]?.delayed ?? false).toBe(option === "accept"); expect(result.state.activeGateIds).toEqual(["gate_arkham"]);
     expect(result.state.players[0]?.conditionIds ?? []).toEqual([]); expect(result.state.activePlayerId).toBe("guest");
-    expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.privateState.deckOrderById["encounter:other_world"]?.at(-1)).toBe(ids[9]);
+    expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.otherWorldDiscardIds?.at(-1)).toBe(ids[9]);
   });
   it.each(["held", "empty"])("handles %s Amnesia without inventing a copy", scenario => {
     const before = card11(); before.privateState.tokenPoolById["condition:amnesia"] = [];
@@ -1255,7 +1255,7 @@ describe("Other World card 11: Great Hall of Celaeno", () => {
     const before = offer();
     if (field === "gate") { before.activeGateIds = []; before.discardedGateIds = ["gate_arkham"]; }
     if (field === "location") before.players[0]!.locationId = "london";
-    if (field === "deck") before.privateState.deckOrderById["encounter:other_world"]!.reverse();
+    if (field === "deck") before.privateState.deckOrderById["encounter:other_world"]!.push(before.pendingLocationEncounter!.cardId);
     if (field === "clues") before.players[0]!.clues = 0;
     if (field === "held") before.privateState.tokenPoolById["held_clues:host"] = [];
     if (field === "condition") before.privateState.tokenPoolById["condition:amnesia"] = ["unknown"];
@@ -1291,7 +1291,7 @@ describe("Other World card 10: Yuggoth", () => {
     expect(result.state.activeGateIds).toEqual(["gate_arkham"]); expect(result.state.players[0]?.health).toBe(7);
     expect(result.state.players[0]?.conditionIds ?? []).toEqual([]); expect(result.state.players[0]?.delayed).toBeFalsy();
     expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.activePlayerId).toBe("guest");
-    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual([...ids.filter(id => id !== ids[8]), ids[8]]);
+    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual(ids.filter(id => id !== ids[8]));
     expect(result.state.stateVersion).toBe(before.stateVersion + 1); expect(before).toEqual(snapshot);
   });
   it("no Clue runs the two-Sanity penalty without a payment decision", () => {
@@ -1328,7 +1328,7 @@ describe("Other World card 10: Yuggoth", () => {
     const before = offer();
     if (field === "gate") { before.activeGateIds = []; before.discardedGateIds = ["gate_arkham"]; }
     if (field === "location") before.players[0]!.locationId = "london";
-    if (field === "deck") before.privateState.deckOrderById["encounter:other_world"]!.reverse();
+    if (field === "deck") before.privateState.deckOrderById["encounter:other_world"]!.push(before.pendingLocationEncounter!.cardId);
     if (field === "clues") before.players[0]!.clues = 0;
     if (field === "held") before.privateState.tokenPoolById["held_clues:host"] = [];
     const snapshot = structuredClone(before); expect(choose(before, field === "option" ? "invented" : "accept").ok).toBe(false); expect(before).toEqual(snapshot);
@@ -1339,7 +1339,7 @@ describe("Other World card 10: Yuggoth", () => {
     expect(result.state.pendingDefeat).toBeDefined(); expect(result.state.players[0]?.sanity).toBe(0);
     expect(result.state.players[0]?.clues).toBe(1); expect(result.state.activeGateIds).toEqual(["gate_arkham"]);
     expect(result.state.activePlayerId).toBe("host"); expect(result.state.pendingLocationEncounter).toBeUndefined();
-    expect(result.state.privateState.deckOrderById["encounter:other_world"]?.at(-1)).toBe(ids[8]);
+    expect(result.state.otherWorldDiscardIds?.at(-1)).toBe(ids[8]);
   });
   it("accepting the payment avoids otherwise lethal Sanity loss", () => {
     const result = accepted(choose(offer(1), "accept"));
@@ -1388,7 +1388,7 @@ describe("Other World card 9: City of the Great Race", () => {
     expect(result.state.players[0]?.conditionIds ?? []).toEqual(option === "accept" ? [] : ["condition_hallucinations_01"]);
     expect(result.state.players[0]?.health).toBe(7); expect(result.state.players[0]?.delayed).toBeFalsy();
     expect(result.state.activeGateIds).toEqual(["gate_arkham"]); expect(result.state.discardedGateIds).toEqual([]);
-    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual([...ids.filter(id => id !== ids[7]), ids[7]]);
+    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual(ids.filter(id => id !== ids[7]));
     expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.activePlayerId).toBe("guest");
     expect(result.state.stateVersion).toBe(before.stateVersion + 1); expect(before).toEqual(snapshot);
     expect(JSON.stringify(projectStateForPlayer(result.state, "guest"))).not.toContain("condition_hallucinations_01");
@@ -1434,7 +1434,7 @@ describe("Other World card 9: City of the Great Race", () => {
     const before = offer();
     if (field === "gate") { before.activeGateIds = []; before.discardedGateIds = ["gate_arkham"]; }
     if (field === "location") before.players[0]!.locationId = "london";
-    if (field === "deck") before.privateState.deckOrderById["encounter:other_world"]!.reverse();
+    if (field === "deck") before.privateState.deckOrderById["encounter:other_world"]!.push(before.pendingLocationEncounter!.cardId);
     if (field === "clues") before.players[0]!.clues = 0;
     if (field === "held") before.privateState.tokenPoolById["held_clues:host"] = [];
     if (field === "condition") before.privateState.tokenPoolById["condition:hallucinations"] = ["unknown"];
@@ -1451,7 +1451,7 @@ describe("Other World card 9: City of the Great Race", () => {
     const result = accepted(resolveOtherWorldEncounter(before, "host", "gate_arkham", content, rng([6, 6, 1])));
     expect(result.state.pendingDefeat).toBeDefined(); expect(result.state.activeGateIds).toEqual(["gate_arkham"]);
     expect(result.state.players[0]?.conditionIds ?? []).toEqual([]); expect(result.state.activePlayerId).toBe("host");
-    expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.privateState.deckOrderById["encounter:other_world"]?.at(-1)).toBe(ids[7]);
+    expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.otherWorldDiscardIds?.at(-1)).toBe(ids[7]);
   });
 });
 
@@ -1473,7 +1473,7 @@ describe("Other World card 8: The Future", () => {
     expect(result.state.players[0]?.conditionIds ?? []).toEqual(initial === 1 && follow === 1 ? ["condition_amnesia_01"] : []);
     expect(result.state.players[0]?.delayed).toBeFalsy(); expect(result.state.doom).toBe(15);
     expect(result.state.activePlayerId).toBe("guest"); expect(result.state.pendingLocationEncounter).toBeUndefined();
-    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual([...ids.filter(id => id !== ids[6]), ids[6]]);
+    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual(ids.filter(id => id !== ids[6]));
     expect(result.state.stateVersion).toBe(3); expect(before).toEqual(snapshot);
   });
   it.each([1, 6])("restores both tests for Initial %i and rejects non-owner choices", die => {
@@ -1500,7 +1500,7 @@ describe("Other World card 8: The Future", () => {
     const result = accepted(resolveOtherWorldEncounter(before, "host", "gate_arkham", content, rng([6, 6, 1])));
     expect(result.state.pendingDefeat).toBeDefined(); expect(result.state.players[0]?.health).toBe(0);
     expect(result.state.activeGateIds).toEqual(["gate_arkham"]); expect(result.state.activePlayerId).toBe("host");
-    expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.privateState.deckOrderById["encounter:other_world"]?.at(-1)).toBe(ids[6]);
+    expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.otherWorldDiscardIds?.at(-1)).toBe(ids[6]);
   });
   it("ends at Azathoth Doom 1 on lethal Lore failure without closure", () => {
     const before = card8(); before.players[0]!.health = 2; before.doom = 1;
@@ -1543,7 +1543,7 @@ describe("Other World card 8: The Future", () => {
     const initial = accepted(resolveOtherWorldEncounter(card8(1), "host", "gate_arkham", content, rng([6, 6])));
     const follow = accepted(keep(initial.state, [6])).state;
     if (source === "gate") { follow.activeGateIds = []; follow.discardedGateIds = ["gate_arkham"]; }
-    if (source === "deck") follow.privateState.deckOrderById["encounter:other_world"]!.reverse();
+    if (source === "deck") follow.privateState.deckOrderById["encounter:other_world"]!.push(follow.pendingLocationEncounter!.cardId);
     if (source === "location") follow.players[0]!.locationId = "london";
     const snapshot = structuredClone(follow); expect(keep(follow).ok).toBe(false); expect(follow).toEqual(snapshot);
   });
@@ -1588,7 +1588,7 @@ describe("Other World card 7: The Dreamlands", () => {
     expect(result.state.players[0]?.delayed ?? false).toBe(die === 1);
     expect(result.state.players[0]?.conditionIds ?? []).toEqual([]);
     expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.activePlayerId).toBe("guest");
-    expect(result.state.privateState.deckOrderById["encounter:other_world"]?.at(-1)).toBe(ids[5]);
+    expect(result.state.otherWorldDiscardIds?.at(-1)).toBe(ids[5]);
     expect(result.state.stateVersion).toBe(3);
   });
   it("Initial failure becomes Delayed before drawing Hallucinations and never closes", () => {
@@ -1691,7 +1691,7 @@ describe("Other World card 5: The Past", () => {
     expect(result.state.activeGateIds).toEqual([]); expect(result.state.discardedGateIds).toEqual(["gate_arkham"]);
     expect(result.events.filter(event => event.type === "GATE_CLOSED")).toHaveLength(1);
     if (option === "accept") expect(result.events.findIndex(event => event.type === "CLUES_GAINED")).toBeLessThan(result.events.findIndex(event => event.type === "GATE_CLOSED"));
-    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual([...ids.filter(id => id !== ids[4]), ids[4]]);
+    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual(ids.filter(id => id !== ids[4]));
     expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.activePlayerId).toBe("guest");
     expect(result.state.doom).toBe(15); expect(result.state.stateVersion).toBe(4); expect(before).toEqual(snapshot);
   });
@@ -1714,7 +1714,7 @@ describe("Other World card 5: The Past", () => {
     expect(result.state.pendingDefeat).toBeDefined(); expect(result.state.players[0]?.health).toBe(0);
     expect(result.state.activeGateIds).toEqual(["gate_arkham"]); expect(result.state.activePlayerId).toBe("host");
     expect(result.state.pendingLocationEncounter).toBeUndefined();
-    expect(result.state.privateState.deckOrderById["encounter:other_world"]?.at(-1)).toBe(ids[4]);
+    expect(result.state.otherWorldDiscardIds?.at(-1)).toBe(ids[4]);
   });
   it("lethal loss at Azathoth Doom 1 ends the game without closing", () => {
     const before = card5(); before.players[0]!.health = 6; before.doom = 1;
@@ -1739,7 +1739,7 @@ describe("Other World card 5: The Past", () => {
   it.each(["gate", "deck", "location", "delayed", "option"])("rejects a changed restored offer (%s) atomically", field => {
     const offered = accepted(resolveOtherWorldEncounter(card5(), "host", "gate_arkham", content, rng([6]))).state;
     if (field === "gate") { offered.activeGateIds = []; offered.discardedGateIds = ["gate_arkham"]; }
-    if (field === "deck") offered.privateState.deckOrderById["encounter:other_world"]!.reverse();
+    if (field === "deck") offered.privateState.deckOrderById["encounter:other_world"]!.push(offered.pendingLocationEncounter!.cardId);
     if (field === "location") offered.players[0]!.locationId = "london";
     if (field === "delayed") offered.players[0]!.delayed = true;
     const snapshot = structuredClone(offered);
@@ -1762,7 +1762,7 @@ describe("Gate-bound Other World card 2", () => {
     expect(result.state.privateState.deckOrderById.gates).toEqual(["gate_london"]);
     expect(result.state.players[0]?.clues).toBe(die === 6 ? 2 : 0);
     expect(result.state.doom).toBe(15); expect(result.state.activePlayerId).toBe("guest");
-    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual([...ids.slice(1), ids[0]]);
+    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual(ids.slice(1));
     expect(result.events.filter(event => event.type === "GATE_CLOSED")).toHaveLength(1);
     expect(result.events.some(event => event.type === "OTHER_WORLD_ENCOUNTER_RESOLVED")).toBe(true);
     expect(result.state.stateVersion).toBe(3); expect(before).toEqual(snapshot);
@@ -1774,7 +1774,7 @@ describe("Gate-bound Other World card 2", () => {
     expect(Boolean(result.state.pendingDefeat)).toBe(die === 1);
     expect(result.state.activePlayerId).toBe(die === 6 ? "guest" : "host");
     expect(result.state.pendingLocationEncounter).toBeUndefined();
-    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual([...ids.slice(1), ids[0]]);
+    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual(ids.slice(1));
   });
   it("restores both tests, closes exactly once, keeps the private binding hidden, and hands off only after completion", () => {
     const initial = accepted(resolveOtherWorldEncounter(state(1), "host", "gate_arkham", content, rng([6])));
@@ -1834,7 +1834,7 @@ describe("Gate-bound Other World card 2", () => {
     const before = accepted(resolveOtherWorldEncounter(state(1), "host", "gate_arkham", content, rng([1]))).state;
     if (field === "gate") { before.activeGateIds = []; before.discardedGateIds = ["gate_arkham"]; }
     if (field === "location") before.players[0]!.locationId = "london";
-    if (field === "deck") before.privateState.deckOrderById["encounter:other_world"]!.reverse();
+    if (field === "deck") before.privateState.deckOrderById["encounter:other_world"]!.push(before.pendingLocationEncounter!.cardId);
     if (field === "card") before.currentLocationEncounterCardId = ids[1];
     if (field === "possession") before.players[0]!.assetIds = ["asset_whiskey"];
     if (field === "akachi") before.players[0]!.investigatorId = "akachi_onyele";
@@ -1868,7 +1868,7 @@ describe("Other World card 4: Lost Carcosa", () => {
     expect(result.state.players[0]?.delayed ?? false).toBe(option === "accept");
     expect(result.state.players[0]?.clues).toBe(option === "accept" ? 2 : 0);
     expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.activePlayerId).toBe("guest");
-    expect(result.state.privateState.deckOrderById["encounter:other_world"]?.at(-1)).toBe(ids[2]);
+    expect(result.state.otherWorldDiscardIds?.at(-1)).toBe(ids[2]);
     expect(result.state.doom).toBe(15); expect(result.state.stateVersion).toBe(4); expect(before).toEqual(snapshot);
   });
   it.each([1, 6])("retains the Gate after Initial failure and Influence (%i)", die => {
@@ -1914,7 +1914,7 @@ describe("Other World card 4: Lost Carcosa", () => {
     expect(result.state).toMatchObject({ doom: 0, gameResult: "investigators_lose", activePlayerId: "host" });
     expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.activeGateIds).toEqual(["gate_arkham"]);
     expect(result.events).toContainEqual({ type: "GAME_ENDED", result: "investigators_lose", reason: "azathoth_awakened" });
-    expect(result.state.privateState.deckOrderById["encounter:other_world"]?.at(-1)).toBe(ids[2]);
+    expect(result.state.otherWorldDiscardIds?.at(-1)).toBe(ids[2]);
     expect(resolveOtherWorldEncounter(result.state, "host", "gate_arkham", content, rng([]))).toMatchObject({ ok: false, error: { code: "GAME_ENDED" } });
   });
   it.each([undefined, NaN, 0, -1, 21, 1.5])("guards invalid Doom %s before RNG or closure", doom => {
@@ -1966,7 +1966,7 @@ describe("Other World card 3: City of the Great Race", () => {
     expect(result.state.players[0]?.sanity).toBe(5); expect(result.state.activeGateIds).toEqual([]);
     expect(result.state.discardedGateIds).toEqual(["gate_arkham"]); expect(result.state.doom).toBe(15);
     expect(result.state.activePlayerId).toBe("guest"); expect(result.state.stateVersion).toBe(3);
-    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual([...ids.filter(id => id !== ids[3]), ids[3]]);
+    expect(result.state.privateState.deckOrderById["encounter:other_world"]).toEqual(ids.filter(id => id !== ids[3]));
     expect(before).toEqual(snapshot);
   });
   it("resolves unavoidable Initial failure without offering an unaffordable payment", () => {
@@ -2024,7 +2024,7 @@ describe("Other World card 3: City of the Great Race", () => {
     expect(result.state.players[0]?.conditionIds ?? []).toEqual(scenario === "owned" ? ["condition_paranoia_01"] : []);
     expect(result.state.pendingLocationEncounter).toBeUndefined(); expect(result.state.activeGateIds).toEqual(["gate_arkham"]);
     expect(Boolean(result.state.pendingDefeat)).toBe(scenario === "lethal");
-    expect(result.state.privateState.deckOrderById["encounter:other_world"]?.at(-1)).toBe(ids[3]);
+    expect(result.state.otherWorldDiscardIds?.at(-1)).toBe(ids[3]);
   });
   it("rejects unsupported refusal branches instead of silently dropping them", () => {
     const node = { kind: "optional", cost: [{ kind: "clues", amount: -1 }], reward: { kind: "effects", effects: [] }, decline: { kind: "effects", effects: [{ kind: "spell", amount: 1 }] } };

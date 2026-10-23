@@ -1,0 +1,32 @@
+# Physical Expedition draw and discard Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans inline.
+
+**Goal:** Conserve physical Expedition cards across undrawn, active and faceup-discard zones.
+**Architecture:** Internal engine inventory transitions, existing privateState/reveal, public discard Schema/client list; no network command.
+**Tech stack:** Existing TypeScript/Colyseus/Vue/Vitest/Mocha/Playwright; no dependencies.
+**Spec:** docs/superpowers/specs/2026-10-22-expedition-discard-design.md
+
+## Global constraints and review focus
+Current branch and unrelated dirty changes preserved; no commits/push/merge/deploy. Ledger here. Review Focus: immediate token movement, last-card recycle excludes active card, conservation across three zones, public/private separation, defeat-safe finish, legacy full-deck snapshots, no live skip command. Explicit existing follow-up: generic encounter bottom cycling remains incorrect and must be fixed separately before claiming rules completeness.
+
+## Task 1: Pure inventory RED to GREEN
+Files: packages/engine/src/expeditions.ts; packages/engine/src/index.ts; packages/protocol/src/index.ts; packages/engine/test/expedition-discard.test.ts (new).
+Interfaces: PrivateGameState.expeditionDraw optional {cardId:string,playerId:string,locationId:ExpeditionLocationId}; GameState.expeditionDiscardIds optional string[]; internal drawExpeditionCard(state,playerId,content,context):CommandResult and discardExpeditionCard(state,playerId,content,context):CommandResult. Domain events EXPEDITION_CARD_DRAWN/DISCARDED include playerId/cardId. Extend validateExpeditionState to complete known unique 18 across deck/discard/draw, current reveal and marker; setup initializes []. Reuse checkpoint transaction with generic Expedition random-input error text.
+RED tests using canonical18 fixture: draw removes top and moves marker; discard appends revealed card without bottom cycling; wrong owner/phase/space/pending/Monsters/Detained/repeated operations; zone corruption and reveal/binding mismatch; full18 draw/discard sequence recycles17 old discards upon drawing last and excludes in-flight card; failed deterministic shuffle input restores context; legacy no-list full deck accepted. Run `pnpm --filter @eldritch/engine exec vitest run test/expedition-discard.test.ts test/expedition-setup.test.ts`; expect missing transitions/conservation failures. GREEN implement pure transitions and strengthened validator, rerun focused/full engine suite.
+
+## Task 2: Server projection and client lifecycle
+Files: apps/server/src/rooms/schema/GameRoomState.ts; apps/server/src/rooms/GameRoom.ts; apps/server/test/ExpeditionSetup.test.ts; apps/web/app/composables/useGameRoom.ts; apps/server/test/RoomSnapshotIsolation.test.ts.
+Interfaces: Schema expeditionDiscardIds JSON string default []; room round-trip public list and existing private binding. Client optional string decoded to readonly string[] default []. No action UI.
+RED room cases invoke internal engine transitions on real started state then apply: peer sees only current card/discards/token, private deck/binding hidden; JSON restore preserves exact zones; corrupted binding/discard overlap rejected before room mutation. Real-composable test shows discard list and clears it on replacement. Run focused Mocha tests, expected missing field/validator failures. GREEN wire projection/validation/list; rerun focused/server tests.
+Update docs/rules/base-game-token-encounters-and-artifacts.md, docs/architecture/vertical-slice.md and docs/exec-plans/base-game-rules-implementation.md with internal-only scope, rule correction and generic cycle follow-up.
+
+## Task 3: Independent review and baseline
+One clean-context read-only reviewer checks spec/plan and Review Focus. Material findings reproduced RED then fixed GREEN. Run pnpm lint, pnpm typecheck, pnpm test, pnpm build; pnpm test:e2e; pnpm exec playwright test --config playwright.norman-action.config.ts; pnpm exec playwright test --config playwright.spell-casting.config.ts. Expected exit0; record actual results/limits, inspect scoped diff and git diff --check, update title.
+
+## Self-review and ledger
+Self-approved under user delegation. Task1 fields/validation feed Task2; Task3 consumes both without interface conflict. Ruling: implement physical draw/discard dependency before exposing verified effects, because official discard rules contradict the existing bottom-cycle pattern. Cost: no player-facing Expedition resolution in this iteration. Current branch/inline ledger/no commit helpers as requested.
+
+- Task 1 complete: RED missing draw/discard functions (16 failures), GREEN33/33 focused setup+inventory tests and full engine1297/1297. Last-card recycle excludes active card; wrong ownership/state and corrupt zones reject; deterministic shuffle failure rolls back retained input. Typecheck caught GameEvent imported through a non-exporting engine barrel; fixed to import its protocol owner, then engine typecheck exit0.
+- Task 2 complete: composable RED missing discard list, GREEN17/17. Initial room run was obscured by comparing a JSON snapshot to objects with undefined properties; normalized both sides for the serialization assertion. Five focused room checks then passed. To prove actual feature coverage, temporarily omitted only the room discard projection: RED at peer discard synchronization; exact room source restored in finally. Fresh full suite will verify restored GREEN. No public draw/finish command added.
+- Task 3 complete: clean-context reviewer independently reproduced P2: legacy snapshots with neither deck nor marker still admitted an unbound revealed Expedition card. Self-review added the same regression during the review; observed RED17/18, fixed the legacy early return, then GREEN34/34 focused setup/inventory checks. Full final baseline: lint/typecheck/test/build exit0; engine1298, content127, protocol21, server279. Browser suites7/7 + Norman2/2 + Spell2/2, all exit0. Logs: .superpowers/expedition-discard-*-final.log and expedition-discard-{e2e,norman,spell}.log. git diff --check exit0 (existing LF/CRLF notices only). Server test narrowing corrected from !result.ok to result.ok === false to satisfy its compiler. No dependency installation, commit, push, merge or deploy. Known limitation: internal operations only; effects remain non-executable and generic encounter bottom cycling is a separate follow-up.

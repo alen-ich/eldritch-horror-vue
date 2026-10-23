@@ -18,6 +18,20 @@ Generated files live under `apps/web/public/cards/encounters/<deck>/` and `apps/
 
 ## Execution status and next implementation
 
+### Active Expedition setup (2026-10-22)
+
+Ordinary START_GAME now shuffles all 18 physical Expedition cards into one server-private deck and places the public Active Expedition marker at the top card's back location. The six-site setup catalog derives from the existing scan manifest; fronts remain unrevealed. Engine and room restoration validate complete conservation and top-location agreement before applying changes, including rejecting removal of a previously initialized deck. Legacy snapshots lacking both deck and marker are preserved without retroactive setup. Both browser clients see one marker, and reload retains it. This implements setup placement only: no Expedition encounter draw, rewards or card effects are enabled, and family readiness/effect status is unchanged. Rules: Reference Guide printed page 6; spec, tests and results: `docs/superpowers/plans/2026-10-22-expedition-setup.md`.
+
+### Expedition mechanical source catalog (2026-10-22)
+
+All 18 Expedition fronts now have scan-verified descriptive Initial/Pass/Fail mechanics in `packages/content/src/expedition-rules.ts`, with explicit skills/modifiers and the original physical source/cell bindings. All eight source images are SHA256-pinned. Unconditional rewards/losses/Conditions remain explicitly ordered before follow-up tests; Himalayas1 records spawning and immediately encountering a Monster, then routing by defeat. Antarctica1 uses Will after initial success; Pyramids3's pass follow-up can lose Health. These are descriptive entries marked `not_executable`; the server does not pass them to the encounter interpreter and readiness stays `needs_review`. Next is a guarded Expedition encounter lifecycle using explicitly translated supported cards; Artifact rewards and spawn/combat continuation remain separate prerequisites. See `docs/superpowers/plans/2026-10-22-expedition-transcription.md`.
+
+### Expedition physical draw/discard foundation (2026-10-22)
+
+Internal-only draw/discard transitions now conserve all 18 identities across the private undrawn deck, one private owner/origin binding and the public faceup discard list. A draw reveals only its own front, removes it from the deck and immediately moves the token to the next top's back location. Drawing the last card immediately reshuffles the 17 earlier discards, excluding the in-flight card. Finishing physically discards that card; it never returns to the bottom and does not execute effects or advance turns. No player command or draw/skip UI is exposed. Restoration and two-client projection retain exact zones while hiding undrawn order and owner binding. Legacy full decks without a discard list remain valid. Reference Guide pages 5–6 govern these rules; execution remains pending. See `docs/superpowers/plans/2026-10-22-expedition-discard.md`.
+
+Known existing gap confirmed during this work: the generic Location/Research/Other World encounter completion handler cycles resolved cards to the bottom instead of maintaining a faceup discard/recycle lifecycle. That simplification is not rules-correct and is a required follow-up before claiming encounter completeness; the new Expedition foundation deliberately does not reuse it.
+
 Research preparation: internal `resolveBoardClueEffect` supports relocating the exact opaque marker while preserving its private physical identity, or returning that exact token to the discard supply. It rejects missing tokens, invalid destinations, ended games, and non-Encounter phases atomically. This is not a client command or a Research card handler; failed encounters that retain a Clue make no token transition. Tests cover multiple Clues on one space, identity preservation, duplicate discards, and public privacy.
 
 This import removes the source-scan dependency, not the engine dependency. New encounter records remain `not_executable`, Artifacts remain `transcribed_pending_execution`, and both readiness families remain `needs_review`. They are not added to live engine draws in this import.

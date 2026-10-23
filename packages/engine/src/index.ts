@@ -1,12 +1,27 @@
+import { namedAmbushStats } from "./named-ambush.js";
+import { validateLocationState, removeLocationEncounterCard, finishLocationEncounterCard } from "./location-state.js";
+export { validateLocationState } from "./location-state.js";
+import { validateLocationContinuationState } from "./location-continuation-integrity.js";
+export { validateLocationContinuationState } from "./location-continuation-integrity.js";
+import { validateResearchDrawInventory } from "./research-draw-integrity.js";
+import { withLocationRandomTransaction } from "./location-random.js";
+import { withResearchRandomTransaction } from "./research-random.js";
+import { removeResearchEncounterCard, finishResearchEncounterCard, validateResearchState } from "./research-state.js";
+export { validateResearchState } from "./research-state.js";
 import { validateResearchContinuationState } from "./research-continuation-integrity.js";
 export { validateResearchContinuationState } from "./research-continuation-integrity.js";
-import { validateResearchDrawInventory } from "./research-draw-integrity.js";
-import { validateOtherWorldState } from "./other-world-state.js";
+import { removeOtherWorldEncounterCard, validateOtherWorldState } from "./other-world-state.js";
 export { validateOtherWorldState } from "./other-world-state.js";
+import { resolveNormanAction, withNormanActionRandomTransaction } from "./norman-action.js";
+import { withOtherWorldRandomTransaction } from "./other-world-random.js";
+import { initializeResearchDeck, validateResearchSetupCatalog, withResearchSetupRandomTransaction, type ResearchSetupCard } from "./research-setup.js";
+export * from "./research-setup.js";
+import { initializeExpeditionDeck, validateExpeditionSetupCatalog, withExpeditionSetupRandomTransaction, type ExpeditionSetupCard } from "./expeditions.js";
+export * from "./expeditions.js";
 import { beginSpellCast, finishSpellCastTest, resolveSpellCastDecision, validateSpellCastingState, withSpellRandomTransaction } from "./spell-casting.js";
 import { validateSpellTestApplicability } from "./spell-test-assets.js";
 import { grantStartingSpells, validateStartingSpells, withStartingSpellRandomTransaction } from "./starting-spells.js";
-import { canUseNormanSpellReroll, spendNormanSpellReroll, validateInvestigatorAbilityUsage } from "./norman-clue-substitution.js";
+import { canUseNormanTestReroll, spendNormanTestReroll, validateInvestigatorAbilityUsage, validateNormanAcquireRerollState, normanAcquireInteractionUnsupported, withNormanAcquireRandomTransaction } from "./norman-clue-substitution.js";
 export * from "./norman-clue-substitution.js";
 export * from "./spell-casting.js";
 import type {
@@ -27,12 +42,12 @@ import type {
 } from "@eldritch/protocol";
 import { calculateDicePool, countTestSuccesses } from "./skill-tests.js";
 import { loseResource, recoverResource } from "./resources.js";
-import { buildArtifactDeck, buildGateStack, buildLocationEncounterDecks, buildMonsterPool, buildMythosDeck, type AncientSetup, type LocationEncounterDeckId, type EncounterDeckId, type ResearchEncounterDeckId, type MythosColor } from "./setup.js";
+import { buildArtifactDeck, buildGateStack, buildLocationEncounterDecks, locationEncounterDeckIds, buildMonsterPool, buildMythosDeck, type AncientSetup, type LocationEncounterDeckId, type EncounterDeckId, type ResearchEncounterDeckId, type MythosColor } from "./setup.js";
 import { bindResearchInstruction } from "./research-instructions.js";
 import { encounterItemAssetIds, encounterItemsAreConserved, encounterDamagePreventions, physicalAssetIsUnique, nonCombatEncounterAuraBonus, supportsEncounterAssets } from "./encounter-assets.js";
 import { resolveStandardCombat, type CombatCheck } from "./combat.js";
 import { conditionSuccessThreshold, publicConditionId, resolveBoonBaneGain } from "./conditions.js";
-import { createSpellInventory, publicSpellId, spellEffectIsUnsupported, validateSpellInventory } from "./spells.js";
+import { createSpellInventory, gainSpell, publicSpellId, spellEffectIsUnsupported, validateSpellInventory } from "./spells.js";
 import { advanceOmenTrack, omenTrack } from "./omen.js";
 import { parseLocationEncounterInstruction, encounterInstructionLabel, type LocationEncounterInstruction, type LocationEncounterEffect } from "./encounter-instructions.js";
 export * from "./setup.js";
@@ -138,6 +153,7 @@ export interface EnginePlayer {
 }
 
 export interface PrivateGameState {
+  expeditionDraw?: { cardId: string; playerId: string; locationId: import("@eldritch/protocol").ExpeditionLocationId };
   /** Snapshot capability marker is independent of the removable usage ledger. */
   investigatorAbilityUsageVersion?: 1;
   investigatorAbilityUsage?: import("./norman-clue-substitution.js").PrivateInvestigatorAbilityUsage;
@@ -173,9 +189,14 @@ export interface MonsterCombatDefinition {
 }
 
 export interface GameState {
+  expeditionDiscardIds?: string[];
+  otherWorldDiscardIds?: string[];
+  researchDiscardIds?: string[];
+  locationDiscardIdsByDeck?: Partial<Record<LocationEncounterDeckId, string[]>>;
+  activeExpeditionLocationId?: import("@eldritch/protocol").ExpeditionLocationId;
   /** Private continuation: every Rest trigger resolves at most once before one action is charged. */
   pendingRest?: { playerId: string; remainingAssetIds: string[]; testingAssetId?: string };
-  pendingLocationEncounter?: { playerId: string; cardId: string; deck: EncounterDeckId; queue: LocationEncounterInstruction[]; dice: number[]; successes: number; gateId?: string; gateLocationId?: LocationId; gateClosed?: boolean };
+  pendingLocationEncounter?: { playerId: string; cardId: string; deck: EncounterDeckId; queue: LocationEncounterInstruction[]; dice: number[]; successes: number; gateId?: string; gateLocationId?: LocationId; gateClosed?: boolean; researchMarkerBinding?: { markerId: string; clueId: string }; cardRemovedFromDeck?: true };
   defeatedInvestigators?: { investigatorId: InvestigatorId; locationId: LocationId; cause: "health" | "sanity"; assetIds: string[]; artifactIds?: string[]; clues: number; travelTickets: TravelTicketType[] }[];
   pendingDefeat?: { playerId: string; cityIds: LocationId[]; causes: ("health" | "sanity")[] };
   pendingMythosDamage?: { cardId: string; remainingPlayerIds: string[]; healthLoss: number };
@@ -274,12 +295,15 @@ export type ConditionBackEffect =
   | { type: "discard_all_clues_then_discard" };
 
 export interface GameContent {
+  expeditionEncounters?: readonly ExpeditionSetupCard[];
   privateSpellCastingRules?: import("./spell-casting.js").PrivateSpellCastingRules;
   spells?: readonly import("./spells.js").SpellDefinition[];
   artifacts?: readonly { id: string; engineEffects?: readonly ({ type: "action_lore_spend_sanity_gain_clues"; amount: 2 } | { type: "action_lore_spend_sanity_improve_skill" })[] }[];
   researchEncounters?: readonly { id: string; deck: ResearchEncounterDeckId; sections: Readonly<Record<string, unknown>> }[];
+  researchEncounterSetup?: readonly ResearchSetupCard[];
   otherWorldEncounters?: readonly { id: string; deck: "other_world"; sections: Readonly<Record<string, unknown>> }[];
   otherWorldEncounterIds?: readonly string[];
+  locationEncounterSetup?: readonly { id: string; deck: LocationEncounterDeckId }[];
   locationEncounters?: readonly { id: string; deck: LocationEncounterDeckId; sections?: Readonly<Record<string, unknown>> }[];
   gates?: readonly { id: string; omenSymbol: "comet" | "constellation" | "eclipse"; locationId: LocationId }[];
   clues?: readonly { id: string; locationId: LocationId }[];
@@ -296,6 +320,7 @@ export interface GameContent {
 }
 
 export type RuleErrorCode =
+  | "EXPEDITION_CONTENT_MISSING"
   | "SPELL_CAST_INVALID" | "SPELL_CONTENT_MISSING" | "SPELL_INVENTORY_INVALID" | "SPELL_NOT_HELD" | "SPELL_EFFECT_UNSUPPORTED" | "SPELL_RANDOM_INPUT_INVALID"
   | "ARTIFACT_CONTENT_MISSING" | "ARTIFACT_UNAVAILABLE" | "ARTIFACT_EFFECT_UNSUPPORTED"
   | "ENCOUNTER_UNSUPPORTED" | "ENCOUNTER_CONTENT_MISSING" | "ENCOUNTER_DECK_MISSING" | "ENCOUNTER_DECK_ILLEGAL"
@@ -399,6 +424,10 @@ export function projectStateForPlayer(state: GameState, viewerPlayerId?: string)
   const { privateState: _privateState, pendingLocationEncounter: _pendingLocationEncounter, pendingRest: _pendingRest, pendingDecision, ...publicState } = state;
   return {
     ...publicState,
+    otherWorldDiscardIds: [...(publicState.otherWorldDiscardIds ?? [])],
+    researchDiscardIds: [...(publicState.researchDiscardIds ?? [])],
+    locationDiscardIdsByDeck: Object.fromEntries(Object.entries(publicState.locationDiscardIdsByDeck ?? {}).map(([deck, ids]) => [deck, [...ids]])),
+    expeditionDiscardIds: [...(publicState.expeditionDiscardIds ?? [])],
     spellSupplyTopId: state.privateState.spells?.deck[0] ? publicSpellId(state.privateState.spells.deck[0]) : undefined,
     defeatedInvestigators: publicState.defeatedInvestigators?.map(sheet => ({ ...structuredClone(sheet), spellIds: (state.privateState.spells?.heldByDefeatedInvestigator[sheet.investigatorId] ?? []).map(publicSpellId) })),
     players: publicState.players.map((player) => ({
@@ -1799,11 +1828,21 @@ function applyLocationEncounterEffects(
       if (encounterItemAssetIds(player, content).length) return failure("ENCOUNTER_CONTENT_MISSING", "Choose the Item Asset to discard first.");
       continue;
     }
+    if (effect.kind === "discard_encountered_clue") {
+      const discarded = resolveBoardClueEffect(next, effect.markerId, { kind: "discard" }, content);
+      if (!discarded.ok) return discarded;
+      next = discarded.state; events.push(...discarded.events); continue;
+    }
     if (effect.kind === "relocate_encountered_clue") {
       if (!effect.locationId) return failure("ENCOUNTER_CONTENT_MISSING", "Choose the nearest Sea destination first.");
       const moved = resolveBoardClueEffect(next, effect.markerId, { kind: "relocate", locationId: effect.locationId as LocationId }, content);
       if (!moved.ok) return moved;
       next = moved.state; events.push(...moved.events); continue;
+    }
+    if (effect.kind === "spell") {
+      const gained = gainSpell(next, playerId, { type: "kind", kind: "mists_of_releh" }, content, context);
+      if (!gained.ok) return gained;
+      next = gained.state; events.push(...gained.events); continue;
     }
     if (effect.kind === "artifact") {
       const gained = gainNamedArtifact(next, playerId, effect.id, content);
@@ -1981,6 +2020,17 @@ function validateInjurySupply(state: GameState, content: GameContent): CommandRe
 
 function validateEncounterDynamicInstructions(state: GameState, nodes: readonly LocationEncounterInstruction[], content: GameContent): CommandResult | undefined {
   for (const node of nodes) {
+    if (node.kind === "effects" && node.effects.some(effect => effect.kind === "spell")) {
+      if (!content.spells?.some(spell => spell.kind === "mists_of_releh")) return failure("SPELL_CONTENT_MISSING", "The named Spell catalog is unavailable.");
+      const invalid = validateSpellInventory(state, content.spells);
+      if (invalid) return failure("SPELL_INVENTORY_INVALID", invalid);
+    }
+    if ((node.kind === "ambush" || node.kind === "ambush_result") && node.monsterId === "monster_cultist") {
+      const stats = namedAmbushStats(state, content, node.monsterId);
+      if (!stats || node.kind === "ambush_result" && (node.damage !== stats.damageCheck.damage || node.toughness !== stats.toughness)) return failure("MONSTER_CONTENT_MISSING", "The Cultist profile is missing or unsupported.");
+      const player = state.players.find(candidate => candidate.id === state.pendingLocationEncounter?.playerId);
+      if (player && (player.artifactIds?.length || !supportsEncounterAssets(state, player, content, node))) return failure("MONSTER_EFFECT_UNSUPPORTED", "Cultist ambush possession effects are unsupported.");
+    }
     if (node.kind === "effects" && node.effects.some(effect => effect.kind === "condition" && ["injury", "back_injury", "leg_injury"].includes(effect.condition))) {
       const invalid = validateInjurySupply(state, content);
       if (invalid) return invalid;
@@ -2015,6 +2065,12 @@ function continueLocationEncounter(state: GameState, content: GameContent, conte
   const invalidDynamic = validateEncounterDynamicInstructions(state, state.pendingLocationEncounter?.queue ?? [], content);
   if (invalidDynamic) return invalidDynamic;
   let next = structuredClone(state);
+  const invalidDraw = removeOtherWorldEncounterCard(next, content, context);
+  if (invalidDraw) return failure("ENCOUNTER_CONTENT_MISSING", invalidDraw);
+  const invalidResearchDraw = removeResearchEncounterCard(next, content, context);
+  if (invalidResearchDraw) return failure("ENCOUNTER_CONTENT_MISSING", invalidResearchDraw);
+  const invalidLocationDraw = removeLocationEncounterCard(next, content, context);
+  if (invalidLocationDraw) return failure("ENCOUNTER_CONTENT_MISSING", invalidLocationDraw);
   while (next.pendingLocationEncounter?.queue.length) {
     const pending = next.pendingLocationEncounter;
     const node = pending.queue[0]!;
@@ -2045,14 +2101,18 @@ function continueLocationEncounter(state: GameState, content: GameContent, conte
       continue;
     }
     if (node.kind === "ambush") {
-      const monster = content.monsters?.find(card => card.id === node.monsterId);
-      if (!monster || monster.type !== "normal" || monster.specialEffect || !monster.horrorCheck || monster.horrorCheck === "ancient_one" || !monster.damageCheck || monster.damageCheck === "ancient_one" || monster.toughness === "ancient_one") return failure("MONSTER_CONTENT_MISSING", "The named Monster's combat statistics are unavailable.");
+      const monster = namedAmbushStats(next, content, node.monsterId);
+      if (!monster) return failure("MONSTER_CONTENT_MISSING", "The named Monster's combat statistics are unavailable.");
       if (player.assetIds.length || player.artifactIds?.length) return failure("MONSTER_EFFECT_UNSUPPORTED", "Ambush possession bonuses are not supported.");
-      const result: LocationEncounterInstruction = { kind: "ambush_result", monsterId: node.monsterId, damage: monster.damageCheck.damage, toughness: monster.toughness.base + monster.toughness.perInvestigator * next.players.filter(player => !player.defeated && !player.eliminated).length, defeated: node.defeated, notDefeated: node.notDefeated };
-      const horror: LocationEncounterInstruction = { kind: "effects", effects: [{ kind: "ambush_horror", damage: monster.horrorCheck.damage }] };
-      pending.queue.splice(0, 1,
-        { kind: "test", skill: "will", modifier: monster.horrorCheck.modifier, pass: horror, fail: horror },
-        { kind: "test", skill: "strength", modifier: monster.damageCheck.modifier, pass: result, fail: result });
+      const result: LocationEncounterInstruction = { kind: "ambush_result", monsterId: node.monsterId, damage: monster.damageCheck.damage, toughness: monster.toughness, defeated: node.defeated, notDefeated: node.notDefeated };
+      const tests: LocationEncounterInstruction[] = [];
+      if (monster.horrorCheck) {
+        const horror: LocationEncounterInstruction = { kind: "effects", effects: [{ kind: "ambush_horror", damage: monster.horrorCheck.damage }] };
+        tests.push({ kind: "test", skill: "will", modifier: monster.horrorCheck.modifier, pass: horror, fail: horror });
+      }
+      if (monster.beforeStrengthSanityLoss) tests.push({ kind: "effects", effects: [{ kind: "sanity", amount: -monster.beforeStrengthSanityLoss }] });
+      tests.push({ kind: "test", skill: "strength", modifier: monster.damageCheck.modifier, pass: result, fail: result });
+      pending.queue.splice(0, 1, ...tests);
       continue;
     }
     if (node.kind === "ambush_result") {
@@ -2193,11 +2253,25 @@ function continueLocationEncounter(state: GameState, content: GameContent, conte
   const pending = next.pendingLocationEncounter;
   if (!pending) return failure("ENCOUNTER_CONTENT_MISSING", "The encounter continuation is missing.");
   const order = next.privateState.deckOrderById[`encounter:${pending.deck}`];
-  if (order?.[0] !== pending.cardId) return failure("ENCOUNTER_DECK_MISSING", "The active encounter is no longer on top of its deck.");
-  next.privateState.deckOrderById[`encounter:${pending.deck}`] = [...order.slice(1), pending.cardId];
+  if (pending.deck === "other_world") {
+    next.otherWorldDiscardIds = [...(next.otherWorldDiscardIds ?? []), pending.cardId];
+    if (!order?.length) {
+      next.privateState.deckOrderById["encounter:other_world"] = context.shuffle(next.otherWorldDiscardIds);
+      next.otherWorldDiscardIds = [];
+    }
+  } else if (pending.deck.startsWith("research_")) {
+    const invalidResearchFinish = finishResearchEncounterCard(next, content, context);
+    if (invalidResearchFinish) return failure("ENCOUNTER_CONTENT_MISSING", invalidResearchFinish);
+  } else {
+    const invalidLocationFinish = finishLocationEncounterCard(next, content, context);
+    if (invalidLocationFinish) return failure("ENCOUNTER_CONTENT_MISSING", invalidLocationFinish);
+  }
   next.lastLocationEncounterCardId = pending.cardId;
   next.currentLocationEncounterCardId = undefined;
   next.pendingLocationEncounter = undefined;
+  if (locationEncounterDeckIds.some(deck => deck === pending.deck) && validateLocationState(next, content)) return failure("ENCOUNTER_CONTENT_MISSING", "Location inventory is inconsistent after discard.");
+  if (pending.deck.startsWith("research_") && validateResearchState(next, content)) return failure("ENCOUNTER_CONTENT_MISSING", "Research inventory is inconsistent after discard.");
+  if (pending.deck === "other_world" && validateOtherWorldState(next, content)) return failure("ENCOUNTER_CONTENT_MISSING", "Other World inventory is inconsistent after discard.");
   const resolved: GameEvent = pending.deck === "other_world"
     ? { type: "OTHER_WORLD_ENCOUNTER_RESOLVED", playerId: pending.playerId, cardId: pending.cardId, gateId: pending.gateId!, dice: pending.dice, successes: pending.successes }
     : pending.deck.startsWith("research_")
@@ -2255,19 +2329,20 @@ function otherWorldBindingIsValid(state: GameState, content: GameContent): boole
   if (!pending || pending.deck !== "other_world" || !pending.gateId || !pending.gateLocationId) return false;
   const player = state.players.find(player => player.id === pending.playerId);
   const gate = content.gates?.find(gate => gate.id === pending.gateId);
-  const catalog = content.otherWorldEncounterIds;
-  const order = state.privateState.deckOrderById["encounter:other_world"];
   const physicalGates = [...(state.activeGateIds ?? []), ...(state.discardedGateIds ?? []), ...(state.privateState.deckOrderById.gates ?? [])];
   return state.phase === "encounter" && state.activePlayerId === pending.playerId && state.currentLocationEncounterCardId === pending.cardId && player?.locationId === pending.gateLocationId && gate?.locationId === pending.gateLocationId
     && player.investigatorId !== "akachi_onyele" && state.ancientOneId !== "yog_sothoth"
     && otherWorldPossessionsAreSupported(state, player, content)
-    && Boolean(catalog?.length && new Set(catalog).size === catalog.length && order?.length && order[0] === pending.cardId && order.length === catalog.length && new Set(order).size === order.length && order.every(id => catalog.includes(id)))
     && Boolean(state.privateState.deckOrderById.gates && content.gates?.length && new Set(content.gates.map(gate => gate.id)).size === content.gates.length && physicalGates.length === content.gates.length && new Set(physicalGates).size === physicalGates.length && physicalGates.every(id => content.gates!.some(gate => gate.id === id)))
     && (pending.gateClosed === true ? !state.activeGateIds?.includes(pending.gateId) : Boolean(state.activeGateIds?.includes(pending.gateId)));
 }
 
 /** Draw the actual private top card, binding every continuation to a physical Gate. */
 export function resolveOtherWorldEncounter(state: GameState, playerId: string, gateId: string, content: GameContent, context: EngineContext): CommandResult {
+  return withOtherWorldRandomTransaction(context, () => resolveOtherWorldEncounterImpl(state, playerId, gateId, content, context));
+}
+
+function resolveOtherWorldEncounterImpl(state: GameState, playerId: string, gateId: string, content: GameContent, context: EngineContext): CommandResult {
   if (validateOtherWorldState(state, content)) return failure("ENCOUNTER_CONTENT_MISSING", "Other World state is inconsistent.");
   if (spellEffectIsUnsupported(state, playerId, "encounter", content)) return failure("SPELL_EFFECT_UNSUPPORTED", "Spell encounter effects are not implemented.");
   if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
@@ -2283,11 +2358,17 @@ export function resolveOtherWorldEncounter(state: GameState, playerId: string, g
   const next = structuredClone(state);
   next.currentLocationEncounterCardId = cardId;
   next.pendingLocationEncounter = { playerId, cardId, deck: "other_world", gateId, gateLocationId: player.locationId!, gateClosed: false, queue: [instruction], dice: [], successes: 0 };
+  const invalidDraw = removeOtherWorldEncounterCard(next, content, context);
+  if (invalidDraw) return failure("ENCOUNTER_CONTENT_MISSING", invalidDraw);
   return continueLocationEncounter(next, content, context);
 }
 
 /** Authoritative Research draw; marker identity and outcomes remain server-owned. */
 export function resolveResearchEncounter(state: GameState, playerId: string, markerId: string, content: GameContent, context: EngineContext): CommandResult {
+  return withResearchRandomTransaction(context, () => resolveResearchEncounterImpl(state, playerId, markerId, content, context));
+}
+
+function resolveResearchEncounterImpl(state: GameState, playerId: string, markerId: string, content: GameContent, context: EngineContext): CommandResult {
   if (spellEffectIsUnsupported(state, playerId, "encounter", content) || spellEffectIsUnsupported(state, playerId, "combat", content)) return failure("SPELL_EFFECT_UNSUPPORTED", "Spell encounter effects are not implemented.");
   if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
   if (!legalLocationEncounterDecks(state, playerId, content).length || state.pendingLocationEncounter) return failure("WRONG_PHASE", "This investigator cannot resolve Research now.");
@@ -2311,17 +2392,24 @@ export function resolveResearchEncounter(state: GameState, playerId: string, mar
   const ambushes = encounterAmbushes(instruction);
   if (ambushes.length && player.artifactIds?.length) return failure("MONSTER_EFFECT_UNSUPPORTED", "Ambush Artifact bonuses are not implemented.");
   for (const ambush of ambushes) {
-    const definition = content.monsters?.find(monster => monster.id === ambush.monsterId);
-    if (!definition || definition.type !== "normal" || definition.specialEffect || !definition.horrorCheck || definition.horrorCheck === "ancient_one" || !definition.damageCheck || definition.damageCheck === "ancient_one" || definition.toughness === "ancient_one") return failure("MONSTER_CONTENT_MISSING", "The named Monster's statistics are missing or unsupported.");
+    if (!namedAmbushStats(state, content, ambush.monsterId)) return failure("MONSTER_CONTENT_MISSING", "The named Monster's statistics are missing or unsupported.");
   }
   const next = structuredClone(state);
   next.currentLocationEncounterCardId = cardId;
-  next.pendingLocationEncounter = { playerId, cardId, deck, queue: [instruction], dice: [], successes: 0 };
+  next.pendingLocationEncounter = { playerId, cardId, deck, queue: [instruction], dice: [], successes: 0, researchMarkerBinding: { markerId, clueId: physical[0]! } };
   return continueLocationEncounter(next, content, context);
 }
 
 /** Draws a modeled location encounter and resolves until a choice, test, or defeat. */
 export function resolveLocationEncounter(state: GameState, playerId: string, deck: LocationEncounterDeckId, content: GameContent, context: EngineContext): CommandResult {
+  return withLocationRandomTransaction(context, () => resolveLocationEncounterImpl(state, playerId, deck, content, context));
+}
+
+function resolveLocationEncounterImpl(state: GameState, playerId: string, deck: LocationEncounterDeckId, content: GameContent, context: EngineContext): CommandResult {
+  const inventoryInvalid = validateLocationState(state, content);
+  if (inventoryInvalid) return failure("ENCOUNTER_CONTENT_MISSING", inventoryInvalid);
+  const invalid = validateLocationContinuationState(state, content);
+  if (invalid) return failure("ENCOUNTER_CONTENT_MISSING", invalid);
   if (spellEffectIsUnsupported(state, playerId, "encounter", content) || spellEffectIsUnsupported(state, playerId, "combat", content)) return failure("SPELL_EFFECT_UNSUPPORTED", "Spell encounter effects are not implemented.");
   if (state.gameResult) return failure("GAME_ENDED", "The game has ended.");
   if (state.phase !== "encounter" || state.activePlayerId !== playerId || state.pendingDecision || state.pendingDefeat || state.activeTest) {
@@ -2522,7 +2610,7 @@ function assetEffectsForPlayer(player: EnginePlayer, content: GameContent): Asse
   return player.assetIds.flatMap((assetId) => content.assets.find(({ id }) => id === assetId)?.engineEffects ?? []);
 }
 
-function countActiveTestSuccesses(test: ActiveTest, player: EnginePlayer, content: GameContent): number {
+export function countActiveTestSuccesses(test: ActiveTest, player: EnginePlayer, content: GameContent): number {
   const doubleSixes = test.continuation === "acquire_assets"
     && assetEffectsForPlayer(player, content).some(({ type }) => type === "acquire_six_counts_as_two");
   return doubleSixes
@@ -2548,7 +2636,7 @@ function createTestRerollDecision(state: GameState, test: ActiveTest, content: G
   if (!player) return false;
   const optionIds = player.clues > 0 ? test.dice.map((_, index) => `die-${index}`) : [];
   const optionLabels: Record<string, string> = Object.fromEntries(optionIds.map((id, index) => [id, `Spend 1 Clue: reroll die ${index + 1}`]));
-  if (canUseNormanSpellReroll(state, player.id)) {
+  if (canUseNormanTestReroll(state, player.id)) {
     test.dice.forEach((_, index) => {
       const id = `norman-sanity:${index}`;
       optionIds.push(id); optionLabels[id] = `Spend 1 Sanity (Norman): reroll die ${index + 1}`;
@@ -2808,10 +2896,16 @@ function beginSkillTest(
 
 const spellAdapters = { beginTest: beginSkillTest, damage: damageInvestigator, completeAction };
 export function executeCommand(state: GameState, actorPlayerId: string, command: GameCommand, content: GameContent, context?: EngineContext): CommandResult {
+  const locationInventoryInvalid = validateLocationState(state, content);
+  if (locationInventoryInvalid) return failure("ENCOUNTER_CONTENT_MISSING", locationInventoryInvalid);
+  const locationInvalid = validateLocationContinuationState(state, content);
+  if (locationInvalid) return failure("ENCOUNTER_CONTENT_MISSING", locationInvalid);
   const researchInvalid = validateResearchContinuationState(state, content);
   if (researchInvalid) return failure("ENCOUNTER_CONTENT_MISSING", researchInvalid);
   const usageInvalid = validateInvestigatorAbilityUsage(state);
   if (usageInvalid) return failure("SPELL_CAST_INVALID", usageInvalid);
+  const acquisitionInvalid = validateNormanAcquireRerollState(state, content);
+  if (acquisitionInvalid) return failure("INVALID_DECISION_SELECTION", acquisitionInvalid);
   const invalid = validateSpellCastingState(state,content);
   if(invalid) return failure("SPELL_CAST_INVALID",invalid);
   const pending = state.privateState.spellCasting?.pending;
@@ -2832,12 +2926,39 @@ export function executeCommand(state: GameState, actorPlayerId: string, command:
   if (command.type === "START_GAME" || command.type === "REPLACE_INVESTIGATOR") {
     const invalidStarting = validateStartingSpells(content);
     if (invalidStarting) return failure("SPELL_CONTENT_MISSING", invalidStarting);
+    if (command.type === "START_GAME" && (content.locationEncounterSetup !== undefined || content.locationEncounters?.length) && context) {
+      return withLocationRandomTransaction(context, () => executeCommandImpl(state, actorPlayerId, command, content, context));
+    }
+    if (command.type === "START_GAME" && content.researchEncounterSetup !== undefined && context) {
+      return withResearchSetupRandomTransaction(context, () => executeCommandImpl(state, actorPlayerId, command, content, context));
+    }
+    if (command.type === "START_GAME" && content.expeditionEncounters !== undefined && context) {
+      return withExpeditionSetupRandomTransaction(context, () => executeCommandImpl(state, actorPlayerId, command, content, context));
+    }
     const hasStartingGrant = command.type === "START_GAME"
       ? state.players.some(player => player.investigatorId && content.investigators[player.investigatorId]?.startingSpellIds?.length)
       : !!content.investigators[command.investigatorId]?.startingSpellIds?.length;
     if (hasStartingGrant && context) {
       return withStartingSpellRandomTransaction(context, () => executeCommandImpl(state, actorPlayerId, command, content, context));
     }
+  }
+  if (context && command.type === "RESOLVE_DECISION" && state.pendingLocationEncounter?.deck.startsWith("research_")) {
+    return withResearchRandomTransaction(context, () => executeCommandImpl(state, actorPlayerId, command, content, context));
+  }
+  const pendingLocationDeck = state.pendingLocationEncounter?.deck;
+  if (context && command.type === "RESOLVE_DECISION" && pendingLocationDeck
+    && locationEncounterDeckIds.some(deck => deck === pendingLocationDeck)) {
+    return withLocationRandomTransaction(context, () => executeCommandImpl(state, actorPlayerId, command, content, context));
+  }
+  if (command.type === "USE_INVESTIGATOR_ACTION" && state.players.some(player => player.id === actorPlayerId && player.investigatorId === "norman_withers") && context) {
+    return withNormanActionRandomTransaction(context, () => executeCommandImpl(state, actorPlayerId, command, content, context));
+  }
+  if (context && state.players.some(player => player.id === actorPlayerId && player.investigatorId === "norman_withers")
+    && (command.type === "ACQUIRE_ASSETS" || command.type === "RESOLVE_DECISION" && state.activeTest?.continuation === "acquire_assets")) {
+    return withNormanAcquireRandomTransaction(context, () => executeCommandImpl(state, actorPlayerId, command, content, context));
+  }
+  if (context && command.type === "RESOLVE_DECISION" && state.pendingLocationEncounter?.deck === "other_world") {
+    return withOtherWorldRandomTransaction(context, () => executeCommandImpl(state, actorPlayerId, command, content, context));
   }
   return executeCommandImpl(state,actorPlayerId,command,content,context);
 }
@@ -3589,6 +3710,14 @@ function executeCommandImpl(
       }];
       next.pendingDecision = undefined;
       const activeTest = next.activeTest!;
+      // A genuine pre-feature pending acquisition has no usage capability yet.
+      // Initialize it only on the accepted cloned continuation, before options
+      // are regenerated; never publish new payment choices without their ledger.
+      if (activeTest.continuation === "acquire_assets" && actor.investigatorId === "norman_withers") {
+        if (normanAcquireInteractionUnsupported(next, actorPlayerId)) return failure("ENCOUNTER_UNSUPPORTED", "Trish's applicable Clue reroll interaction is not executable yet.");
+        next.privateState.investigatorAbilityUsageVersion = 1;
+        next.privateState.investigatorAbilityUsage ??= { schemaVersion: 1, normanClueSubstitutions: [] };
+      }
       const selectedDie = selections[0];
       if (selectedDie) {
         const normanPayment = selectedDie.startsWith("norman-sanity:");
@@ -3597,7 +3726,7 @@ function executeCommandImpl(
         const dieIndex = Number(assetChoice ? assetChoice[2] : selectedDie.slice(normanPayment ? "norman-sanity:".length : "die-".length));
         if (!Number.isInteger(dieIndex) || dieIndex < 0 || dieIndex >= activeTest.dice.length) return failure("INVALID_DECISION_SELECTION", "That test die is unavailable.");
         if (normanPayment) {
-          if (!spendNormanSpellReroll(next, actorPlayerId)) return failure("INVALID_DECISION_SELECTION", "Norman's Sanity payment is unavailable.");
+          if (!spendNormanTestReroll(next, actorPlayerId)) return failure("INVALID_DECISION_SELECTION", "Norman's Sanity payment is unavailable.");
           events.push({ type: "SANITY_SPENT_FOR_REROLL", testId: activeTest.id, playerId: actorPlayerId, dieIndex, amount: 1 });
         } else if (increment && assetChoice) {
           const assetId = assetChoice[1]!;
@@ -3816,6 +3945,14 @@ function executeCommandImpl(
     if (state.players.some((player) => !player.investigatorId)) {
       return failure("INVESTIGATOR_REQUIRED", "Every player must select an investigator.");
     }
+    if (content.expeditionEncounters !== undefined) {
+      const invalidExpedition = validateExpeditionSetupCatalog(content.expeditionEncounters, content.map);
+      if (invalidExpedition) return failure("EXPEDITION_CONTENT_MISSING", invalidExpedition);
+    }
+    if (content.researchEncounterSetup !== undefined) {
+      const invalidResearch = validateResearchSetupCatalog(content.researchEncounterSetup);
+      if (invalidResearch) return failure("ENCOUNTER_CONTENT_MISSING", invalidResearch);
+    }
     const mysteryIds = content.mysteryIdsByAncientOne[state.ancientOneId];
     if (!mysteryIds || mysteryIds.length !== 4) {
       return failure("MYSTERY_CONTENT_MISSING", "The selected Ancient One must have exactly four Mysteries.");
@@ -3835,7 +3972,7 @@ function executeCommandImpl(
       return failure("ASSET_CONTENT_MISSING", "At least four Assets must remain after granting starting possessions.");
     }
     if (!context) return failure("RANDOM_INPUT_REQUIRED", "Starting the game requires deterministic random input.");
-    const shuffledMysteries = context.shuffle(mysteryIds);
+    const shuffledMysteries = [...context.shuffle([...mysteryIds])];
     const activeMysteryId = shuffledMysteries.shift()!;
     const mysteryTarget = targetForMystery(content, activeMysteryId, state.players.length);
     if (!mysteryTarget) return failure("MYSTERY_CONTENT_MISSING", `Mystery target is missing for ${activeMysteryId}.`);
@@ -3857,10 +3994,16 @@ function executeCommandImpl(
     next.mysteryTarget = mysteryTarget;
     next.completedMysteryIds = [];
     next.privateState.deckOrderById.mysteries = shuffledMysteries;
-    const shuffledAssets = context.shuffle(availableAssetIds);
+    const shuffledAssets = [...context.shuffle(availableAssetIds)];
     next.reserveAssetIds = shuffledAssets.splice(0, 4);
     next.assetDiscardIds = [];
     next.privateState.deckOrderById.assets = shuffledAssets;
+    if (content.expeditionEncounters !== undefined) {
+      const expedition = initializeExpeditionDeck(content.expeditionEncounters, context.shuffle);
+      next.privateState.deckOrderById["encounter:expedition"] = expedition.deck;
+      next.expeditionDiscardIds = [];
+      next.activeExpeditionLocationId = expedition.locationId;
+    }
     if (content.artifacts?.length) {
       next.privateState.deckOrderById.artifacts = buildArtifactDeck(content.artifacts.map(card => card.id), context.shuffle);
       for (const player of next.players) player.artifactIds = [];
@@ -3887,11 +4030,16 @@ function executeCommandImpl(
       next.privateState.tokenPoolById.clues = context.shuffle(clueIds);
       next.privateState.tokenPoolById.clue_discard = [];
     }
-    if (content.locationEncounters?.length) {
-      const decks = buildLocationEncounterDecks(content.locationEncounters, context.shuffle);
+    if (content.locationEncounterSetup !== undefined || content.locationEncounters?.length) {
+      const decks = buildLocationEncounterDecks(content.locationEncounterSetup ?? content.locationEncounters!, context.shuffle);
+      next.locationDiscardIdsByDeck = {};
       for (const [deck, cards] of Object.entries(decks)) next.privateState.deckOrderById[`encounter:${deck}`] = cards;
     }
-    if (content.researchEncounters?.length && next.ancientOneId) {
+    if (content.researchEncounterSetup !== undefined && next.ancientOneId) {
+      next.researchDiscardIds = [];
+      const deck: ResearchEncounterDeckId = `research_${next.ancientOneId}`;
+      next.privateState.deckOrderById[`encounter:${deck}`] = initializeResearchDeck(content.researchEncounterSetup, deck, context.shuffle);
+    } else if (content.researchEncounters?.length && next.ancientOneId) {
       const deck: ResearchEncounterDeckId = `research_${next.ancientOneId}`;
       const ids = content.researchEncounters.filter(card => card.deck === deck).map(card => card.id);
       if (new Set(ids).size !== ids.length) return failure("ENCOUNTER_CONTENT_MISSING", "Research card IDs must be unique.");
@@ -3901,6 +4049,7 @@ function executeCommandImpl(
       const ids = content.otherWorldEncounterIds;
       if (new Set(ids).size !== ids.length) return failure("ENCOUNTER_CONTENT_MISSING", "Other World card IDs must be unique.");
       next.privateState.deckOrderById["encounter:other_world"] = context.shuffle(ids);
+      next.otherWorldDiscardIds = [];
     }
     if (content.monsters?.some(monster => monster.count !== undefined)) {
       if (!ancient) return failure("ANCIENT_ONE_REQUIRED", "Ancient One setup is required for the Monster cup.");
@@ -3988,6 +4137,14 @@ function executeCommandImpl(
 
   if (command.type === "USE_INVESTIGATOR_ACTION") {
     if (state.performedActions.includes("investigator")) return failure("ACTION_ALREADY_PERFORMED", "The investigator action can be performed only once per round.");
+    if (actor.investigatorId === "norman_withers") {
+      if (!context) return failure("RANDOM_INPUT_REQUIRED", "Norman's action requires server-owned Monster cup shuffling.");
+      const resolved = resolveNormanAction(next, actorPlayerId, command, content, context);
+      if (!resolved.ok) return resolved;
+      completeAction(resolved.state, actorIndex, "investigator", resolved.events);
+      return success(resolved.state, resolved.events);
+    }
+    if (command.monsterInstanceId !== undefined || command.useSanity !== undefined) return failure("INVALID_DECISION_SELECTION", "This investigator action does not accept Norman's target or payment.");
     const events: GameEvent[] = [];
     if (actor.investigatorId === "jim_culver") {
       for (const recipient of next.players) {
@@ -4114,6 +4271,11 @@ function executeCommandImpl(
     const investigator = content.investigators[actor.investigatorId];
     if (!investigator) return failure("INVESTIGATOR_CONTENT_MISSING", "The selected investigator has no setup data.");
     if (!context) return failure("RANDOM_INPUT_REQUIRED", "Acquire Assets requires deterministic dice and ID input.");
+    if (normanAcquireInteractionUnsupported(next, actorPlayerId)) return failure("ENCOUNTER_UNSUPPORTED", "Trish's applicable Clue reroll interaction is not executable yet.");
+    if (actor.investigatorId === "norman_withers") {
+      next.privateState.investigatorAbilityUsageVersion = 1;
+      next.privateState.investigatorAbilityUsage ??= { schemaVersion: 1, normanClueSubstitutions: [] };
+    }
     return success(next, beginSkillTest(next, actor, {
       skill: "influence",
       modifier: 0,

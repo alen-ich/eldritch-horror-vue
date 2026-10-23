@@ -8,6 +8,22 @@ The current baseline implements investigator selection and the Travel, Rest, Pre
 
 ## Progress
 
+- 2026-10-22: Internal Expedition draw/discard/recycling foundation now conserves 18 cards across undrawn, in-flight and public discard zones, relocates the token immediately on draw, and recycles only prior discards when emptied. No live draw/effect/skip command is exposed. Official discard rules also exposed the existing generic Location/Research/Other World bottom-cycle simplification as a required follow-up; it is not certified correct. See `docs/superpowers/plans/2026-10-22-expedition-discard.md`.
+
+- 2026-10-22: All 18 Expedition fronts now have a verified descriptive mechanical catalog, exact source/cell linkage, explicit tests/modifiers and source-image hash regressions. No encounter command/effect is enabled, and readiness remains incomplete. This removes the transcription dependency before guarded Expedition execution. See `docs/superpowers/plans/2026-10-22-expedition-transcription.md`.
+
+- 2026-10-22: Active Expedition setup placement is implemented from the existing 18 physical scan entries: one private shuffled deck, public top-back location, validated conservation/restoration and an accessible board marker synchronized across browsers/reload. Expedition encounter effects and Mystery entry effects remain pending; no family readiness promotion. See `docs/superpowers/plans/2026-10-22-expedition-setup.md`.
+
+- 2026-10-22: Default Playwright coverage now exercises native automatic reconnect followed by reload, stable host/session/investigator and two-seat roster, token rotation and synchronized post-reload commands. Controlled token-write omission produces the expected browser regression. Full OS/network-outage stress remains excluded. See `docs/superpowers/plans/2026-10-22-automatic-reconnect-e2e.md`.
+
+- 2026-10-22: Automatic reconnect now persists the rotated SDK credential after its synchronous assignment, guarded against superseding requests and same-ID replacement Rooms. Explicit reconnect consumes the latest stored token. No server, package or game-rule change. See `docs/superpowers/plans/2026-10-22-reconnect-token.md`.
+
+- 2026-10-22: New create/join/explicit reconnect intents now revoke retained-room callback/send authority until latest successful attachment. Old state/private/error/token/lifecycle callbacks remain inert through request failure. No-token reconnect preserves the current attachment. No dependencies or game rules added. See `docs/superpowers/plans/2026-10-22-matchmaking-callback.md`.
+
+- 2026-10-22: Automatic reconnect now waits for a new attached-room state event before permitting intents; private-message reads of retained state cannot unlock the boundary. Unchanged/version-zero snapshots remain valid after synchronization. No package or game-rule additions. See `docs/superpowers/plans/2026-10-22-reconnect-snapshot.md`.
+
+- 2026-10-22: The client command boundary now requires its own-seat snapshot in addition to an attached connected transport, including after room replacement. Version-zero lobbies remain usable; empty/other-seat snapshots cannot send, clear errors or replay intents. This closes an initial synchronization prerequisite without adding packages or changing rules. Automatic reconnect snapshot freshness remains excluded. See `docs/superpowers/plans/2026-10-22-initial-snapshot-command.md`.
+
 - 2026-10-21: Norman's starting Feed the Mind is now granted from the conserved physical supply on ordinary game start and legal replacement. Missing available copies on replacement do not steal from colleagues or defeated sheets. Setup/replacement use one version transition and transactional deterministic input; reconnect/restoration never issue a retroactive grant. Other starting Spells, rewards and family readiness remain incomplete. See `docs/superpowers/plans/2026-10-21-norman-starting-spell.md` for tests, deviations and final verification.
 
 - 2026-10-21: Norman's once-per-round Sanity-for-Clue substitution is supported specifically in Feed the Mind tests, with private round usage, owner-only options, atomic payment/reroll and snapshot/reconnect regression coverage. This removes the scoped Norman casting guard; starting Spell grants, Norman's action and substitution in other contexts remain pending. Spell family readiness is unchanged. See `docs/superpowers/plans/2026-10-21-norman-spell-reroll.md` for execution and verification results.
@@ -389,3 +405,28 @@ Content verification for later milestones can run ahead in parallel, but engine 
 ### Feed the Mind scoped execution — 2026-10-20
 
 Both private physical reverses now resolve through authoritative casting, Lore tests/rerolls, same-space recipient-owned improvements, reverse choices and physical discard/loss handling. Usage persists privately through restoration and resets at the round boundary; one action is charged per cast. UI exposes only front cast availability and owner decisions. A dedicated browser fixture exercises held inventory, casting and recipient reload; it is outside production imports/build. Starting grants, other Spell effects/reactions, trade, reward encounters and Other World 1/6/20 remain pending; family readiness is unchanged. Ordinary setup still has no Spell acquisition route. Actual final verification and review findings are recorded in `docs/superpowers/plans/2026-10-20-feed-the-mind-casting.md`.
+
+### Norman action — 2026-10-21
+
+Following Norman's production starting Spell, his own action now supports remote non-Epic Monster discard at an active Gate. Atomic payment uses 2 physical Clues or 1 Clue plus 1 Sanity; substitution shares the existing private round ledger with Spell rerolls. Existing action ownership/phase/condition guards and physical supply return remain authoritative. No full investigator/Spell readiness claim or support for other substitution contexts is implied. Specification, execution journal and verification: `docs/superpowers/plans/2026-10-21-norman-action.md`.
+
+### Norman acquisition reroll — 2026-10-21
+
+The shared payment dispatcher now includes Acquire Assets Influence rerolls, including zero-Clue use and independent physical Clue payment. Final-Sanity spending is forbidden; the private once-per-round ledger is shared with the action and Feed the Mind. Canonical restored-choice validation and deterministic input rollback cover the new context. Applicable Trish interaction remains guarded. No new package dependency, general test-context support or family readiness promotion. See `docs/superpowers/plans/2026-10-21-norman-acquire-reroll.md` for execution and actual checks.
+
+### Client callback prerequisite — 2026-10-21
+
+Before further private-decision expansion, obsolete Room callbacks now stop before any shared client mutation. Object identity protects state, owner inbox, errors, connection status and seat tokens across replacement connections with the same room ID. Server authority and scoped rule coverage remain unchanged. No package added. Transport disposal and competing create/join requests are not covered. Spec, plan and actual validation: `docs/superpowers/plans/2026-10-21-room-callback-isolation.md`.
+
+### Client request ordering prerequisite — 2026-10-21
+
+The follow-up closes pending create/join/reconnect races with one shared latest-request coordinator. Stale success is left without attachment; stale failure cannot mutate errors/status or remove current credentials. No-token reconnect leaves pending requests intact. Existing attached transports and multi-tab arbitration remain excluded. No npm package or game rule is added; spec, plan, review and verification are in `docs/superpowers/plans/2026-10-21-connection-request-order.md`.
+
+### Attached transport prerequisite — 2026-10-21
+Successful replacement of an attached client Room now leaves its previous transport after publishing the new identity. Existing callback and request guards remain in force; no package, rule or content readiness change. See `docs/superpowers/plans/2026-10-21-attached-room-replacement.md` for execution and checks.
+
+### Room snapshot prerequisite — 2026-10-21
+The client now clears the previous room's board, identity, active test, trade and lifecycle on successful attachment before waiting for new state. Empty initial state cannot retain old presentation. This extends existing callback/request/transport isolation; no dependency package or rule readiness changes. Specification, execution and actual validation: docs/superpowers/plans/2026-10-21-room-snapshot-isolation.md.
+
+### Outgoing command prerequisite — 2026-10-22
+The shared client command entry point now blocks new intents during known disconnect, final leave, pending or failed matchmaking and idle/no-room states. Retained snapshots cannot enqueue gameplay through the reconnecting SDK. Connected sends preserve the canonical-version envelope; server checks remain authoritative. No new package or expanded rule readiness. Existing queued messages and reconnect snapshot freshness are excluded. Spec, tests and actual verification: `docs/superpowers/plans/2026-10-22-disconnected-command.md`.

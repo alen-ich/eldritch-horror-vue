@@ -1,4 +1,5 @@
-import type { GameState } from "./index.js";
+import { countActiveTestSuccesses, testRerollDecisionIsValid, type CommandResult, type EngineContext, type GameContent, type GameState } from "./index.js";
+import { conditionSuccessThreshold } from "./conditions.js";
 
 export interface PrivateInvestigatorAbilityUsage {
   schemaVersion: 1;
@@ -22,8 +23,69 @@ export function canUseNormanSpellReroll(state: GameState, playerId: string): boo
 }
 
 export function spendNormanSpellReroll(state: GameState, playerId: string): boolean {
-  const usage = state.privateState.investigatorAbilityUsage;
-  if (!usage || validateInvestigatorAbilityUsage(state) || !canUseNormanSpellReroll(state, playerId)) return false;
+  if (!canUseNormanSpellReroll(state, playerId)) return false;
+  return spendNormanClueSubstitution(state, playerId);
+}
+
+/** Explicit allowlist: new test contexts need their own applicability audit. */
+export function canUseNormanTestReroll(state: GameState, playerId: string): boolean {
+  if (canUseNormanSpellReroll(state, playerId)) return true;
+  return normanHasSubstitutionAvailable(state, playerId) && state.phase === "action"
+    && state.activePlayerId === playerId && state.activeTest?.playerId === playerId
+    && state.activeTest.continuation === "acquire_assets" && state.activeTest.skill === "influence";
+}
+
+export function spendNormanTestReroll(state: GameState, playerId: string): boolean {
+  return canUseNormanTestReroll(state, playerId) && spendNormanClueSubstitution(state, playerId);
+}
+
+export function normanAcquireInteractionUnsupported(state: GameState, playerId: string): boolean {
+  const player = state.players.find(candidate => candidate.id === playerId);
+  return normanHasSubstitutionAvailable(state, playerId) && !!player?.locationId
+    && state.players.some(holder => !holder.defeated && !holder.eliminated
+      && holder.locationId === player.locationId && holder.investigatorId === "trish_scarborough");
+}
+
+/** Marked snapshots must carry exactly the choices regenerated from canonical sources. */
+export function validateNormanAcquireRerollState(state: GameState, content: GameContent): string | undefined {
+  if (state.privateState.spellCasting?.pending) return undefined; // Spell validator owns this continuation.
+  const test = state.activeTest;
+  const player = state.players.find(candidate => candidate.id === test?.playerId);
+  const hasPaymentOption = state.pendingDecision?.optionIds.some(id => id.startsWith("norman-sanity:"));
+  const markedAcquisition = state.privateState.investigatorAbilityUsageVersion === 1
+    && test?.continuation === "acquire_assets" && player?.investigatorId === "norman_withers";
+  if (!markedAcquisition && !hasPaymentOption) return undefined; // Genuine legacy decision.
+  if (!test || !player || player.investigatorId !== "norman_withers" || player.defeated || player.eliminated
+    || state.phase !== "action" || state.activePlayerId !== player.id || test.continuation !== "acquire_assets"
+    || test.skill !== "influence" || test.modifier !== 0 || !Array.isArray(test.dice) || !test.dice.length
+    || test.dice.length !== test.dicePool || test.dice.some(die => !Number.isInteger(die) || die < 1 || die > 6)
+    || test.successThreshold !== conditionSuccessThreshold(player.conditionIds ?? [])
+    || test.successes !== countActiveTestSuccesses(test, player, content)
+    || validateInvestigatorAbilityUsage(state) || state.privateState.investigatorAbilityUsageVersion !== 1
+    || state.pendingDecision?.continuation !== "test_reroll" || state.pendingDecision.kind !== "select_rerolls" || state.pendingDecision.playerId !== player.id
+    || normanAcquireInteractionUnsupported(state, player.id) || !testRerollDecisionIsValid(state, content)) {
+    return "Invalid or unsupported Norman acquisition test.";
+  }
+  return undefined;
+}
+
+export function withNormanAcquireRandomTransaction(context: EngineContext, run: () => CommandResult): CommandResult {
+  const checkpoint = context.checkpoint?.();
+  try {
+    const result = run();
+    if (result.ok) checkpoint?.commit(); else checkpoint?.rollback();
+    return result;
+  } catch {
+    checkpoint?.rollback();
+    return { ok: false, error: { code: "RANDOM_INPUT_REQUIRED", message: "Norman's acquisition test requires valid random input." } };
+  }
+}
+
+/** Version-neutral payment shared by the supported action and Spell contexts. */
+export function spendNormanClueSubstitution(state: GameState, playerId: string): boolean {
+  if (validateInvestigatorAbilityUsage(state) || !normanHasSubstitutionAvailable(state, playerId)) return false;
+  state.privateState.investigatorAbilityUsageVersion = 1;
+  const usage = state.privateState.investigatorAbilityUsage ??= { schemaVersion: 1, normanClueSubstitutions: [] };
   state.players.find(player => player.id === playerId)!.sanity! -= 1;
   usage.normanClueSubstitutions.push({ playerId, investigatorId: "norman_withers", round: state.turnNumber });
   return true;

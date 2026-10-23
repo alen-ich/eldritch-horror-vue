@@ -1,12 +1,21 @@
-import { registerResearchDrawIntegrityTests } from "./ResearchDrawIntegrity.test.js";
+import { registerResearchRefusalTests } from "./ResearchRefusal.test.js";
+import { registerResearchMistsTests } from "./ResearchMists.test.js";
+import { registerCultistResearchTests } from "./CultistResearch.test.js";
+import { registerResearchMarkerBindingTests } from "./ResearchMarkerBinding.test.js";
+import { registerLocationDiscardTests } from "./LocationDiscard.test.js";
+import { registerLocationBindingRoomTests } from "./LocationBinding.test.js";
 import { registerOtherWorldStateRoomTests } from "./OtherWorldState.test.js";
+import { registerResearchSetupRoomTests } from "./ResearchSetup.test.js";
 import { registerSpellCastingRoomTests } from "./SpellCasting.test.js";
+import { registerExpeditionSetupRoomTests } from "./ExpeditionSetup.test.js";
+import { registerNormanActionRoomTests } from "./NormanAction.test.js";
+import { registerNormanAcquireRerollRoomTests } from "./NormanAcquireReroll.test.js";
 import { registerNormanSpellCastingRoomTests } from "./NormanSpellCasting.test.js";
 import assert from "node:assert/strict";
 import { ColyseusTestServer, boot } from "@colyseus/testing";
 import { gainNamedArtifact, createSpellInventory, createDeterministicEngineContext, type GameState, type GameContent } from "@eldritch/engine";
 import { baseGameSpells } from "@eldritch/content";
-import { baseGameArtifacts, baseGameAssets, baseGameClues, baseGameConditions, baseGameGates, baseGameScannedTokenEncounters } from "@eldritch/content";
+import { baseGameArtifacts, baseGameAssets, baseGameClues, baseGameConditions, baseGameGates, baseGameScannedTokenEncounters, baseGameScannedLocationEncounters } from "@eldritch/content";
 import {
   commandErrorMessageType,
   commandMessageType,
@@ -36,6 +45,16 @@ function fixtureInternals(room: unknown): { toEngineState(): GameState; applyEng
 }
 
 import { registerStartingSpellRoomTests } from "./StartingSpells.test.js";
+import { registerResearchDrawIntegrityTests } from "./ResearchDrawIntegrity.test.js";
+
+/** Explicit Location fixtures retain all configured cards; never repairs restored snapshots. */
+function seedPhysicalLocation(state: GameState, top: string[]): void {
+  for (const deck of ["general", "america", "europe", "asia_australia"]) {
+    const preferred = top.filter(id => baseGameScannedLocationEncounters.some(card => card.id === id && card.deck === deck));
+    state.privateState.deckOrderById[`encounter:${deck}`] = [...preferred, ...baseGameScannedLocationEncounters.filter(card => card.deck === deck && !preferred.includes(card.id)).map(card => card.id)];
+  }
+  state.locationDiscardIdsByDeck = {};
+}
 
 /** Explicit draw fixtures retain the whole configured physical Research inventory. */
 function physicalResearchOrder(top: string[]): string[] {
@@ -50,11 +69,21 @@ describe("authoritative game room", () => {
   after(async () => colyseus.shutdown());
   beforeEach(async () => colyseus.cleanup());
   registerOtherWorldStateRoomTests(() => colyseus);
+  registerResearchSetupRoomTests(() => colyseus);
+  registerCultistResearchTests(() => colyseus);
+  registerResearchMistsTests(() => colyseus);
+  registerResearchRefusalTests(() => colyseus);
+  registerLocationBindingRoomTests(() => colyseus);
+  registerLocationDiscardTests(() => colyseus);
+  registerResearchMarkerBindingTests(() => colyseus);
+  registerResearchDrawIntegrityTests(() => colyseus);
+  registerExpeditionSetupRoomTests(() => colyseus);
   registerSpellRoomTests(() => colyseus);
+  registerNormanAcquireRerollRoomTests(() => colyseus);
   registerSpellCastingRoomTests(() => colyseus);
   registerNormanSpellCastingRoomTests(() => colyseus);
-  registerResearchDrawIntegrityTests(() => colyseus);
   registerStartingSpellRoomTests(() => colyseus);
+  registerNormanActionRoomTests(() => colyseus);
 
   for (const branch of ["strength-close", "back-injury", "will-pass", "will-loss", "health-defeat", "sanity-defeat", "lily-once", "lily-twice"]) {
     it(`restores The Abyss card 23's ${branch} branch with ordered improvement and private Injuries`, async () => {
@@ -118,8 +147,8 @@ describe("authoritative game room", () => {
       } else assert.equal(after.players[0]!.conditionIds?.length ?? 0, 0);
       assert.equal(after.activePlayerId, state.players[defeat ? 0 : 1]!.id); assert.equal(Boolean(after.pendingDefeat), defeat);
       assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.activeTest, undefined);
-      assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 24); assert.equal(new Set(after.privateState.deckOrderById["encounter:other_world"]).size, 24);
-      assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.at(-1), cardId);
+      assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 23); assert.equal(new Set([...(after.privateState.deckOrderById["encounter:other_world"] ?? []), ...(after.otherWorldDiscardIds ?? [])]).size, 24);
+      assert.equal(after.otherWorldDiscardIds!.at(-1), cardId);
       assert.equal(JSON.stringify(room.state).includes("encounter_other_world_24"), false); assert.equal(JSON.stringify(room.state).includes("gateLocationId"), false);
     });
   }
@@ -190,8 +219,8 @@ describe("authoritative game room", () => {
       assert.deepEqual(after.activeGateIds, branch === "pay" ? [] : ["gate_arkham"]);
       assert.equal(after.activePlayerId, state.players[defeat ? 0 : 1]!.id); assert.equal(Boolean(after.pendingDefeat), defeat);
       assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.activeTest, undefined);
-      assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 24); assert.equal(new Set(after.privateState.deckOrderById["encounter:other_world"]).size, 24);
-      assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.at(-1), cardId);
+      assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 23); assert.equal(new Set([...(after.privateState.deckOrderById["encounter:other_world"] ?? []), ...(after.otherWorldDiscardIds ?? [])]).size, 24);
+      assert.equal(after.otherWorldDiscardIds!.at(-1), cardId);
       assert.equal(JSON.stringify(room.state).includes("encounter_other_world_24"), false); assert.equal(JSON.stringify(room.state).includes("gateLocationId"), false);
     });
   }
@@ -261,8 +290,8 @@ describe("authoritative game room", () => {
       if (penalty) { assert.equal(baseGameConditions.find(card => card.id === condition)?.kind, "paranoia"); assert.equal(JSON.stringify(room.state).includes(condition!), false); }
       else assert.equal(after.players[0]!.conditionIds?.length ?? 0, 0);
       assert.equal(after.activePlayerId, state.players[defeat ? 0 : 1]!.id); assert.equal(Boolean(after.pendingDefeat), defeat);
-      assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 24);
-      assert.equal(new Set(after.privateState.deckOrderById["encounter:other_world"]).size, 24); assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.at(-1), cardId);
+      assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 23);
+      assert.equal(new Set([...(after.privateState.deckOrderById["encounter:other_world"] ?? []), ...(after.otherWorldDiscardIds ?? [])]).size, 24); assert.equal(after.otherWorldDiscardIds!.at(-1), cardId);
       assert.equal(JSON.stringify(room.state).includes("encounter_other_world_24"), false); assert.equal(JSON.stringify(room.state).includes("gateLocationId"), false);
     });
   }
@@ -333,8 +362,8 @@ describe("authoritative game room", () => {
         assert.equal(Object.values(after.privateState.tokenPoolById).flat().includes(injury!), false);
       } else assert.equal(after.players[0]!.conditionIds?.length ?? 0, 0);
       assert.equal(after.activePlayerId, state.players[defeat ? 0 : 1]!.id); assert.equal(Boolean(after.pendingDefeat), defeat);
-      assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 24);
-      assert.equal(new Set(after.privateState.deckOrderById["encounter:other_world"]).size, 24); assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.at(-1), cardId);
+      assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 23);
+      assert.equal(new Set([...(after.privateState.deckOrderById["encounter:other_world"] ?? []), ...(after.otherWorldDiscardIds ?? [])]).size, 24); assert.equal(after.otherWorldDiscardIds!.at(-1), cardId);
       assert.equal(JSON.stringify(room.state).includes("encounter_other_world_24"), false); assert.equal(JSON.stringify(room.state).includes("gateLocationId"), false);
     });
   }
@@ -385,8 +414,8 @@ describe("authoritative game room", () => {
       assert.equal(after.players[0]!.delayed ?? false, false); assert.equal(after.players[0]!.conditionIds?.length ?? 0, 0);
       assert.deepEqual(after.activeGateIds, close ? [] : ["gate_arkham"]);
       assert.equal(after.activePlayerId, state.players[defeat ? 0 : 1]!.id); assert.equal(Boolean(after.pendingDefeat), defeat);
-      assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 24);
-      assert.equal(new Set(after.privateState.deckOrderById["encounter:other_world"]).size, 24); assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.at(-1), cardId);
+      assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 23);
+      assert.equal(new Set([...(after.privateState.deckOrderById["encounter:other_world"] ?? []), ...(after.otherWorldDiscardIds ?? [])]).size, 24); assert.equal(after.otherWorldDiscardIds!.at(-1), cardId);
       assert.equal(JSON.stringify(room.state).includes("encounter_other_world_24"), false); assert.equal(JSON.stringify(room.state).includes("gateLocationId"), false);
     });
   }
@@ -448,8 +477,8 @@ describe("authoritative game room", () => {
       assert.equal(after.players[0]!.delayed ?? false, branch === "skip");
       assert.deepEqual(after.activeGateIds, branch === "pay" || branch === "lore-close" ? [] : ["gate_arkham"]);
       assert.equal(after.activePlayerId, state.players[branch === "defeat" ? 0 : 1]!.id); assert.equal(Boolean(after.pendingDefeat), branch === "defeat");
-      assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 24);
-      assert.equal(new Set(after.privateState.deckOrderById["encounter:other_world"]).size, 24); assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.at(-1), cardId);
+      assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 23);
+      assert.equal(new Set([...(after.privateState.deckOrderById["encounter:other_world"] ?? []), ...(after.otherWorldDiscardIds ?? [])]).size, 24); assert.equal(after.otherWorldDiscardIds!.at(-1), cardId);
       assert.equal(JSON.stringify(room.state).includes("encounter_other_world_24"), false); assert.equal(JSON.stringify(room.state).includes("gateLocationId"), false);
     });
   }
@@ -499,7 +528,7 @@ describe("authoritative game room", () => {
         const closed = after.activeGateIds?.length === 0;
         assert.equal(after.players[0]!.health, closed ? 7 : 6); assert.equal(after.players[0]!.sanity, 5);
         assert.equal(after.activePlayerId, state.players[1]!.id); assert.equal(after.pendingLocationEncounter, undefined);
-        assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.at(-1), cardId);
+        assert.equal(after.otherWorldDiscardIds!.at(-1), cardId);
         return;
       }
       const follow = internal.toEngineState(); assert.equal(follow.activeTest?.skill, paid ? "lore" : "will"); assert.equal(follow.activeTest?.modifier, 0);
@@ -521,9 +550,9 @@ describe("authoritative game room", () => {
       assert.equal(Boolean(after.pendingDefeat), branch === "defeat"); assert.equal(after.activePlayerId, state.players[branch === "defeat" ? 0 : 1]!.id);
       assert.deepEqual(after.activeGateIds, close ? [] : ["gate_arkham"]); assert.equal(after.pendingLocationEncounter, undefined);
       assert.equal(after.players[0]!.clues, 1); assert.deepEqual(after.privateState.tokenPoolById.clue_discard, paid ? ["clue_arkham"] : []);
-      assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 24);
-      assert.equal(new Set(after.privateState.deckOrderById["encounter:other_world"]).size, 24);
-      assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.at(-1), cardId);
+      assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 23);
+      assert.equal(new Set([...(after.privateState.deckOrderById["encounter:other_world"] ?? []), ...(after.otherWorldDiscardIds ?? [])]).size, 24);
+      assert.equal(after.otherWorldDiscardIds!.at(-1), cardId);
       assert.equal(JSON.stringify(room.state).includes("encounter_other_world_24"), false);
     });
   }
@@ -572,7 +601,7 @@ describe("authoritative game room", () => {
         const closed = after.activeGateIds?.length === 0;
         assert.equal(after.players[0]!.health, closed ? 7 : 6); assert.equal(after.players[0]!.sanity, closed ? 5 : 4);
         assert.equal(after.activePlayerId, state.players[1]!.id); assert.equal(after.pendingLocationEncounter, undefined);
-        assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.at(-1), cardId);
+        assert.equal(after.otherWorldDiscardIds!.at(-1), cardId);
         return;
       }
       const follow = internal.toEngineState(); assert.equal(follow.activeTest?.skill, paid ? "will" : "strength"); assert.equal(follow.activeTest?.modifier, 0);
@@ -590,9 +619,9 @@ describe("authoritative game room", () => {
       assert.equal(Boolean(after.pendingDefeat), branch === "defeat"); assert.equal(after.activePlayerId, state.players[branch === "defeat" ? 0 : 1]!.id);
       assert.deepEqual(after.activeGateIds, close ? [] : ["gate_arkham"]); assert.equal(after.pendingLocationEncounter, undefined);
       assert.equal(after.players[0]!.clues, 1); assert.deepEqual(after.privateState.tokenPoolById.clue_discard, paid ? ["clue_arkham"] : []);
-      assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 24);
-      assert.equal(new Set(after.privateState.deckOrderById["encounter:other_world"]).size, 24);
-      assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.at(-1), cardId);
+      assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 23);
+      assert.equal(new Set([...(after.privateState.deckOrderById["encounter:other_world"] ?? []), ...(after.otherWorldDiscardIds ?? [])]).size, 24);
+      assert.equal(after.otherWorldDiscardIds!.at(-1), cardId);
       assert.equal(JSON.stringify(room.state).includes("encounter_other_world_24"), false);
     });
   }
@@ -653,9 +682,9 @@ describe("authoritative game room", () => {
       assert.deepEqual(after.activeGateIds, close ? [] : ["gate_arkham"]);
       assert.equal(after.activePlayerId, state.players[branch === "defeat" ? 0 : 1]!.id);
       assert.equal(Boolean(after.pendingDefeat), branch === "defeat"); assert.equal(after.pendingLocationEncounter, undefined);
-      assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 24);
-      assert.equal(new Set(after.privateState.deckOrderById["encounter:other_world"]).size, 24);
-      assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.at(-1), cardId);
+      assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 23);
+      assert.equal(new Set([...(after.privateState.deckOrderById["encounter:other_world"] ?? []), ...(after.otherWorldDiscardIds ?? [])]).size, 24);
+      assert.equal(after.otherWorldDiscardIds!.at(-1), cardId);
       assert.equal(JSON.stringify(room.state).includes("encounter_other_world_24"), false);
       assert.equal(JSON.stringify(room.state).includes("gateLocationId"), false);
     });
@@ -712,9 +741,9 @@ describe("authoritative game room", () => {
       assert.deepEqual(after.activeGateIds, branch === "close" ? [] : ["gate_arkham"]);
       assert.equal(after.activePlayerId, state.players[branch === "defeat" ? 0 : 1]!.id);
       assert.equal(Boolean(after.pendingDefeat), branch === "defeat"); assert.equal(after.pendingLocationEncounter, undefined);
-      assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 24);
-      assert.equal(new Set(after.privateState.deckOrderById["encounter:other_world"]).size, 24);
-      assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.at(-1), cardId);
+      assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 23);
+      assert.equal(new Set([...(after.privateState.deckOrderById["encounter:other_world"] ?? []), ...(after.otherWorldDiscardIds ?? [])]).size, 24);
+      assert.equal(after.otherWorldDiscardIds!.at(-1), cardId);
       assert.equal(JSON.stringify(room.state).includes("condition_paranoia_0"), false);
       assert.equal(JSON.stringify(room.state).includes("encounter_other_world_24"), false);
       const publicHost = [...room.state.players.values()].find(player => player.id === state.players[0]!.id)!;
@@ -781,8 +810,8 @@ describe("authoritative game room", () => {
       assert.equal(after.players[0]!.clues, branch === "accept" ? 0 : 1); assert.deepEqual(after.privateState.tokenPoolById.clue_discard, branch === "accept" ? ["clue_arkham"] : []);
       assert.equal(after.players[0]!.conditionIds?.length ?? 0, branch === "skip" ? 1 : 0); assert.equal(after.players[0]!.delayed ?? false, false);
       assert.deepEqual(after.activeGateIds, branch === "close" ? [] : ["gate_arkham"]); assert.equal(after.activePlayerId, state.players[1]!.id);
-      assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 24);
-      assert.equal(new Set(after.privateState.deckOrderById["encounter:other_world"]).size, 24); assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.at(-1), cardId);
+      assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 23);
+      assert.equal(new Set([...(after.privateState.deckOrderById["encounter:other_world"] ?? []), ...(after.otherWorldDiscardIds ?? [])]).size, 24); assert.equal(after.otherWorldDiscardIds!.at(-1), cardId);
       assert.equal(JSON.stringify(room.state).includes("condition_amnesia_0"), false); assert.equal(JSON.stringify(room.state).includes("encounter_other_world_24"), false);
       const publicHost = [...room.state.players.values()].find(player => player.id === state.players[0]!.id)!;
       assert.equal(publicHost.conditionIds, branch === "skip" ? "condition_amnesia" : "");
@@ -837,8 +866,8 @@ describe("authoritative game room", () => {
       assert.equal(after.players[0]!.sanity, branch === "defeat" ? 0 : branch === "skip" ? 3 : 5); assert.equal(after.players[0]!.health, 7);
       assert.equal(Boolean(after.pendingDefeat), branch === "defeat"); assert.equal(after.players[0]!.conditionIds?.length ?? 0, 0);
       assert.deepEqual(after.activeGateIds, branch === "close" ? [] : ["gate_arkham"]); assert.equal(after.activePlayerId, branch === "defeat" ? state.players[0]!.id : state.players[1]!.id);
-      assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 24);
-      assert.equal(new Set(after.privateState.deckOrderById["encounter:other_world"]).size, 24); assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.at(-1), cardId);
+      assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 23);
+      assert.equal(new Set([...(after.privateState.deckOrderById["encounter:other_world"] ?? []), ...(after.otherWorldDiscardIds ?? [])]).size, 24); assert.equal(after.otherWorldDiscardIds!.at(-1), cardId);
       assert.equal(JSON.stringify(room.state).includes("gateClosed"), false); assert.equal(JSON.stringify(room.state).includes("encounter_other_world_24"), false);
     });
   }
@@ -890,8 +919,8 @@ describe("authoritative game room", () => {
       assert.equal(after.players[0]!.clues, branch === "accept" ? 0 : 1); assert.deepEqual(after.privateState.tokenPoolById.clue_discard, branch === "accept" ? ["clue_arkham"] : []);
       assert.equal(after.players[0]!.health, 7); assert.equal(after.players[0]!.conditionIds?.length ?? 0, branch === "skip" ? 1 : 0);
       assert.deepEqual(after.activeGateIds, branch === "close" ? [] : ["gate_arkham"]); assert.equal(after.activePlayerId, state.players[1]!.id);
-      assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 24);
-      assert.equal(new Set(after.privateState.deckOrderById["encounter:other_world"]).size, 24); assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.at(-1), cardId);
+      assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 23);
+      assert.equal(new Set([...(after.privateState.deckOrderById["encounter:other_world"] ?? []), ...(after.otherWorldDiscardIds ?? [])]).size, 24); assert.equal(after.otherWorldDiscardIds!.at(-1), cardId);
       assert.equal(JSON.stringify(room.state).includes("condition_hallucinations_0"), false); assert.equal(JSON.stringify(room.state).includes("encounter_other_world_24"), false);
       const publicHost = [...room.state.players.values()].find(player => player.id === state.players[0]!.id)!;
       assert.equal(publicHost.conditionIds, branch === "skip" ? "condition_hallucinations" : "");
@@ -945,8 +974,8 @@ describe("authoritative game room", () => {
       assert.equal(after.players[0]!.delayed ?? false, false); assert.equal(after.players[0]!.conditionIds?.length ?? 0, branch === "amnesia" ? 1 : 0);
       assert.equal(Boolean(after.pendingDefeat), branch === "defeat"); assert.deepEqual(after.activeGateIds, branch === "close" ? [] : ["gate_arkham"]);
       assert.equal(after.activePlayerId, branch === "defeat" ? state.players[0]!.id : state.players[1]!.id);
-      assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 24);
-      assert.equal(new Set(after.privateState.deckOrderById["encounter:other_world"]).size, 24); assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.at(-1), cardId);
+      assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 23);
+      assert.equal(new Set([...(after.privateState.deckOrderById["encounter:other_world"] ?? []), ...(after.otherWorldDiscardIds ?? [])]).size, 24); assert.equal(after.otherWorldDiscardIds!.at(-1), cardId);
       assert.equal(JSON.stringify(room.state).includes("condition_amnesia_0"), false); assert.equal(JSON.stringify(room.state).includes("encounter_other_world_24"), false);
       const publicHost = [...room.state.players.values()].find(player => player.id === state.players[0]!.id)!;
       assert.equal(publicHost.conditionIds, branch === "amnesia" ? "condition_amnesia" : "");
@@ -1006,8 +1035,8 @@ describe("authoritative game room", () => {
       assert.equal(Boolean(after.pendingDefeat), branch === "defeat");
       assert.deepEqual(after.activeGateIds, branch === "close" ? [] : ["gate_arkham"]);
       assert.equal(after.activePlayerId, branch === "defeat" ? state.players[0]!.id : state.players[1]!.id);
-      assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 24);
-      assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.at(-1), cardId);
+      assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 23);
+      assert.equal(after.otherWorldDiscardIds!.at(-1), cardId);
       assert.equal(JSON.stringify(room.state).includes("condition_hallucinations_0"), false); assert.equal(JSON.stringify(room.state).includes("encounter_other_world_24"), false);
     });
   }
@@ -1057,9 +1086,9 @@ describe("authoritative game room", () => {
       assert.equal((await denied as { code: string }).code, "NOT_DECISION_OWNER"); assert.deepEqual(internal.toEngineState(), follow);
       sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: choice.id, selectedOptionIds: options }); await room.waitForMessage(commandMessageType);
       const after = internal.toEngineState();
-      assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 24);
-      assert.equal(new Set(after.privateState.deckOrderById["encounter:other_world"]).size, 24);
-      assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.at(-1), cardId);
+      assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 23);
+      assert.equal(new Set([...(after.privateState.deckOrderById["encounter:other_world"] ?? []), ...(after.otherWorldDiscardIds ?? [])]).size, 24);
+      assert.equal(after.otherWorldDiscardIds!.at(-1), cardId);
       assert.equal(after.players[0]!.clues, branch === "accept" ? 3 : 1); assert.equal(after.players[0]!.delayed ?? false, branch === "accept");
       assert.deepEqual(after.activeGateIds, branch === "defeat" ? ["gate_arkham"] : []);
       assert.equal(after.players[0]!.health, branch === "defeat" ? 0 : 7);
@@ -1117,8 +1146,8 @@ describe("authoritative game room", () => {
       assert.equal((await denied as { code: string }).code, "NOT_DECISION_OWNER");
       sendCommand(room, host, { type: "RESOLVE_DECISION", decisionId: choice.id, selectedOptionIds: branch === "reward" ? ["accept"] : [] }); await room.waitForMessage(commandMessageType);
       const after = internal.toEngineState();
-      assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 24);
-      assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.at(-1), cardId);
+      assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 23);
+      assert.equal(after.otherWorldDiscardIds!.at(-1), cardId);
       assert.equal(after.players[0]!.clues, branch === "reward" ? 3 : 1);
       assert.equal(after.players[0]!.delayed ?? false, branch === "reward");
       assert.equal(after.doom, branch === "reward" ? 15 : 0);
@@ -1180,8 +1209,8 @@ describe("authoritative game room", () => {
       assert.equal(after.privateState.tokenPoolById["condition:paranoia"]!.length, option === "accept" ? 3 : 2);
       assert.deepEqual(after.activeGateIds, ["gate_arkham"]); assert.deepEqual(after.discardedGateIds, []);
       assert.equal(after.activePlayerId, state.players[1]!.id); assert.equal(after.pendingLocationEncounter, undefined);
-      assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.at(-1), cardId);
-      assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 24);
+      assert.equal(after.otherWorldDiscardIds!.at(-1), cardId);
+      assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 23);
       const publicHost = [...room.state.players.values()].find(player => player.id === state.players[0]!.id)!;
       assert.equal(publicHost.conditionIds, option === "accept" ? "" : "condition_paranoia");
       assert.equal(JSON.stringify(room.state).includes("condition_paranoia_0"), false);
@@ -1234,8 +1263,8 @@ describe("authoritative game room", () => {
     assert.equal(after.players[0]!.clues, 3); assert.equal(after.activePlayerId, state.players[1]!.id);
     assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.doom, 15);
     assert.deepEqual(after.discardedGateIds, ["gate_arkham"]);
-    assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.at(-1), cardId);
-    assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 24);
+    assert.equal(after.otherWorldDiscardIds!.at(-1), cardId);
+    assert.equal(after.privateState.deckOrderById["encounter:other_world"]!.length, 23);
   });
 
   it("rejects an unsupported Other World top card without revealing it or changing components", async () => {
@@ -1561,7 +1590,8 @@ describe("authoritative game room", () => {
       assert.equal(decision.playerId, state.players[1]?.id); assert.equal(decision.optionLabels?.[assetId], resource === "health" ? "Discard Bandages: prevent 1 Health loss" : "Discard Whiskey: prevent 1 Sanity loss");
       const paused = internal.toEngineState(); assert.equal(paused.players[0]?.[resource], 1); assert.equal(paused.pendingDefeat, undefined);
       assert.equal(paused.pendingLocationEncounter?.playerId, state.players[0]?.id);
-      assert.deepEqual(paused.privateState.deckOrderById["encounter:research_azathoth"], state.privateState.deckOrderById["encounter:research_azathoth"]);
+      assert.deepEqual(paused.privateState.deckOrderById["encounter:research_azathoth"], state.privateState.deckOrderById["encounter:research_azathoth"]!.slice(1));
+      assert.equal(paused.pendingLocationEncounter?.cardRemovedFromDeck, true);
       assert.equal(JSON.stringify(room.state).includes("damage_reaction"), false); assert.equal(JSON.stringify(room.state).includes("optionIds"), false);
       const refresh = guest.waitForMessage(pendingDecisionMessageType); internal.applyEngineState(JSON.parse(JSON.stringify(paused))); await refresh;
       const denied = host.waitForMessage(commandErrorMessageType);
@@ -1572,7 +1602,7 @@ describe("authoritative game room", () => {
       assert.deepEqual(after.assetDiscardIds, [assetId]); assert.deepEqual(after.players[1]?.assetIds, []);
       assert.deepEqual(after.boardClues, state.boardClues); assert.equal(after.pendingDefeat, undefined);
       assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.activePlayerId, state.players[1]?.id);
-      assert.deepEqual(after.privateState.deckOrderById["encounter:research_azathoth"], physicalResearchOrder([cardId, "encounter_research_azathoth_02"]).slice(1).concat(cardId));
+      assert.deepEqual(after.privateState.deckOrderById["encounter:research_azathoth"], physicalResearchOrder([cardId, "encounter_research_azathoth_02"]).slice(1));
     });
   }
 
@@ -1588,7 +1618,7 @@ describe("authoritative game room", () => {
       assetIds: ["asset_hired_muscle", "asset_lucky_rabbits_foot"], skillImprovements: { strength: 1 } };
     state.privateState.tokenPoolById[`held_clues:${state.players[0]!.id}`] = ["clue_london"];
     // General 10 Sea has a Strength test with no pass reward; its failure Delays.
-    state.privateState.deckOrderById["encounter:general"] = ["encounter_general_10"];
+    seedPhysicalLocation(state, ["encounter_general_10"]);
     internal.applyEngineState(state);
     const offered = host.waitForMessage(pendingDecisionMessageType);
     sendCommand(room, host, { type: "RESOLVE_LOCATION_ENCOUNTER", deck: "general" }); await room.waitForMessage(commandMessageType);
@@ -1710,7 +1740,7 @@ describe("authoritative game room", () => {
     assert.equal(after.boardClues?.[0]?.id, "discard-clue"); assert.notEqual(after.boardClues?.[0]?.locationId, "the_amazon");
     assert.deepEqual(after.privateState.tokenPoolById, state.privateState.tokenPoolById);
     assert.deepEqual(after.privateState.deckOrderById.assets, state.privateState.deckOrderById.assets);
-    assert.deepEqual(after.privateState.deckOrderById["encounter:research_cthulhu"], physicalResearchOrder(["encounter_research_cthulhu_06", "encounter_research_cthulhu_02"]).slice(1).concat("encounter_research_cthulhu_06"));
+    assert.deepEqual(after.privateState.deckOrderById["encounter:research_cthulhu"], physicalResearchOrder(["encounter_research_cthulhu_06", "encounter_research_cthulhu_02"]).slice(1));
     assert.equal(after.pendingLocationEncounter, undefined); assert.equal(after.activePlayerId, after.players[1]?.id);
   });
 
@@ -1908,7 +1938,7 @@ describe("authoritative game room", () => {
     const after = internal.toEngineState();
     assert.equal(after.boardClues?.[0]?.locationId, "space_8");
     assert.deepEqual(after.privateState.tokenPoolById["board_clue:cthulhu-clue"], ["clue_arkham"]);
-    assert.deepEqual(after.privateState.deckOrderById["encounter:research_cthulhu"], physicalResearchOrder(["encounter_research_cthulhu_01", "encounter_research_cthulhu_02"]).slice(1).concat("encounter_research_cthulhu_01"));
+    assert.deepEqual(after.privateState.deckOrderById["encounter:research_cthulhu"], physicalResearchOrder(["encounter_research_cthulhu_01", "encounter_research_cthulhu_02"]).slice(1));
     assert.equal(after.activePlayerId, after.players[1]?.id);
     assert.equal(after.players[0]?.clues, 1);
     assert.equal(JSON.stringify(room.state).includes("encounter_research_cthulhu_02"), false);
@@ -2143,7 +2173,7 @@ describe("authoritative game room", () => {
     assert.equal(resolved.pendingLocationEncounter, undefined);
     assert.equal(resolved.activePlayerId, state.players[1]!.id);
     assert.deepEqual(resolved.privateState.tokenPoolById[`held_clues:${state.players[0]!.id}`], ["clue_arkham"]);
-    assert.deepEqual(resolved.privateState.deckOrderById["encounter:research_azathoth"], physicalResearchOrder(["encounter_research_azathoth_02", "encounter_research_azathoth_01"]).slice(1).concat("encounter_research_azathoth_02"));
+    assert.deepEqual(resolved.privateState.deckOrderById["encounter:research_azathoth"], physicalResearchOrder(["encounter_research_azathoth_02", "encounter_research_azathoth_01"]).slice(1));
   });
 
   it("places starting Gates, Monsters, and Clues without exposing private token order", async () => {
@@ -2864,7 +2894,7 @@ describe("authoritative game room", () => {
       player.skillImprovements = {};
       state.privateState.tokenPoolById[`held_clues:${player.id}`] = [];
     }
-    state.privateState.deckOrderById["encounter:general"] = ["encounter_general_08", "encounter_general_01"];
+    seedPhysicalLocation(state, ["encounter_general_08", "encounter_general_01"]);
     state.privateState.tokenPoolById.clues = ["clue_arkham"];
     state.privateState.tokenPoolById.clue_discard = [];
     internal.applyEngineState(state);
@@ -2875,7 +2905,8 @@ describe("authoritative game room", () => {
     await room.waitForMessage(commandMessageType);
     assert.equal(room.state.activePlayerId, state.players[1]!.id);
     assert.equal(room.state.lastLocationEncounterCardId, "encounter_general_08");
-    assert.deepEqual(internal.toEngineState().privateState.deckOrderById["encounter:general"], ["encounter_general_01", "encounter_general_08"]);
+    assert.deepEqual(internal.toEngineState().privateState.deckOrderById["encounter:general"], state.privateState.deckOrderById["encounter:general"]!.slice(1));
+    assert.deepEqual(internal.toEngineState().locationDiscardIdsByDeck?.general, ["encounter_general_08"]);
     assert.ok(!JSON.stringify(room.state).includes("encounter_general_01"));
     const unsupported = guest.waitForMessage(commandErrorMessageType);
     sendCommand(room, guest, { type: "RESOLVE_LOCATION_ENCOUNTER", deck: "general" });
@@ -2918,7 +2949,7 @@ describe("authoritative game room", () => {
     state.phase = "encounter";
     state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
     Object.assign(state.players[0]!, { investigatorId: "akachi_onyele", locationId: "san_francisco", health: 5, sanity: 7, assetIds: [], clues: 0, skillImprovements: {} });
-    state.privateState.deckOrderById["encounter:america"] = ["encounter_america_05"];
+    seedPhysicalLocation(state, ["encounter_america_05"]);
     internal.applyEngineState(state);
     sendCommand(room, host, { type: "RESOLVE_LOCATION_ENCOUNTER", deck: "america" });
     await room.waitForMessage(commandMessageType);
@@ -2957,7 +2988,7 @@ describe("authoritative game room", () => {
     state.activePlayerId = state.leadInvestigatorId = state.players[0]!.id;
     Object.assign(state.players[0]!, { investigatorId: "akachi_onyele", locationId: "space_2", health: 5, sanity: 1 });
     Object.assign(state.players[1]!, { investigatorId: "trish_scarborough", locationId: "space_16", health: 7, sanity: 5 });
-    state.privateState.deckOrderById["encounter:general"] = ["encounter_general_07"];
+    seedPhysicalLocation(state, ["encounter_general_07"]);
     for (const card of baseGameConditions) (state.privateState.tokenPoolById[`condition:${card.kind}`] ??= []).push(card.id);
     internal.applyEngineState(state);
     sendCommand(room, host, { type: "RESOLVE_LOCATION_ENCOUNTER", deck: "general" });
@@ -2988,7 +3019,7 @@ describe("authoritative game room", () => {
     state.players[0]!.clues = 1;
     state.privateState.tokenPoolById[`held_clues:${hostId}`] = ["clue_arkham"];
     state.privateState.tokenPoolById.clues = ["clue_london"];
-    state.privateState.deckOrderById["encounter:general"] = ["encounter_general_08"];
+    seedPhysicalLocation(state, ["encounter_general_08"]);
     internal.applyEngineState(state);
     sendCommand(room, host, { type: "RESOLVE_LOCATION_ENCOUNTER", deck: "general" });
     await room.waitForMessage(commandMessageType);
