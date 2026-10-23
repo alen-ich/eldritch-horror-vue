@@ -25,6 +25,12 @@ test('two browsers join, resolve an Asset test, and share Travel state', async (
     await host.getByRole('button', { name: 'Start game' }).click()
     await expect(host.getByRole('button', { name: 'Acquire Assets' })).toBeVisible()
     await expect(guest.getByRole('button', { name: 'Acquire Assets' })).toBeVisible()
+    const expedition = host.getByRole('img', { name: /^Active Expedition:/ })
+    await expect(expedition).toHaveCount(1)
+    const expeditionLabel = await expedition.getAttribute('aria-label')
+    await expect(guest.getByRole('img', { name: expeditionLabel! })).toHaveCount(1)
+    await guest.reload()
+    await expect(guest.getByRole('img', { name: expeditionLabel! })).toHaveCount(1)
 
     // The first post-start intent can precede the client's state-version patch.
     // Retry only until the test opens; never retry an accepted reroll.
@@ -131,6 +137,7 @@ test('Personal Assistant offers an explicit free reroll during Acquire Assets', 
       // Setup can place its Gate Monster in San Francisco. Numbered City 1
       // is adjacent and cannot contain a starting Gate; use legal Travel.
       await page.getByRole('button', { name: 'Close investigator details' }).click()
+      await page.getByRole('button', { name: 'Collapse reserve' }).click()
       await page.getByRole('button', { name: '1, city, legal destination', exact: true }).click()
       await page.getByRole('button', { name: 'Confirm travel' }).click()
       await expect(page.getByText('Your action · 1 remaining')).toBeVisible()
@@ -138,10 +145,14 @@ test('Personal Assistant offers an explicit free reroll during Acquire Assets', 
     }
     await expect(freeReroll).toBeVisible()
   }).toPass({ timeout: 15000 })
+  // Exercise the collapsed market on every path, including the Travel fallback.
+  const collapseReserve = page.getByRole('button', { name: 'Collapse reserve' })
+  if (await collapseReserve.isVisible()) await collapseReserve.click()
   await freeReroll.click()
   await dialog.getByRole('button', { name: 'Use selected reroll' }).click()
   await expect(page.getByRole('button', { name: /Personal Assistant: reroll die/ })).toHaveCount(0)
   if (await dialog.isVisible()) await dialog.getByRole('button', { name: 'Keep result' }).click()
+  await page.getByRole('button', { name: 'Expand reserve' }).click()
   await expect(page.getByRole('button', { name: 'Buy nothing' })).toBeVisible()
   } finally {
     await guestContext.close()

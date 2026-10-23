@@ -1,4 +1,9 @@
 import { Client, type Room } from '@colyseus/sdk'
+import { createPrivateDecisionInbox } from '../game/private-decision-inbox'
+import { retireRoom } from '../game/retire-room'
+import { replaceAttachedRoom } from '../game/replace-attached-room'
+import { currentRoomCallback } from '../game/current-room-callback'
+import { createLatestConnectionRequest } from '../game/latest-connection-request'
 import {
   commandErrorMessageType,
   commandMessageType,
@@ -43,6 +48,11 @@ interface ClientPlayerState {
 }
 
 interface ClientGameState {
+  activeExpeditionLocationId?: string
+  expeditionDiscardIds?: string
+  otherWorldDiscardIds?: string
+  researchDiscardIds?: string
+  locationDiscardIdsByDeck?: string
   spellSupplyTopId?: string
   activeGateIds?: string
   monsters?: string
@@ -105,6 +115,11 @@ const stateVersion = ref(0)
 const phase = ref('lobby')
 const activeGateIds = ref<string[]>([])
 const spellSupplyTopId = ref('')
+const activeExpeditionLocationId = ref('')
+const expeditionDiscardIds = ref<string[]>([])
+const otherWorldDiscardIds = ref<string[]>([])
+const researchDiscardIds = ref<string[]>([])
+const locationDiscardIdsByDeck = ref<Record<string, string[]>>({})
 const ancientOneId = ref('')
 const currentMythosCardId = ref('')
 const currentMythosIconIndex = ref(0)
@@ -132,17 +147,25 @@ const activeTest = ref<ActiveTest>()
 const tradeOffer = ref<TradeOffer>()
 const investigatorLifecycle = ref<{ pendingDefeat?: { playerId: string; cityIds: string[]; causes: ('health' | 'sanity')[] }; replacementWindow?: boolean; defeatedInvestigators?: { investigatorId: string }[]; awakened?: boolean }>({})
 const pendingDecision = ref<PendingDecision | PendingDecisionSummary>()
+const privateDecisionInbox = createPrivateDecisionInbox()
 const playerId = ref('')
 const roomId = ref('')
 const status = ref<'idle' | 'connecting' | 'connected' | 'disconnected'>('idle')
 const errorMessage = ref('')
+const connectionRequests = createLatestConnectionRequest()
+let commandSnapshotReady = false
+let attachedRoomActive = false
 
 export function useGameRoom() {
   const config = useRuntimeConfig()
   const client = new Client(config.public.colyseusUrl)
 
   function syncState(state: ClientGameState) {
-    if (!state.players) return
+    activeExpeditionLocationId.value = state.activeExpeditionLocationId ?? ''
+    expeditionDiscardIds.value = JSON.parse(state.expeditionDiscardIds ?? '[]') as string[]
+    otherWorldDiscardIds.value = JSON.parse(state.otherWorldDiscardIds ?? '[]') as string[]
+    researchDiscardIds.value = JSON.parse(state.researchDiscardIds ?? '[]') as string[]
+    locationDiscardIdsByDeck.value = JSON.parse(state.locationDiscardIdsByDeck ?? '{}') as Record<string, string[]>
     spellSupplyTopId.value = state.spellSupplyTopId ?? ''
     investigatorLifecycle.value = JSON.parse(state.investigatorLifecycle ?? '{}')
     tradeOffer.value = state.tradeOffer ? JSON.parse(state.tradeOffer) as TradeOffer : undefined
@@ -179,16 +202,16 @@ export function useGameRoom() {
       continuation: state.activeTest.continuation as ActiveTest['continuation']
     } : undefined
     if (!state.pendingDecision) {
-      pendingDecision.value = undefined
-    } else if (pendingDecision.value?.id !== state.pendingDecision.id || !('optionIds' in pendingDecision.value)) {
-      pendingDecision.value = {
+      pendingDecision.value = privateDecisionInbox.sync()
+    } else {
+      pendingDecision.value = privateDecisionInbox.sync({
         ...state.pendingDecision,
         kind: state.pendingDecision.kind as PendingDecisionKind,
         visibility: state.pendingDecision.visibility as PendingDecision['visibility'],
         continuation: (state.pendingDecision.continuation || undefined) as PendingDecision['continuation']
-      }
+      })
     }
-    players.value = [...state.players.values()].map((player) => ({
+    players.value = [...(state.players?.values() ?? [])].map((player) => ({
       id: player.id,
       sessionId: player.sessionId,
       displayName: player.displayName,
@@ -221,42 +244,66 @@ export function useGameRoom() {
   }
 
   function attach(nextRoom: Room<unknown, ClientGameState>) {
-    room.value = nextRoom
+    const currentCallback = <Args extends unknown[]>(callback: (...args: Args) => void) =>
+      currentRoomCallback(() => attachedRoomActive && room.value === nextRoom, callback)
+    attachedRoomActive = true
+    privateDecisionInbox.clear()
+    commandSnapshotReady = false
+    pendingDecision.value = undefined
+    replaceAttachedRoom(room.value, nextRoom, value => { room.value = value; syncState({}) }, discardRoom)
     roomId.value = nextRoom.roomId
     status.value = 'connected'
     localStorage.setItem(storageKey, nextRoom.reconnectionToken)
-    nextRoom.onStateChange(syncState)
-    nextRoom.onMessage<CommandErrorMessage>(commandErrorMessageType, (message) => { errorMessage.value = message.message })
-    nextRoom.onMessage<PendingDecision>(pendingDecisionMessageType, (decision) => { pendingDecision.value = decision })
-    nextRoom.onMessage<string>('seat-token', (token) => {
+    nextRoom.onStateChange(currentCallback((state: ClientGameState) => {
+      syncState(state)
+      commandSnapshotReady = status.value === 'connected'
+    }))
+    nextRoom.onMessage<CommandErrorMessage>(commandErrorMessageType, currentCallback((message: CommandErrorMessage) => { errorMessage.value = message.message }))
+    nextRoom.onMessage<PendingDecision>(pendingDecisionMessageType, currentCallback((decision: PendingDecision) => {
+      privateDecisionInbox.receive(decision)
+      // Show options only with their matching public snapshot/version. Otherwise
+      // a fast click can submit the next choice with the previous state version.
+      if (nextRoom.state) syncState(nextRoom.state)
+    }))
+    nextRoom.onMessage<string>('seat-token', currentCallback((token: string) => {
       localStorage.setItem(`eldritch-seat-${nextRoom.roomId}`, token)
-    })
+    }))
     nextRoom.send('request-seat-token')
-    nextRoom.onDrop(() => { status.value = 'connecting' })
-    nextRoom.onReconnect(() => { status.value = 'connected' })
-    nextRoom.onLeave(() => { status.value = 'disconnected' })
-    if (nextRoom.state) syncState(nextRoom.state)
+    nextRoom.onDrop(currentCallback(() => { commandSnapshotReady = false; status.value = 'connecting' }))
+    nextRoom.onReconnect(currentCallback(() => {
+      commandSnapshotReady = false
+      status.value = 'connected'
+      // SDK 0.18.2 assigns the rotated token after invoking this signal.
+      queueMicrotask(currentCallback(() => {
+        localStorage.setItem(storageKey, nextRoom.reconnectionToken)
+      }))
+    }))
+    nextRoom.onLeave(currentCallback(() => { commandSnapshotReady = false; status.value = 'disconnected' }))
+    if (nextRoom.state) {
+      syncState(nextRoom.state)
+      commandSnapshotReady = true
+    }
   }
 
   async function createGame(displayName: string) {
+    attachedRoomActive = false
     status.value = 'connecting'
     errorMessage.value = ''
-    try {
-      attach(await client.create<ClientGameState>('game', { displayName }))
-    } catch (error) {
-      handleConnectionError(error)
-    }
+    await connectionRequests.run(() => client.create<ClientGameState>('game', { displayName }), attach, handleConnectionError, discardRoom)
   }
 
   async function joinGame(targetRoomId: string, displayName: string) {
+    attachedRoomActive = false
     status.value = 'connecting'
     errorMessage.value = ''
-    try {
+    await connectionRequests.run(() => {
       const resumeToken = localStorage.getItem(`eldritch-seat-${targetRoomId}`) ?? undefined
-      attach(await client.joinById<ClientGameState>(targetRoomId, { displayName, resumeToken }))
-    } catch (error) {
-      handleConnectionError(error)
-    }
+      return client.joinById<ClientGameState>(targetRoomId, { displayName, resumeToken })
+    }, attach, handleConnectionError, discardRoom)
+  }
+
+  function discardRoom(obsoleteRoom: Room<unknown, ClientGameState>) {
+    return retireRoom(obsoleteRoom)
   }
 
   function handleConnectionError(error: unknown) {
@@ -269,18 +316,17 @@ export function useGameRoom() {
   async function reconnect() {
     const token = localStorage.getItem(storageKey)
     if (!token) return false
+    attachedRoomActive = false
     status.value = 'connecting'
-    try {
-      attach(await client.reconnect<ClientGameState>(token))
-      return true
-    } catch {
+    return connectionRequests.run(() => client.reconnect<ClientGameState>(token), attach, () => {
       localStorage.removeItem(storageKey)
       status.value = 'idle'
-      return false
-    }
+    }, discardRoom)
   }
 
   function send(command: GameCommand) {
+    // A connected transport may still be waiting for its own-seat snapshot.
+    if (!room.value || !attachedRoomActive || status.value !== 'connected' || !commandSnapshotReady || !playerId.value) return
     errorMessage.value = ''
     room.value?.send(commandMessageType, {
       expectedStateVersion: stateVersion.value,
@@ -289,6 +335,11 @@ export function useGameRoom() {
   }
 
   return {
+    activeExpeditionLocationId: readonly(activeExpeditionLocationId),
+    expeditionDiscardIds: readonly(expeditionDiscardIds),
+    otherWorldDiscardIds: readonly(otherWorldDiscardIds),
+    researchDiscardIds: readonly(researchDiscardIds),
+    locationDiscardIdsByDeck: readonly(locationDiscardIdsByDeck),
     spellSupplyTopId: readonly(spellSupplyTopId),
     activeGateIds: readonly(activeGateIds),
     investigatorLifecycle: readonly(investigatorLifecycle),
