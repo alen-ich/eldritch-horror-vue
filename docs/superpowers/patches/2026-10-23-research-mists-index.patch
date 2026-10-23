@@ -1,0 +1,23 @@
+--- a/packages/engine/src/index.ts
++++ b/packages/engine/src/index.ts
+@@ -49,3 +49,3 @@
+ import { conditionSuccessThreshold, publicConditionId, resolveBoonBaneGain } from "./conditions.js";
+-import { createSpellInventory, publicSpellId, spellEffectIsUnsupported, validateSpellInventory } from "./spells.js";
++import { createSpellInventory, gainSpell, publicSpellId, spellEffectIsUnsupported, validateSpellInventory } from "./spells.js";
+ import { advanceOmenTrack, omenTrack } from "./omen.js";
+@@ -1836,2 +1836,7 @@
+     }
++    if (effect.kind === "spell") {
++      const gained = gainSpell(next, playerId, { type: "kind", kind: "mists_of_releh" }, content, context);
++      if (!gained.ok) return gained;
++      next = gained.state; events.push(...gained.events); continue;
++    }
+     if (effect.kind === "artifact") {
+@@ -2012,2 +2017,7 @@
+   for (const node of nodes) {
++    if (node.kind === "effects" && node.effects.some(effect => effect.kind === "spell")) {
++      if (!content.spells?.some(spell => spell.kind === "mists_of_releh")) return failure("SPELL_CONTENT_MISSING", "The named Spell catalog is unavailable.");
++      const invalid = validateSpellInventory(state, content.spells);
++      if (invalid) return failure("SPELL_INVENTORY_INVALID", invalid);
++    }
+     if ((node.kind === "ambush" || node.kind === "ambush_result") && node.monsterId === "monster_cultist") {

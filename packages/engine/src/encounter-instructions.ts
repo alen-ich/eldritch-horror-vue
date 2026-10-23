@@ -8,6 +8,7 @@ export type LocationEncounterEffect =
   | { kind: "doom_advance"; amount: 1 }
   | { kind: "discard_item_assets"; amount: 1 | 2 }
   | { kind: "artifact"; id: "artifact_ttka_halot" }
+  | { kind: "spell"; id: "spell_mists_of_releh" }
   | { kind: "return_solved_mystery"; selection: "random"; shuffle: true }
   | { kind: "omen_move"; destination: "chosen"; advanceDoom: false; position?: number }
   | { kind: "omen_advance"; amount: 1 }
@@ -53,6 +54,11 @@ export function parseLocationEncounterInstruction(value: unknown, depth = 0): Lo
       if (raw.kind === "artifact") {
         if (!("id" in raw) || raw.id !== "artifact_ttka_halot") return undefined;
         effects.push({ kind: "artifact", id: raw.id });
+        continue;
+      }
+      if (raw.kind === "spell") {
+        if (!("id" in raw) || raw.id !== "spell_mists_of_releh") return undefined;
+        effects.push({ kind: "spell", id: raw.id });
         continue;
       }
       if (raw.kind === "return_solved_mystery" && "selection" in raw && raw.selection === "random" && "shuffle" in raw && raw.shuffle === true) effects.push({ kind: "return_solved_mystery", selection: "random", shuffle: true });
@@ -119,6 +125,7 @@ export function encounterInstructionLabel(instruction: LocationEncounterInstruct
     if (effect.kind === "doom_advance") return "Advance Doom by 1";
     if (effect.kind === "discard_item_assets") return `Discard ${effect.amount} Item Assets`;
     if (effect.kind === "artifact") return "Gain T'tka Halot";
+    if (effect.kind === "spell") return "Gain Mists of Releh";
     if (effect.kind === "return_solved_mystery") return "Shuffle a random solved Mystery back into its deck";
     if (effect.kind === "omen_move") return "Move Omen without advancing Doom";
     if (effect.kind === "omen_advance") return "Advance Omen by 1";
