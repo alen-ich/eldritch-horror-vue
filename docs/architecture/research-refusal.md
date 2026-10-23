@@ -1,0 +1,11 @@
+# Cthulhu1 Sea complete optional branch
+
+2026-10-23: the authored Dark Pact offer and refusal are executable, raising Cthulhu Research from21 to22 of24 sections for supported holdings. Source `apps/web/public/cards/encounters/research_cthulhu/01.webp` was visually checked: accept Dark Pact to gain this Clue and Mists; otherwise discard this Clue and resolve a Star Spawn ambush.
+
+Research binding now recursively retains explicit declines and converts authored encountered-Clue discard to the server-selected `discard_encountered_clue` marker. Unsupported descendants or authored prebound marker injection still reject the whole section. The interpreter delegates to the existing physical board-Clue discard operation. Original marker-reference traversal now includes discard, rejecting target/physical-identity substitution before effects.
+
+Refusal, including an unavailable/already-held Dark Pact cost, removes only the bound board marker, moves its physical Clue to `clue_discard`, then enters existing Star Spawn Will/Strength combat. No physical Monster is drawn, spawned, moved or damaged. JSON private checkpoints after discard legitimately retain the original binding with no further marker references, so absence of the consumed marker is valid. The loss cannot replay on restored Strength or owner rerolls. Lethal Horror interrupts before Strength and any reward; rejected randomness rolls back discard and deterministic input.
+
+Acceptance uses existing Condition cost, exact Clue collection and named Mists gain/shuffle. Spell casting and broad possession/prevention/AO/awakening guards remain closed. No new network/public fields or packages, no family readiness promotion. Remaining Cthulhu3 Sea/8 Sea named Artifact rewards require their own supported gain/effect prerequisites.
+
+Tests/review/results: `docs/superpowers/plans/2026-10-23-research-refusal.md`. Dirty `index.ts` and server test registration are saved only as exact already-applied `docs/superpowers/patches/2026-10-23-research-refusal-{index,GameRoomTest}.patch`. They require the existing unstaged foundation and must not be reapplied. Full verification concerns this working directory, not a clean checkout of those prerequisites.

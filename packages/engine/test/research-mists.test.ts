@@ -92,10 +92,12 @@ describe("named Mists Research reward", () => {
     expect(before).toEqual(snapshot);
   });
 
-  it("admits only the named reward and keeps the unsupported card1 Sea refusal blocked", () => {
+  it("admits only the named reward and retains the complete card1 Sea refusal", () => {
     expect(parseLocationEncounterInstruction({ kind: "effects", effects: [{ kind: "spell", id: "spell_mists_of_releh" }] })).toBeDefined();
     for (const id of ["spell_feed_the_mind", "mists_of_releh", "", null]) expect(parseLocationEncounterInstruction({ kind: "effects", effects: [{ kind: "spell", id }] })).toBeUndefined();
     const card = baseGameResearchEncounterRules.find(c => c.deck === "research_cthulhu" && c.number === 1)!;
-    expect(bindResearchInstruction(card.sections.sea, "chosen")).toBeUndefined();
+    expect(bindResearchInstruction(card.sections.sea, "chosen")).toMatchObject({ kind: "optional", decline: { kind: "sequence", steps: [
+      { kind: "effects", effects: [{ kind: "discard_encountered_clue", markerId: "chosen" }] }, { kind: "ambush", monsterId: "monster_star_spawn" },
+    ] } });
   });
 });

@@ -6,6 +6,6 @@ Only `spell_mists_of_releh` is admitted as a named encounter reward. Dynamic pre
 
 The existing server owns inventory, RNG and decisions. JSON-restored Observation choices retain owner-only resolution; public projections expose fronts, never physical backs or Spell deck order. Failed shuffle input rolls back Clue/card/Spell changes and deterministic dice through the Research transaction. An unavailable named Spell leaves the Clue reward intact without manufacturing a copy.
 
-This is a reward feature only. Holding Mists continues to trigger the conservative unsupported encounter-effect guard; casting remains unimplemented. Cthulhu1 Sea remains blocked by its refusal consequence. Named Artifact rewards, generic Spell IDs, possession/awakening support and family readiness are unchanged.
+This is a reward feature only. Holding Mists continues to trigger the conservative unsupported encounter-effect guard; casting remains unimplemented. Follow-up: [Cthulhu1 Sea refusal](research-refusal.md) now retains the complete discard/ambush branch. Named Artifact rewards, generic Spell IDs, possession/awakening support and family readiness are unchanged.
 
 Implementation delta in previously dirty `packages/engine/src/index.ts` and server test registration is saved only in already-applied `docs/superpowers/patches/2026-10-23-research-mists-{index,GameRoomTest}.patch`. Do not reapply. Existing dirty foundations remain outside the commit and are required to reproduce this working directory. Results and review: `docs/superpowers/plans/2026-10-23-research-mists.md`.

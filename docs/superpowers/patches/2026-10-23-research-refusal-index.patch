@@ -1,0 +1,10 @@
+--- a/packages/engine/src/index.ts
++++ b/packages/engine/src/index.ts
+@@ -1829,2 +1829,7 @@
+       continue;
++    }
++    if (effect.kind === "discard_encountered_clue") {
++      const discarded = resolveBoardClueEffect(next, effect.markerId, { kind: "discard" }, content);
++      if (!discarded.ok) return discarded;
++      next = discarded.state; events.push(...discarded.events); continue;
+     }

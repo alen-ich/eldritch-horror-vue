@@ -12,7 +12,7 @@ function markerReferences(nodes: unknown, depth = 0): unknown[] | undefined {
       if (!Array.isArray(record[key])) return undefined;
       for (const effect of Array.from(record[key])) {
         if (!effect || typeof effect !== "object") return undefined;
-        if (effect.kind === "collect_encountered_clue" || effect.kind === "relocate_encountered_clue") ids.push(effect.markerId);
+        if (effect.kind === "collect_encountered_clue" || effect.kind === "relocate_encountered_clue" || effect.kind === "discard_encountered_clue") ids.push(effect.markerId);
       }
     }
     for (const key of ["steps", "options", "pass", "fail", "reward", "decline", "defeated", "notDefeated"]) {
