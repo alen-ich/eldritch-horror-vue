@@ -15,5 +15,7 @@ export * from "./readiness.js";
 export * from "./reference-cards.js";
 export * from "./spells.js";
 export * from "./token-encounters.js";
+export * from "./expeditions.js";
+export * from "./expedition-rules.js";
 export * from "./research-encounter-rules.js";
 export * from "./other-world-encounter-rules.js";

@@ -2,6 +2,16 @@ import { describe, expect, it } from "vitest";
 import { gameCommandMessageSchema, gameCommandSchema, pendingDecisionSchema, skillIds } from "../src/index.js";
 
 describe("gameCommandSchema", () => {
+  it("accepts Norman target/payment intent and rejects authored prices or identity", () => {
+    for (const useSanity of [true, false]) {
+      const command = { type: "USE_INVESTIGATOR_ACTION", monsterInstanceId: "monster-1", useSanity };
+      expect(gameCommandSchema.parse(command)).toEqual(command);
+    }
+    for (const fields of [{ monsterInstanceId: "" }, { monsterInstanceId: "x".repeat(129) },
+      { useSanity: 1 }, { playerId: "guest" }, { cluesSpent: 0 }, { monsterId: "cultist" }]) {
+      expect(gameCommandSchema.safeParse({ type: "USE_INVESTIGATOR_ACTION", ...fields }).success).toBe(false);
+    }
+  });
   it("accepts only an opaque Gate intent for Other World encounters", () => {
     expect(gameCommandSchema.parse({ type: "RESOLVE_OTHER_WORLD_ENCOUNTER", gateId: "gate_arkham" })).toEqual({ type: "RESOLVE_OTHER_WORLD_ENCOUNTER", gateId: "gate_arkham" });
     for (const payload of [{ gateId: "" }, { gateId: "x".repeat(129) }, { gateId: "gate", playerId: "guest" }, { gateId: "gate", cardId: "chosen" }, { gateId: "gate", dice: [6] }, { gateId: "gate", closed: true }]) expect(gameCommandSchema.safeParse({ type: "RESOLVE_OTHER_WORLD_ENCOUNTER", ...payload }).success).toBe(false);

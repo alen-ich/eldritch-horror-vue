@@ -3,6 +3,12 @@ import { z } from "zod";
 /** Public front identity; never identifies a paired physical reverse. */
 export type SpellFrontId = `spell_${string}`;
 
+/** Public sites printed on the six base-game Expedition card backs. */
+export const expeditionLocationIds = [
+  "the_heart_of_africa", "the_himalayas", "the_amazon", "tunguska", "antarctica", "the_pyramids",
+] as const;
+export type ExpeditionLocationId = (typeof expeditionLocationIds)[number];
+
 export const locationIds = [
   "san_francisco", "arkham", "buenos_aires", "london", "rome", "istanbul",
   "shanghai", "sydney", "tokyo", "the_amazon", "the_pyramids",
@@ -143,7 +149,7 @@ export const gameCommandSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("ACQUIRE_ASSETS") }).strict(),
   z.object({ type: z.literal("USE_CONDITION_ACTION"), targetPlayerId: z.string().min(1), conditionKind: z.enum(conditionKindIds) }).strict(),
   z.object({ type: z.literal("USE_ARTIFACT_ACTION"), artifactId: z.enum(["artifact_ttka_halot", "artifact_cultes_des_goules", "artifact_de_vermis_mysteriis"]) }).strict(),
-  z.object({ type: z.literal("USE_INVESTIGATOR_ACTION") }).strict(),
+  z.object({ type: z.literal("USE_INVESTIGATOR_ACTION"), monsterInstanceId: z.string().min(1).max(128).optional(), useSanity: z.boolean().optional() }).strict(),
   z.object({ type: z.literal("END_ACTIONS") }).strict(),
   z.object({ type: z.literal("ADVANCE_MYTHOS") }).strict(),
   z.object({ type: z.literal("BEGIN_NEXT_ROUND") }).strict(),
@@ -168,6 +174,7 @@ export const gameCommandMessageSchema = z.object({
 export type GameCommandMessage = z.infer<typeof gameCommandMessageSchema>;
 
 export type GameEvent =
+  | { type: "EXPEDITION_CARD_DRAWN" | "EXPEDITION_CARD_DISCARDED"; playerId: string; cardId: string }
   | { type: "SPELL_GAINED" | "SPELL_DISCARDED"; playerId: string; spellId: SpellFrontId }
   | { type: "LOCATION_ENCOUNTER_RESOLVED"; playerId: string; cardId: string; deck: "general" | "america" | "europe" | "asia_australia"; dice: number[]; successes: number }
   | { type: "RESEARCH_ENCOUNTER_RESOLVED"; playerId: string; cardId: string; deck: "research_azathoth" | "research_cthulhu" | "research_shub_niggurath" | "research_yog_sothoth"; dice: number[]; successes: number }
@@ -185,6 +192,7 @@ export type GameEvent =
   | { type: "DOOM_RETREATED"; amount: number; doom: number }
   | { type: "NAMED_MONSTER_AMBUSH_RESOLVED"; playerId: string; monsterId: string; successes: number; healthLost: number; defeated: boolean }
   | { type: "MONSTER_DISCARDED"; monsterInstanceId: string; monsterId: string }
+  | { type: "INVESTIGATOR_ACTION_PAID"; playerId: string; cluesSpent: number; sanitySpent: number }
   | { type: "MONSTER_SPAWNED"; monsterInstanceId: string; monsterId: string; locationId: LocationId; spawnLocationId: LocationId }
   | { type: "GATE_OPENED"; gateId: string; locationId: LocationId }
   | { type: "GATE_DISCARDED"; gateId: string; locationId: LocationId }
